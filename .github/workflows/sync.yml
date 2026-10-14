@@ -1,0 +1,52 @@
+name: Sync redemptions
+
+# Syncs new BOLD redemptions and publishes the dashboard data as a single commit on the
+# `data` branch, which the Vercel site reads through the /data rewrite in vercel.json.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore the database from the data branch
+        run: |
+          if git fetch --depth=1 origin data; then
+            git show FETCH_HEAD:database.sqlite > database.sqlite || rm -f database.sqlite
+          else
+            echo "No data branch yet: running a full sync from the V2 launch block"
+          fi
+
+      - name: Sync and export
+        env:
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+        run: node export.js out
+
+      - name: Publish to the data branch
+        working-directory: out
+        run: |
+          git init -q -b data
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -qm "Data snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

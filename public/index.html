@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BOLD Redemption Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #07090d;
+            --surface: #0f131a;
+            --series-1: #3987e5; /* Curve */
+            --series-2: #d95926; /* Uniswap v3 */
+            --series-3: #199e70; /* Uniswap v4 */
+            --ink-1: #f0efec;
+            --ink-2: #c3c2b7;
+            --muted: #898781;
+            --grid: #1f242c;
+            --good: #34d399;
+            --bad: #fb7185;
+            --warn: #fab219;
+        }
+        body {
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(900px 500px at 10% -10%, rgba(57, 135, 229, 0.16), transparent 60%),
+                radial-gradient(700px 420px at 95% 0%, rgba(25, 158, 112, 0.12), transparent 60%),
+                var(--bg);
+            background-attachment: fixed;
+            color: var(--ink-1);
+        }
+        .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+        .card {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 16px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 20px 40px -24px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+        }
+        .kicker { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+        .good { color: var(--good); }
+        .bad { color: var(--bad); }
+        .scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+        .scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+        .fade-bottom { mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; position: relative; }
+        .dot.pulse::after {
+            content: ""; position: absolute; inset: -4px; border-radius: 50%;
+            background: currentColor; opacity: 0.35; animation: pulse 1.6s ease-out infinite;
+        }
+        @keyframes pulse { from { transform: scale(0.6); opacity: 0.5; } to { transform: scale(1.8); opacity: 0; } }
+        thead th { position: sticky; top: 0; background: #11161e; z-index: 1; }
+        .legend-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .tab { padding: 7px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
+        .tab:hover { color: var(--ink-1); }
+        .tab-active { color: var(--ink-1); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="max-w-[1500px] mx-auto">
+        <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-11 h-11 rounded-xl grid place-items-center font-bold text-lg"
+                     style="background: linear-gradient(135deg, var(--series-1), var(--series-3)); box-shadow: 0 0 32px -6px rgba(57,135,229,.6)">B</div>
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">BOLD Redemptions</h1>
+                    <p class="text-sm" style="color: var(--muted)">Liquity V2 · Ethereum mainnet · redemption arbitrage after gas and builder tips</p>
+                </div>
+            </div>
+            <nav class="card flex gap-1 p-1 rounded-xl order-last lg:order-none" role="tablist" aria-label="View">
+                <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Dashboard</button>
+                <button id="tab-how" class="tab" role="tab" aria-selected="false">How it works</button>
+            </nav>
+            <div class="flex items-center gap-3">
+                <div id="syncPill" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm card">
+                    <span id="syncDot" class="dot" style="color: var(--muted); background: currentColor"></span>
+                    <span id="syncStatus" class="mono text-xs" style="color: var(--ink-2)">connecting…</span>
+                </div>
+                <button id="syncBtn" class="px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50 hover:brightness-110"
+                        style="background: linear-gradient(135deg, var(--series-1), #2a62b8); box-shadow: 0 8px 24px -10px rgba(57,135,229,.8)">Sync now</button>
+            </div>
+        </header>
+
+        <div id="error" class="hidden mb-6 p-3 rounded-lg text-sm" style="background: rgba(251,113,133,.08); border: 1px solid rgba(251,113,133,.3); color: var(--bad)"></div>
+
+        <main id="view-dashboard">
+        <section id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="card lg:col-span-2 p-5 md:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
+                    <div>
+                        <h2 class="font-semibold">BOLD price before each redemption</h2>
+                        <p class="text-xs mt-1" style="color: var(--muted)">Pool mid price in the block before. Each point is one redemption tx.</p>
+                    </div>
+                    <div id="priceLegend" class="flex gap-4 text-xs" style="color: var(--ink-2)"></div>
+                </div>
+                <div class="relative h-80"><canvas id="priceChart"></canvas></div>
+            </div>
+
+            <div class="card p-5 md:p-6 flex flex-col">
+                <div class="flex items-baseline justify-between mb-1">
+                    <h2 class="font-semibold">Bot leaderboard</h2>
+                    <span id="botCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-3" style="color: var(--muted)">Senders redeeming via a contract or 3+ times · ranked by net profit after gas and tips</p>
+                <div class="relative flex-1 min-h-[20rem] lg:min-h-0">
+                    <div id="botLeaderboard" class="absolute inset-0 overflow-y-auto scroll fade-bottom space-y-1.5 pr-1 pb-6"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div class="card p-5 md:p-6">
+                <h2 class="font-semibold mb-4">Weekly BOLD redeemed</h2>
+                <div class="relative h-56"><canvas id="volumeChart"></canvas></div>
+            </div>
+            <div class="card p-5 md:p-6">
+                <h2 class="font-semibold mb-4">Weekly net profit <span class="text-xs font-normal" style="color: var(--muted)">USD, after gas and builder tips</span></h2>
+                <div class="relative h-56"><canvas id="profitChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="card mt-6 p-5 md:p-6">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <h2 class="font-semibold">Redemption feed</h2>
+                <span id="feedCount" class="text-xs mono" style="color: var(--muted)"></span>
+            </div>
+            <p class="text-xs mb-3 max-w-4xl" style="color: var(--muted)">
+                <b style="color: var(--ink-2)">Discount</b> BOLD below $1 ·
+                <b style="color: var(--ink-2)">Oracle gap</b> collateral market price above Liquity's redemption price ·
+                <b style="color: var(--ink-2)">Gross</b> collateral at market minus BOLD bought at market ·
+                <b style="color: var(--ink-2)">Gas</b> base fee burned ·
+                <b style="color: var(--ink-2)">Tip</b> priority fee + direct coinbase payment to the builder ·
+                <b style="color: var(--ink-2)">Margin</b> net profit over BOLD purchase cost.
+            </p>
+            <div class="flex flex-wrap items-center gap-4 text-xs mb-4" style="color: var(--ink-2)">
+                <span class="kicker">Branches</span><span id="branchLegend" class="flex flex-wrap gap-4"></span>
+            </div>
+            <div class="overflow-auto scroll max-h-[640px] rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                <table class="w-full text-left text-[13px] mono whitespace-nowrap">
+                    <thead style="color: var(--muted)">
+                        <tr class="text-[11px] uppercase tracking-wider">
+                            <th class="px-3 py-2.5 font-medium">Tx</th>
+                            <th class="px-3 py-2.5 font-medium">Time</th>
+                            <th class="px-3 py-2.5 font-medium text-right">BOLD</th>
+                            <th class="px-3 py-2.5 font-medium">Branches</th>
+                            <th class="px-3 py-2.5 font-medium">Sender</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Price</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Discount</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Oracle gap</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Fee</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Gross</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Gas</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Tip</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Net profit</th>
+                            <th class="px-3 py-2.5 font-medium text-right">Margin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="redemptionFeed"></tbody>
+                </table>
+            </div>
+        </div>
+
+        </main>
+
+        <main id="view-how" class="hidden space-y-6">
+            <section class="card p-6 md:p-8 relative overflow-hidden">
+                <div class="absolute -right-24 -top-24 w-80 h-80 rounded-full pointer-events-none" style="background: radial-gradient(circle, rgba(57,135,229,.18), transparent 70%)"></div>
+                <div class="kicker">How it works</div>
+                <h2 class="text-2xl md:text-3xl font-semibold tracking-tight mt-2 max-w-3xl">Redemptions put a floor under BOLD: anyone can swap 1 BOLD for $1 of collateral, minus a fee.</h2>
+                <p class="mt-4 max-w-3xl leading-relaxed" style="color: var(--ink-2)">
+                    BOLD is borrowed against ETH, wstETH and rETH in Liquity V2. When BOLD trades below $1, buying it on a DEX and redeeming it for
+                    collateral becomes profitable. Bots do exactly that, burning the BOLD and pushing the price back up. This page explains the mechanics,
+                    where the profit comes from, and how every number on the dashboard is measured.
+                </p>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+                    <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
+                        <div class="kicker">Fee floor</div><div class="text-xl font-semibold mt-1">0.5%</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">plus a base rate that spikes with volume</div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
+                        <div class="kicker">Base-rate half-life</div><div class="text-xl font-semibold mt-1">6 hours</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">the fee decays back toward the floor</div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
+                        <div class="kicker">Queue order</div><div class="text-xl font-semibold mt-1">Lowest rate first</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">troves with the cheapest interest are redeemed first</div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
+                        <div class="kicker">BOLD burned</div><div class="text-xl font-semibold mt-1" id="howBurned">–</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">by redemptions in this dataset</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5 md:p-8">
+                <div class="kicker">1 · The redemption path</div>
+                <h3 class="text-xl font-semibold mt-1">One call, three branches, many troves</h3>
+                <div class="overflow-x-auto scroll mt-6"><div id="diagramPath" class="min-w-[760px] max-w-[1100px] mx-auto"></div></div>
+                <div class="grid md:grid-cols-3 gap-6 mt-6 text-sm leading-relaxed" style="color: var(--ink-2)">
+                    <p><b class="text-white">The fee is set first.</b> The CollateralRegistry decays the base rate for time passed, adds the share of
+                        total BOLD supply being redeemed, and adds the 0.5% floor. The redeemer passes a max fee and the call reverts if it's exceeded.</p>
+                    <p><b class="text-white">The BOLD is split across branches</b> in proportion to each branch's <i>unbacked debt</i>: its total debt minus
+                        the BOLD sitting in its Stability Pool. Branches below their critical collateral ratio, or shut down, are skipped.</p>
+                    <p><b class="text-white">Each branch walks its troves</b> from the lowest interest rate upward, cancelling debt and sending the
+                        matching collateral to the redeemer. The redeemed BOLD is burned, shrinking supply.</p>
+                </div>
+            </section>
+
+            <div class="grid lg:grid-cols-2 gap-6">
+                <section class="card p-5 md:p-8">
+                    <div class="kicker">2 · Inside a branch</div>
+                    <h3 class="text-xl font-semibold mt-1">The cheapest loans are redeemed first</h3>
+                    <div id="diagramBranch" class="mt-6"></div>
+                    <p class="text-sm leading-relaxed mt-4" style="color: var(--ink-2)">
+                        A redeemed borrower loses debt and an equal value of collateral (at the redemption price), so their net position is unchanged,
+                        and the redemption fee is left in their trove as compensation. What they lose is exposure. Borrowers who don't want to be
+                        redeemed choose a higher interest rate, which is what pushes rates up when BOLD sits below peg.
+                    </p>
+                </section>
+                <section class="card p-5 md:p-8">
+                    <div class="kicker">3 · The redemption fee</div>
+                    <h3 class="text-xl font-semibold mt-1">Big redemptions raise the fee, time lowers it</h3>
+                    <div id="diagramFee" class="mt-6"></div>
+                    <p class="text-sm leading-relaxed mt-4" style="color: var(--ink-2)">
+                        <span class="mono text-white">fee = 0.5% + baseRate</span>. Each redemption adds <span class="mono text-white">redeemed ÷ BOLD supply</span>
+                        to the base rate, which then halves every 6 hours. A burst of redemptions makes the next one more expensive, so the arbitrage
+                        throttles itself. The base rate started at 100% at launch to block early redemptions.
+                    </p>
+                </section>
+            </div>
+
+            <section class="card p-5 md:p-8">
+                <div class="kicker">4 · Why bots redeem</div>
+                <h3 class="text-xl font-semibold mt-1">The arbitrage loop</h3>
+                <p class="text-sm mt-2 max-w-3xl" style="color: var(--muted)">Percentages are BOLD-weighted averages over every redemption in the dataset.</p>
+                <div class="overflow-x-auto scroll mt-6"><div id="diagramLoop" class="min-w-[760px] max-w-[1100px] mx-auto"></div></div>
+                <div class="grid lg:grid-cols-5 gap-6 mt-8">
+                    <div class="lg:col-span-2 text-sm leading-relaxed space-y-3" style="color: var(--ink-2)">
+                        <p><b class="text-white">Two sources of edge.</b> The obvious one is BOLD trading below $1. The bigger one, on average, is the
+                            <i>oracle gap</i>: Liquity values collateral with Chainlink feeds, which only update after the price moves a set amount
+                            or a set time passes. When ETH has rallied since the last update, a redeemer receives collateral sized at the old, lower
+                            price and can sell it for more.</p>
+                        <p><b class="text-white">Liquity pushes back on LSTs.</b> For wstETH and rETH the redemption price takes the <i>higher</i> of the
+                            market and canonical prices, so redeemers get less collateral. WETH uses Chainlink ETH/USD as is.</p>
+                    </div>
+                    <div class="lg:col-span-3 overflow-x-auto scroll">
+                        <table class="w-full text-sm">
+                            <thead><tr class="kicker text-left">
+                                <th class="py-2 pr-4 font-semibold" style="background: none">Branch</th>
+                                <th class="py-2 pr-4 font-semibold" style="background: none">Oracle price</th>
+                                <th class="py-2 font-semibold" style="background: none">Price used for redemptions</th>
+                            </tr></thead>
+                            <tbody id="priceTable" style="color: var(--ink-2)"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5 md:p-8">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <div>
+                        <div class="kicker">5 · Anatomy of an average redemption</div>
+                        <h3 class="text-xl font-semibold mt-1">Where the profit on 10,000 BOLD comes from, and where it goes</h3>
+                    </div>
+                    <span class="text-xs mono" style="color: var(--muted)">live · BOLD-weighted over all redemptions</span>
+                </div>
+                <div class="overflow-x-auto scroll mt-6"><div id="diagramWaterfall" class="min-w-[680px] max-w-[1100px] mx-auto"></div></div>
+                <p class="text-xs mt-3" style="color: var(--muted)">Discount, oracle gap and fee are averages of per-redemption percentages, so they add up to gross profit only approximately. Gross and net bars are the measured totals.</p>
+            </section>
+
+            <section class="card p-5 md:p-8">
+                <div class="kicker">6 · Methodology</div>
+                <h3 class="text-xl font-semibold mt-1">From raw chain data to the table</h3>
+                <div class="grid md:grid-cols-4 gap-3 mt-6">
+                    <div class="rounded-xl p-4 relative" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">01 · SCAN</div>
+                        <div class="font-semibold mt-1">Find redemptions</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">The three TroveManagers are read from the CollateralRegistry. Their <span class="mono">Redemption</span> events are fetched from block 22,516,069 (V2 launch) via public RPCs, since Alchemy's free tier limits log queries to 10 blocks.</p>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">02 · GROUP</div>
+                        <div class="font-semibold mt-1">One row per transaction</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">A redemption emits one event per branch it touches, and bots sometimes redeem several times in one tx. Events are grouped by transaction and summed.</p>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
+                        <div class="font-semibold mt-1">Prices and costs</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Via Alchemy: the tx and receipt (sender, gas), the block (time, base fee, builder), one multicall of every pool price at block N−1, and internal ETH transfers to the builder.</p>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">04 · SERVE</div>
+                        <div class="font-semibold mt-1">Store and refresh</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Rows go into SQLite. The server syncs new blocks every 5 minutes (3 confirmations) and the dashboard polls its API.</p>
+                    </div>
+                </div>
+
+                <h4 class="font-semibold mt-10 mb-3">What each column means</h4>
+                <div class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                    <table class="w-full text-sm">
+                        <thead><tr class="kicker text-left">
+                            <th class="px-4 py-2.5 font-semibold">Column</th>
+                            <th class="px-4 py-2.5 font-semibold">Meaning</th>
+                            <th class="px-4 py-2.5 font-semibold">How it's computed</th>
+                        </tr></thead>
+                        <tbody id="columnTable" style="color: var(--ink-2)"></tbody>
+                    </table>
+                </div>
+
+                <h4 class="font-semibold mt-10 mb-3">Limitations: read net profit as an upper bound</h4>
+                <ol id="limitations" class="grid md:grid-cols-2 gap-3 text-sm leading-relaxed" style="color: var(--ink-2)"></ol>
+            </section>
+        </main>
+
+        <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
+            Prices from Curve and Uniswap BOLD/USDC and ETH/USDC on Uniswap v3, in the block before each redemption. Builder tips via Alchemy internal transfers. See “How it works” for the full methodology.
+        </footer>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmt = (n, d = 0) => n == null ? '–' : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+        const pct = (n, d = 2) => n == null ? '–' : `${n > 0 ? '+' : ''}${n.toFixed(d)}%`;
+        const usd = (n, d = 2) => n == null ? '–' : `${n < 0 ? '−' : ''}$${fmt(Math.abs(n), d)}`;
+        const compact = n => n == null ? '–' : Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 }).format(n);
+        const signClass = n => n == null ? '' : n > 0 ? 'good' : n < 0 ? 'bad' : '';
+        const short = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
+        const date = ts => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+        const dateTime = ts => new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const ago = ts => {
+            const s = (Date.now() - ts) / 1000;
+            for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60]]) if (s >= n) return `${Math.floor(s / n)}${u} ago`;
+            return 'just now';
+        };
+        // Collateral branch icons: a small white glyph on the token's colour
+        const BRANCH_ICONS = {
+            WETH: { color: '#627eea', glyph: '<path d="M12 3 6.5 12.3 12 15.6l5.5-3.3Z"/><path d="M12 16.9 6.5 13.6 12 21l5.5-7.4Z" opacity=".7"/>' },
+            wstETH: { color: '#00a3ff', glyph: '<path d="M12 3.5s-5.5 6.4-5.5 10.6a5.5 5.5 0 0 0 11 0C17.5 9.9 12 3.5 12 3.5Z"/><path d="M12 10.2 9.8 14l2.2 1.3 2.2-1.3Z" fill="#00a3ff"/>' },
+            rETH: { color: '#f2774b', glyph: '<path d="M12 3c2.6 1.7 3.9 4.8 3.9 8.3L14.6 15H9.4l-1.3-3.7C8.1 7.8 9.4 4.7 12 3Z"/><circle cx="12" cy="9.3" r="1.5" fill="#f2774b"/><path d="M8.6 12.6 6.5 15.8h2.6Zm6.8 0 2.1 3.2h-2.6ZM10.6 16h2.8L12 19.8Z"/>' }
+        };
+        const branchIcon = (sym, cls = '') => {
+            const icon = BRANCH_ICONS[sym];
+            const glyph = icon ? icon.glyph : `<text x="12" y="16" text-anchor="middle" font-size="11" font-weight="700">${esc(sym[0])}</text>`;
+            return `<svg viewBox="0 0 24 24" class="rounded-full ${cls || 'w-5 h-5'}" style="background: ${icon ? icon.color : '#5b6170'}" fill="#fff" role="img" aria-label="${esc(sym)}"><title>${esc(sym)} branch</title>${glyph}</svg>`;
+        };
+        // Overlapping icon stack; each icon carries a ring in the surface colour so the overlaps stay legible
+        const branchChips = branches => `<span class="inline-flex items-center -space-x-1.5">${
+            (branches || '').split(',').filter(Boolean).map(sym => branchIcon(sym, 'w-5 h-5 ring-2 ring-[#11161e]')).join('')
+        }</span>`;
+        const branchLegend = () => Object.keys(BRANCH_ICONS).map(sym =>
+            `<span class="inline-flex items-center gap-1.5">${branchIcon(sym, 'w-4 h-4')}${sym}</span>`).join('');
+        const etherscan = (kind, v, label) => `<a class="hover:underline decoration-dotted underline-offset-4" target="_blank" rel="noopener" href="https://etherscan.io/${kind}/${esc(v)}">${esc(label)}</a>`;
+
+        Chart.defaults.color = css('--muted');
+        Chart.defaults.borderColor = css('--grid');
+        Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+        Chart.defaults.font.size = 11;
+        Object.assign(Chart.defaults.plugins.tooltip, {
+            backgroundColor: 'rgba(17,22,30,.96)', borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
+            titleColor: css('--ink-1'), bodyColor: css('--ink-2'), padding: 10, cornerRadius: 8,
+            titleFont: { weight: '600' }, bodyFont: { family: 'JetBrains Mono, monospace' }, boxPadding: 4, usePointStyle: true
+        });
+
+        const charts = {};
+        let wasRunning = false;
+
+        function upsertChart(id, config) {
+            if (charts[id]) {
+                charts[id].data = config.data;
+                charts[id].update('none');
+            } else {
+                charts[id] = new Chart($(id), config);
+            }
+        }
+
+        function renderStats(s) {
+            lastStats = s;
+            if (!$('view-how').classList.contains('hidden')) renderHow();
+            const tiles = [
+                ['BOLD redeemed', compact(s.total_bold), `${fmt(s.tx_count)} txs · ${fmt(s.senders)} senders`],
+                ['Net profit', usd(s.net_profit_usd, 0), `${pct(s.avg_margin, 3)} avg margin`, signClass(s.net_profit_usd)],
+                ['Gross profit', usd(s.gross_profit_usd, 0), 'before gas and tips'],
+                ['Gas + builder tips', usd((s.gas_fee_usd || 0) + (s.builder_tip_usd || 0), 0), `${usd(s.gas_fee_usd, 0)} gas · ${usd(s.builder_tip_usd, 0)} tips`],
+                ['Avg. BOLD discount', pct(s.avg_spread, 3), 'below $1 at redemption'],
+                ['Avg. oracle gap', pct(s.avg_oracle_gap, 3), 'collateral market vs. oracle'],
+                ['Avg. redemption fee', pct(s.avg_fee, 3), 'paid in collateral'],
+                ['Last redemption', s.last_redemption ? ago(s.last_redemption) : '–', s.last_redemption ? dateTime(s.last_redemption) : '']
+            ];
+            $('stats').innerHTML = tiles.map(([label, value, sub, cls = '']) => `
+                <div class="card p-4 md:p-5">
+                    <div class="kicker">${label}</div>
+                    <div class="text-2xl md:text-[28px] font-semibold tracking-tight mt-2 ${cls}">${value}</div>
+                    <div class="text-xs mt-1 mono" style="color: var(--muted)">${sub}</div>
+                </div>`).join('');
+        }
+
+        $('branchLegend').innerHTML = branchLegend();
+
+        function renderFeed(rows) {
+            $('feedCount').innerText = `${fmt(rows.length)} txs`;
+            $('redemptionFeed').innerHTML = rows.map(r => `
+                <tr class="border-t border-white/5 hover:bg-white/[.03]">
+                    <td class="px-3 py-2"><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(r.tx_hash.slice(0, 8))}…<span aria-hidden="true">↗</span></a></td>
+                    <td class="px-3 py-2" style="color: var(--ink-2)">${dateTime(r.timestamp)}</td>
+                    <td class="px-3 py-2 text-right">${fmt(r.amount)}</td>
+                    <td class="px-3 py-2">${branchChips(r.branches)}</td>
+                    <td class="px-3 py-2" style="color: var(--ink-2)">${etherscan('address', r.sender, short(r.sender))}${r.is_bot ? '<span class="ml-1.5 px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.15); color: #8bb8f0">bot</span>' : ''}</td>
+                    <td class="px-3 py-2 text-right">${r.market_price == null ? '–' : '$' + r.market_price.toFixed(4)}</td>
+                    <td class="px-3 py-2 text-right">${pct(r.spread, 3)}</td>
+                    <td class="px-3 py-2 text-right">${pct(r.oracle_gap, 3)}</td>
+                    <td class="px-3 py-2 text-right">${pct(r.fee_pct, 3)}</td>
+                    <td class="px-3 py-2 text-right">${usd(r.gross_profit_usd)}</td>
+                    <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.gas_fee_usd)}</td>
+                    <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.builder_tip_usd)}</td>
+                    <td class="px-3 py-2 text-right font-medium ${signClass(r.net_profit_usd)}">${usd(r.net_profit_usd)}</td>
+                    <td class="px-3 py-2 text-right ${signClass(r.net_margin)}">${pct(r.net_margin, 3)}</td>
+                </tr>`).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
+        }
+
+        function renderBots(bots) {
+            $('botCount').innerText = `${bots.length} bots`;
+            const rankStyle = i => i === 0 ? 'background: linear-gradient(135deg,#f5c451,#c98500); color:#1a1405'
+                : i === 1 ? 'background: linear-gradient(135deg,#d9dde3,#8d96a3); color:#11161e'
+                : i === 2 ? 'background: linear-gradient(135deg,#e59a6b,#a8582c); color:#1a0e06'
+                : 'background: rgba(255,255,255,.06); color: var(--muted)';
+            $('botLeaderboard').innerHTML = bots.map((b, i) => `
+                <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[.04] transition" style="background: rgba(255,255,255,.025)">
+                    <span class="w-6 h-6 shrink-0 rounded-md grid place-items-center text-[11px] font-semibold mono" style="${rankStyle(i)}">${i + 1}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="mono text-[13px] truncate">${etherscan('address', b.address, short(b.address))}</div>
+                        <div class="text-[11px] mono" style="color: var(--muted)">${compact(b.total_bold)} BOLD${b.via_contract ? ' · contract' : ''}</div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="mono text-[13px] font-medium ${signClass(b.net_profit_usd)}">${usd(b.net_profit_usd, 0)}</div>
+                        <div class="text-[11px] mono" style="color: var(--muted)">${b.frequency} ${b.frequency === 1 ? 'tx' : 'txs'}</div>
+                    </div>
+                </div>`).join('') || '<p class="text-sm" style="color: var(--muted)">No bots detected yet.</p>';
+        }
+
+        const timeAxis = {
+            type: 'linear',
+            ticks: { callback: v => date(v), maxTicksLimit: 7 },
+            grid: { display: false },
+            border: { color: css('--grid') }
+        };
+
+        function renderPriceChart(rows) {
+            const asc = [...rows].reverse();
+            const venues = [
+                ['price_curve', 'Curve', css('--series-1')],
+                ['price_uni_v3', 'Uniswap v3', css('--series-2')],
+                ['price_uni_v4', 'Uniswap v4', css('--series-3')]
+            ];
+            $('priceLegend').innerHTML = venues.map(([, label, color]) =>
+                `<span class="flex items-center gap-1.5"><span class="legend-swatch" style="background:${color}"></span>${label}</span>`
+            ).join('') + `<span class="flex items-center gap-1.5"><span style="width:12px;height:1px;background:${css('--muted')}"></span>$1 peg</span>`;
+
+            const datasets = venues.map(([key, label, color]) => ({
+                label,
+                data: asc.filter(r => r[key] != null).map(r => ({ x: r.timestamp, y: r[key], amount: r.amount })),
+                backgroundColor: color,
+                borderColor: css('--surface'),
+                borderWidth: 1,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointHitRadius: 6
+            }));
+            if (asc.length) {
+                datasets.push({
+                    type: 'line', label: '$1 peg', borderColor: css('--muted'), borderWidth: 1,
+                    pointRadius: 0, pointHitRadius: 0, data: [{ x: asc[0].timestamp, y: 1 }, { x: asc.at(-1).timestamp, y: 1 }]
+                });
+            }
+            upsertChart('priceChart', {
+                type: 'scatter',
+                data: { datasets },
+                options: {
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'nearest', intersect: true },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            filter: item => item.dataset.label !== '$1 peg',
+                            callbacks: {
+                                title: items => items.length ? dateTime(items[0].parsed.x) : '',
+                                label: item => ` ${item.dataset.label}  $${item.parsed.y.toFixed(4)}  ·  ${fmt(item.raw.amount)} BOLD`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ...timeAxis, min: asc[0]?.timestamp, max: asc.at(-1)?.timestamp },
+                        y: { ticks: { callback: v => '$' + v.toFixed(3) }, border: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function weekly(rows, value) {
+            const WEEK = 7 * 864e5;
+            const weeks = new Map();
+            for (const r of rows) {
+                const v = value(r);
+                if (v == null) continue;
+                const d = new Date(r.timestamp);
+                const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+                weeks.set(monday, (weeks.get(monday) || 0) + v);
+            }
+            const keys = [...weeks.keys()].sort((a, b) => a - b);
+            const labels = [], data = [];
+            for (let w = keys[0]; keys.length && w <= keys.at(-1); w += WEEK) {
+                labels.push(w);
+                data.push(weeks.get(w) || 0);
+            }
+            return { labels, data };
+        }
+
+        function renderWeeklyChart(id, rows, value, color, unitLabel) {
+            const { labels, data } = weekly(rows, value);
+            upsertChart(id, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{ data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9 }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                            label: item => ' ' + unitLabel(item.parsed.y)
+                        } }
+                    },
+                    scales: {
+                        x: { ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { ticks: { callback: v => compact(v) }, border: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // Served by the local Node server: live API with a sync button. Hosted as a static site
+        // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
+        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status' };
+        let staticMode = false;
+        let lastGenerated = null;
+
+        async function detectMode() {
+            try {
+                const r = await fetch(API.status);
+                if (r.ok && (r.headers.get('content-type') || '').includes('json')) return;
+            } catch { /* no server: fall through to static mode */ }
+            staticMode = true;
+            for (const key of Object.keys(API)) API[key] = `data/${key}.json`;
+            $('syncBtn').classList.add('hidden');
+        }
+
+        async function fetchData() {
+            const [redemptions, bots, stats] = await Promise.all(
+                [API.redemptions, API.bots, API.stats].map(u => fetch(u, { cache: 'no-cache' }).then(r => r.json()))
+            );
+            renderStats(stats);
+            renderFeed(redemptions);
+            renderBots(bots);
+            renderPriceChart(redemptions);
+            renderWeeklyChart('volumeChart', redemptions, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`);
+            renderWeeklyChart('profitChart', redemptions, r => r.net_profit_usd, css('--series-3'), v => usd(v));
+        }
+
+        function setPill(color, text, pulse) {
+            $('syncDot').style.color = color;
+            $('syncDot').classList.toggle('pulse', pulse);
+            $('syncStatus').innerText = text;
+        }
+
+        async function pollStatus() {
+            let s;
+            try {
+                s = await fetch(API.status, { cache: 'no-cache' }).then(r => r.json());
+            } catch {
+                return setPill(css('--bad'), staticMode ? 'data unavailable' : 'server offline', false);
+            }
+            if (staticMode) {
+                setPill(css('--good'), `updated ${s.generatedAt ? ago(s.generatedAt) : '–'} · block ${(s.lastSyncedBlock || 0).toLocaleString()}`, false);
+                // A new snapshot was published since the last load
+                if (lastGenerated && s.generatedAt !== lastGenerated) fetchData();
+                lastGenerated = s.generatedAt;
+                return;
+            }
+            const btn = $('syncBtn');
+            btn.disabled = s.running;
+            btn.innerText = s.running ? 'Syncing…' : 'Sync now';
+            if (s.running && s.targetBlock) {
+                const total = Math.max(s.targetBlock - s.fromBlock + 1, 1);
+                const done = Math.max(s.scannedTo - s.fromBlock + 1, 0);
+                setPill(css('--warn'), `syncing ${Math.floor(done / total * 100)}% · +${s.processed} txs`, true);
+            } else if (s.lastError) {
+                setPill(css('--bad'), 'sync error', false);
+            } else {
+                setPill(css('--good'), s.lastSyncedBlock ? `live · block ${s.lastSyncedBlock.toLocaleString()}` : 'idle', true);
+            }
+            $('error').classList.toggle('hidden', !s.lastError);
+            $('error').innerText = s.lastError ? `Last sync failed: ${s.lastError}` : '';
+            // Refresh while syncing so rows appear as chunks land, and once more when it finishes
+            if (s.running || wasRunning) fetchData();
+            wasRunning = s.running;
+        }
+
+        $('syncBtn').addEventListener('click', async () => {
+            await fetch('/api/sync', { method: 'POST' });
+            pollStatus();
+        });
+
+
+        // --- "How it works" view -------------------------------------------------------------
+
+        const T = (x, y, text, opts = {}) => {
+            const { size = 12, weight = 400, fill = 'var(--ink-2)', anchor = 'start', mono = false } = opts;
+            return `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}"${mono ? ' font-family="JetBrains Mono, monospace"' : ''}>${text}</text>`;
+        };
+        const arrowHead = (id, color) =>
+            `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="${color}"/></marker>`;
+        const node = (x, y, w, h, opts = {}) =>
+            `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${opts.rx ?? 12}" fill="${opts.fill ?? 'rgba(255,255,255,.04)'}" stroke="${opts.stroke ?? 'rgba(255,255,255,.12)'}"/>`;
+        const svgIcon = (sym, cx, cy, r) =>
+            `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${BRANCH_ICONS[sym].color}"/><svg x="${cx - r}" y="${cy - r}" width="${2 * r}" height="${2 * r}" viewBox="0 0 24 24" fill="#fff">${BRANCH_ICONS[sym].glyph}</svg>`;
+
+        function diagramPath() {
+            const blue = css('--series-1'), good = css('--good');
+            const branches = [['WETH', 40], ['wstETH', 163], ['rETH', 286]];
+            const troves = [[120, 1, '3.1%'], [90, 0.55, '3.6%'], [135, 0, '4.2%'], [100, 0, '5.0%']];
+            let s = `<svg viewBox="0 0 1000 410" class="w-full h-auto" role="img" aria-label="Redemption path from redeemer through the CollateralRegistry to each branch's troves">
+                <defs>${arrowHead('pa-blue', blue)}${arrowHead('pa-good', good)}</defs>`;
+            // Redeemer
+            s += node(10, 150, 150, 90) + T(85, 190, 'Redeemer', { size: 15, weight: 600, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(85, 210, 'any BOLD holder', { size: 11, fill: 'var(--muted)', anchor: 'middle' });
+            s += `<line x1="160" y1="195" x2="236" y2="195" stroke="${blue}" stroke-width="2" marker-end="url(#pa-blue)"/>`
+                + T(198, 185, 'BOLD', { size: 11, weight: 600, fill: blue, anchor: 'middle' });
+            // CollateralRegistry
+            s += node(240, 110, 210, 170, { fill: 'rgba(57,135,229,.08)', stroke: 'rgba(57,135,229,.45)' })
+                + T(345, 140, 'CollateralRegistry', { size: 15, weight: 600, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(345, 158, 'redeemCollateral()', { size: 11, fill: 'var(--muted)', anchor: 'middle', mono: true })
+                + T(260, 196, '① fee = 0.5% + base rate', { size: 12 })
+                + T(260, 220, '② split by unbacked debt', { size: 12 })
+                + T(260, 244, '③ burn the redeemed BOLD', { size: 12 });
+            // Troves column header
+            s += T(800, 26, 'TROVES · LOWEST RATE FIRST', { size: 10, weight: 600, fill: 'var(--muted)' });
+            for (const [sym, y] of branches) {
+                const cy = y + 32;
+                s += `<path d="M450 195 C 495 195, 495 ${cy}, 536 ${cy}" fill="none" stroke="${blue}" stroke-width="2" marker-end="url(#pa-blue)"/>`;
+                s += node(540, y, 200, 64) + svgIcon(sym, 566, cy, 13)
+                    + T(590, y + 28, `${sym} branch`, { size: 13, weight: 600, fill: 'var(--ink-1)' })
+                    + T(590, y + 46, 'TroveManager', { size: 11, fill: 'var(--muted)', mono: true });
+                s += `<line x1="740" y1="${cy}" x2="790" y2="${cy}" stroke="${blue}" stroke-width="2" marker-end="url(#pa-blue)"/>`;
+                troves.forEach(([w, taken, rate], j) => {
+                    const by = y + 6 + j * 14;
+                    s += `<rect x="800" y="${by}" width="${w}" height="10" rx="3" fill="rgba(255,255,255,.1)"/>`;
+                    if (taken) s += `<rect x="800" y="${by}" width="${w * taken}" height="10" rx="3" fill="${blue}"/>`;
+                    s += T(800 + w + 6, by + 9, rate, { size: 10, fill: 'var(--muted)', mono: true });
+                });
+            }
+            // Collateral back to the redeemer
+            s += `<path d="M880 350 V 396 H 85 V 246" fill="none" stroke="${good}" stroke-width="2" marker-end="url(#pa-good)"/>`
+                + T(480, 388, 'collateral worth BOLD × (1 − fee), valued at the redemption price', { size: 12, fill: good, anchor: 'middle' })
+                + T(870, 372, 'fee stays in the trove', { size: 11, fill: 'var(--muted)', anchor: 'end' });
+            return s + '</svg>';
+        }
+
+        function diagramBranch() {
+            const blue = css('--series-1');
+            const rows = [['2.9%', 180, 180], ['3.3%', 240, 240], ['3.8%', 160, 90], ['4.6%', 220, 0], ['5.5%', 140, 0], ['7.2%', 200, 0]];
+            const k = 1.6;
+            let s = `<svg viewBox="0 0 700 300" class="w-full h-auto" role="img" aria-label="Troves sorted by interest rate; a redemption consumes the lowest-rate troves first">`;
+            s += T(80, 26, 'RATE', { size: 10, weight: 600, fill: 'var(--muted)', anchor: 'end' })
+                + T(90, 26, 'TROVE DEBT', { size: 10, weight: 600, fill: 'var(--muted)' });
+            rows.forEach(([rate, debt, taken], i) => {
+                const y = 44 + i * 36;
+                const status = taken === debt ? 'fully redeemed' : taken ? 'partly redeemed' : 'untouched';
+                s += T(80, y + 15, rate, { size: 12, fill: 'var(--ink-2)', anchor: 'end', mono: true })
+                    + `<rect x="90" y="${y}" width="${debt * k}" height="22" rx="4" fill="rgba(255,255,255,.08)"/>`
+                    + (taken ? `<rect x="90" y="${y}" width="${taken * k}" height="22" rx="4" fill="${blue}"/>` : '')
+                    + T(90 + debt * k + 12, y + 15, status, { size: 11, fill: taken ? 'var(--ink-2)' : 'var(--muted)' });
+            });
+            const top = 44, bottom = 44 + 2 * 36 + 22;
+            s += `<path d="M598 ${top} h8 V ${bottom} h-8" fill="none" stroke="${blue}" stroke-width="1.5"/>`
+                + T(616, (top + bottom) / 2 - 2, 'redeem', { size: 12, fill: 'var(--ink-2)' })
+                + T(616, (top + bottom) / 2 + 14, '510 BOLD', { size: 12, weight: 600, fill: 'var(--ink-1)' });
+            s += T(90, 286, '↓ the redemption walks down the list until the BOLD is used up', { size: 12, fill: 'var(--muted)' });
+            return s + '</svg>';
+        }
+
+        function diagramFee() {
+            const blue = css('--series-1');
+            const x0 = 60, x1 = 680, y0 = 240, y1 = 30, maxH = 24, minFee = 0.4, maxFee = 1.4;
+            const X = t => x0 + (t / maxH) * (x1 - x0);
+            const Y = f => y0 - ((f - minFee) / (maxFee - minFee)) * (y0 - y1);
+            const jumps = { 3: 0.6, 12: 0.45 };
+            let base = 0.1, pts = [];
+            for (let i = 0; i <= 240; i++) {
+                const t = i / 10;
+                if (i > 0) base *= Math.pow(0.5, 0.1 / 6);
+                if (jumps[t]) { pts.push([t, 0.5 + base]); base += jumps[t]; }
+                pts.push([t, 0.5 + base]);
+            }
+            const line = pts.map(([t, f], i) => `${i ? 'L' : 'M'}${X(t).toFixed(1)} ${Y(f).toFixed(1)}`).join(' ');
+            const area = `${line} L${X(24)} ${Y(0.5)} L${X(0)} ${Y(0.5)} Z`;
+            let s = `<svg viewBox="0 0 700 300" class="w-full h-auto" role="img" aria-label="Redemption fee over 24 hours: two redemptions raise it, it decays with a 6-hour half-life toward the 0.5% floor">`;
+            for (const f of [0.5, 0.75, 1.0, 1.25]) {
+                s += `<line x1="${x0}" x2="${x1}" y1="${Y(f)}" y2="${Y(f)}" stroke="${css('--grid')}"/>` + T(x0 - 8, Y(f) + 4, `${f.toFixed(2)}%`, { size: 11, fill: 'var(--muted)', anchor: 'end', mono: true });
+            }
+            for (const t of [0, 6, 12, 18, 24]) s += T(X(t), y0 + 20, `${t}h`, { size: 11, fill: 'var(--muted)', anchor: 'middle', mono: true });
+            s += `<path d="${area}" fill="rgba(57,135,229,.14)"/>`
+                + `<line x1="${x0}" x2="${x1}" y1="${Y(0.5)}" y2="${Y(0.5)}" stroke="var(--muted)" stroke-width="1.5"/>`
+                + T(x1, Y(0.5) - 8, 'floor 0.5%', { size: 11, fill: 'var(--muted)', anchor: 'end' })
+                + `<path d="${line}" fill="none" stroke="${blue}" stroke-width="2"/>`;
+            const tag = (t, label) => {
+                const f = pts.find(([pt]) => pt > t)[1];
+                return `<circle cx="${X(t)}" cy="${Y(f)}" r="4" fill="${blue}" stroke="${css('--surface')}" stroke-width="2"/>`
+                    + T(X(t) + 10, Y(f) - 6, label, { size: 11, fill: 'var(--ink-2)' });
+            };
+            s += tag(3, 'redemption of 0.6% of supply') + tag(12, '0.45% of supply');
+            // Half-life marker: 3h → 9h halves the base rate
+            const fA = pts.find(([pt]) => pt > 3)[1], fB = pts.find(([pt]) => pt >= 9)[1];
+            s += `<line x1="${X(9)}" x2="${X(9)}" y1="${Y(fB) - 2}" y2="${Y(0.5)}" stroke="var(--muted)" stroke-width="1"/>`
+                + T(X(9) + 6, Y((fB + 0.5) / 2) + 4, `6h later: base rate halved`, { size: 11, fill: 'var(--muted)' });
+            return s + '</svg>';
+        }
+
+        function diagramLoop(st) {
+            const blue = css('--series-1'), good = css('--good'), bad = css('--bad');
+            const costPct = st.total_bold ? ((st.gas_fee_usd || 0) + (st.builder_tip_usd || 0)) / st.total_bold * 100 : null;
+            let s = `<svg viewBox="0 0 1000 340" class="w-full h-auto" role="img" aria-label="Arbitrage loop: buy BOLD below $1, redeem it for collateral, sell the collateral at market, repeat">
+                <defs>${arrowHead('lp-blue', blue)}</defs>`;
+            const box = (x, y, title, sub, accent) => node(x, y, 220, 84, { rx: 16, fill: accent ? 'rgba(25,158,112,.08)' : 'rgba(255,255,255,.04)', stroke: accent ? 'rgba(25,158,112,.45)' : 'rgba(255,255,255,.12)' })
+                + T(x + 110, y + 38, title, { size: 16, weight: 600, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(x + 110, y + 60, sub, { size: 11, fill: 'var(--muted)', anchor: 'middle' });
+            s += box(40, 30, 'USDC', 'start capital')
+                + box(740, 30, 'BOLD', 'bought below $1')
+                + box(740, 226, 'ETH · wstETH · rETH', '$1 of collateral per BOLD, minus fee')
+                + box(40, 226, 'USDC + profit', 'if the edge beats the costs', true);
+            const arrow = (d) => `<path d="${d}" fill="none" stroke="${blue}" stroke-width="2" marker-end="url(#lp-blue)"/>`;
+            s += arrow('M262 72 H 736') + arrow('M850 116 V 222') + arrow('M738 268 H 264') + arrow('M150 224 V 118');
+            s += T(500, 58, '① Buy BOLD on Curve / Uniswap', { size: 13, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(500, 94, `+ discount ${pct(st.avg_spread, 2)}`, { size: 12, fill: good, anchor: 'middle', mono: true });
+            s += T(836, 162, '② Redeem for collateral', { size: 13, fill: 'var(--ink-1)', anchor: 'end' })
+                + T(836, 182, `− fee ${pct(st.avg_fee, 2).replace('+', '')}`, { size: 12, fill: bad, anchor: 'end', mono: true });
+            s += T(500, 254, '③ Sell collateral at market', { size: 13, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(500, 290, `+ oracle gap ${pct(st.avg_oracle_gap, 2)}`, { size: 12, fill: good, anchor: 'middle', mono: true });
+            s += T(164, 162, '④ Repeat while edge > 0', { size: 13, fill: 'var(--ink-1)' })
+                + T(164, 182, `− gas &amp; tip ${costPct == null ? '–' : costPct.toFixed(2) + '%'}`, { size: 12, fill: bad, mono: true });
+            s += `<rect x="390" y="146" width="220" height="48" rx="24" fill="rgba(57,135,229,.12)" stroke="rgba(57,135,229,.45)"/>`
+                + T(500, 167, 'NET MARGIN', { size: 10, weight: 600, fill: 'var(--muted)', anchor: 'middle' })
+                + T(500, 185, pct(st.avg_margin, 3), { size: 14, weight: 600, fill: 'var(--ink-1)', anchor: 'middle', mono: true });
+            return s + '</svg>';
+        }
+
+        function diagramWaterfall(st) {
+            if (!st.total_bold) return '<p class="text-sm" style="color: var(--muted)">No data yet.</p>';
+            const good = css('--good'), bad = css('--bad'), blue = css('--series-1');
+            const per = v => v / st.total_bold * 1e4;
+            const d = st.avg_spread * 100, g = st.avg_oracle_gap * 100, f = st.avg_fee * 100;
+            const gross = per(st.gross_profit_usd), gas = per(st.gas_fee_usd), tip = per(st.builder_tip_usd), net = per(st.net_profit_usd);
+            const steps = [
+                ['BOLD discount', 0, d, good, `+$${d.toFixed(2)}`],
+                ['Oracle gap', d, d + g, good, `+$${g.toFixed(2)}`],
+                ['Redemption fee', d + g, d + g - f, bad, `−$${f.toFixed(2)}`],
+                ['Gross profit', 0, gross, blue, `$${gross.toFixed(2)}`],
+                ['Gas (base fee)', gross, gross - gas, bad, `−$${gas.toFixed(2)}`],
+                ['Builder tip', gross - gas, gross - gas - tip, bad, `−$${tip.toFixed(2)}`],
+                ['Net profit', 0, net, blue, `$${net.toFixed(2)}`]
+            ];
+            const W = 1000, top = 40, base = 250, colW = W / steps.length, barW = 76;
+            const maxV = Math.max(...steps.flatMap(([, a, b]) => [a, b]));
+            const Y = v => base - (v / maxV) * (base - top);
+            let s = `<svg viewBox="0 0 ${W} 310" class="w-full h-auto" role="img" aria-label="Waterfall of average profit per 10,000 BOLD redeemed">`;
+            s += `<line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="${css('--grid')}"/>`;
+            steps.forEach(([label, from, to, color, value], i) => {
+                const cx = colW * i + colW / 2, x = cx - barW / 2;
+                const yTop = Math.min(Y(from), Y(to)), h = Math.max(Math.abs(Y(from) - Y(to)), 2);
+                s += `<rect x="${x}" y="${yTop}" width="${barW}" height="${h}" rx="4" fill="${color}"/>`;
+                if (i < steps.length - 1) {
+                    const level = Y(to);
+                    s += `<line x1="${x + barW}" x2="${x + colW}" y1="${level}" y2="${level}" stroke="var(--muted)" stroke-width="1" opacity=".5"/>`;
+                }
+                s += T(cx, yTop - 8, value, { size: 13, weight: 600, fill: 'var(--ink-1)', anchor: 'middle', mono: true })
+                    + T(cx, base + 24, label, { size: 12, fill: 'var(--ink-2)', anchor: 'middle' });
+            });
+            s += T(colW * 6 + colW / 2, base + 44, `${pct(st.avg_margin, 3)} margin`, { size: 11, fill: 'var(--muted)', anchor: 'middle', mono: true });
+            return s + '</svg>';
+        }
+
+        const PRICE_ROWS = [
+            ['WETH', 'Chainlink ETH/USD', 'Same price. The oracle gap is just how far ETH moved since Chainlink last updated.'],
+            ['wstETH', 'Chainlink stETH/USD × stETH per wstETH', 'max(stETH/USD, ETH/USD) × canonical rate, when the two feeds are within 1%.'],
+            ['rETH', 'Chainlink rETH/ETH × ETH/USD', 'max(market, canonical) rETH price, when they are within 2%.']
+        ];
+
+        const COLUMNS = [
+            ['Tx', 'The redemption transaction', 'Hash of the tx that emitted the Redemption events'],
+            ['Time', 'When it was included', 'Block timestamp'],
+            ['BOLD', 'BOLD actually redeemed and burned', 'Σ <span class="mono">_actualBoldAmount</span> over the tx\'s Redemption events'],
+            ['Branches', 'Collateral branches the redemption hit', 'The TroveManagers that emitted events'],
+            ['Sender', 'Account that sent the tx. BOT = called through a contract, or 3+ redemptions', '<span class="mono">tx.from</span>'],
+            ['Price', 'BOLD mid price just before the block', 'Curve BOLD/USDC <span class="mono">1 / get_p(0)</span> at block N−1; Uniswap v3, then v4 as fallback'],
+            ['Discount', 'How far BOLD traded below $1', '<span class="mono">(1 − price) × 100</span>'],
+            ['Oracle gap', 'Collateral market price above Liquity\'s redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, BOLD-weighted across branches. Market = Uniswap ETH/USDC × LST exchange rate'],
+            ['Fee', 'Redemption fee, as a share of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
+            ['Gross', 'Profit before inclusion costs', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
+            ['Gas', 'Base fee, burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>'],
+            ['Tip', 'Everything paid to the block builder', '<span class="mono">(gasUsed × priority fee + direct coinbase transfers) × ETH/USD</span>'],
+            ['Net profit', 'What the redeemer kept', '<span class="mono">Gross − Gas − Tip</span>'],
+            ['Margin', 'Net profit relative to capital used', '<span class="mono">Net ÷ (BOLD × price) × 100</span>']
+        ];
+
+        const LIMITATIONS = [
+            ['Prices are from the block before.', 'Contract state can only be read at block boundaries. Trades earlier in the same block, such as a large BOLD sale a bot back-runs, aren\'t reflected, so the real discount can be larger or smaller.'],
+            ['Mid price, not execution price.', 'Buying BOLD costs the pool fee (0.04% on Curve, 0.05% on Uniswap v3) plus price impact: about +0.044% for 1k USDC and +0.065% for 100k on Curve. That is a quarter to a third of the average margin.'],
+            ['Collateral is valued at mid too.', 'Selling ETH, wstETH or rETH also costs fees and slippage, and LSTs can trade slightly below their canonical exchange rate.'],
+            ['Senders are single accounts.', 'One operator running several accounts appears as several bots. The bot flag is a heuristic: redeeming through a contract, or 3+ redemptions.'],
+            ['Gas covers the whole transaction.', 'Including the swaps the bot made. That is right for profitability, but a tx bundling other strategies would blur the attribution.'],
+            ['Dust is excluded from ratios.', 'Redemptions under 1 BOLD round the collateral to zero, so their fee, edge and profit are left blank.']
+        ];
+
+        let lastStats = null;
+
+        function renderHow() {
+            if (!$('diagramPath').innerHTML) {
+                $('diagramPath').innerHTML = diagramPath();
+                $('diagramBranch').innerHTML = diagramBranch();
+                $('diagramFee').innerHTML = diagramFee();
+                $('priceTable').innerHTML = PRICE_ROWS.map(([sym, oracle, redemption]) => `
+                    <tr class="border-t border-white/5 align-top">
+                        <td class="py-3 pr-4"><span class="inline-flex items-center gap-2 font-medium text-white">${branchIcon(sym, 'w-5 h-5')}${sym}</span></td>
+                        <td class="py-3 pr-4">${oracle}</td>
+                        <td class="py-3">${redemption}</td>
+                    </tr>`).join('');
+                $('columnTable').innerHTML = COLUMNS.map(([col, meaning, how]) => `
+                    <tr class="border-t border-white/5 align-top">
+                        <td class="px-4 py-2.5 font-medium text-white whitespace-nowrap">${col}</td>
+                        <td class="px-4 py-2.5">${meaning}</td>
+                        <td class="px-4 py-2.5 text-[13px]">${how}</td>
+                    </tr>`).join('');
+                $('limitations').innerHTML = LIMITATIONS.map(([title, body], i) => `
+                    <li class="rounded-xl p-4 flex gap-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                        <span class="mono text-xs mt-0.5" style="color: var(--warn)">0${i + 1}</span>
+                        <span><b class="text-white">${title}</b> ${body}</span>
+                    </li>`).join('');
+            }
+            if (lastStats) {
+                $('howBurned').innerText = `${compact(lastStats.total_bold)} BOLD`;
+                $('diagramLoop').innerHTML = diagramLoop(lastStats);
+                $('diagramWaterfall').innerHTML = diagramWaterfall(lastStats);
+            }
+        }
+
+        function showView(name) {
+            for (const v of ['dashboard', 'how']) {
+                $(`view-${v}`).classList.toggle('hidden', v !== name);
+                $(`tab-${v}`).classList.toggle('tab-active', v === name);
+                $(`tab-${v}`).setAttribute('aria-selected', v === name);
+            }
+            if (name === 'how') renderHow();
+            else Object.values(charts).forEach(c => c.resize());
+            history.replaceState(null, '', name === 'how' ? '#how' : location.pathname);
+        }
+
+        $('tab-dashboard').addEventListener('click', () => showView('dashboard'));
+        $('tab-how').addEventListener('click', () => showView('how'));
+
+        if (location.hash === '#how') showView('how');
+        detectMode().then(() => {
+            fetchData();
+            pollStatus();
+            setInterval(pollStatus, staticMode ? 60000 : 5000);
+            if (!staticMode) setInterval(fetchData, 60000);
+        });
+    </script>
+</body>
+</html>

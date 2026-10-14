@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo 'static site, nothing to install'",
+  "buildCommand": "echo 'static site, nothing to build'",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/data/:path*", "destination": "https://raw.githubusercontent.com/oordinal/bold-redemption-dashboard/data/:path*" }
+  ]
+}
