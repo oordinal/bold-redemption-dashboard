@@ -463,14 +463,22 @@
         </main>
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
-            Data sources: Curve and Uniswap BOLD/USDC and Uniswap v3 ETH/USDC prices, sampled at the block preceding each redemption;
-            builder payments from Alchemy internal-transfer data. The full methodology is described under “How it works”.
-            <div class="mt-6 pt-5 mx-auto max-w-2xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
+            <p>Data sources: Curve and Uniswap BOLD/USDC and Uniswap v3 ETH/USDC prices, sampled at the block preceding each redemption.</p>
+            <p class="mt-1">Builder payments from Alchemy internal-transfer data. The full methodology is described under “How it works”.</p>
+            <div class="mt-6 pt-5 mx-auto max-w-4xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
                 <span class="kicker">Disclaimer</span><br>
                 This dashboard is an independent project. It is not affiliated with, endorsed by, sponsored by or otherwise associated with
                 Liquity AG or the Liquity protocol. References to Liquity and BOLD serve solely to identify the protocol whose public on-chain
                 data is analyzed. All information is provided for informational purposes only, without any warranty as to its accuracy or
                 completeness, and does not constitute financial, investment or legal advice.
+            </div>
+            <div class="mt-6 pt-5 flex flex-col items-center gap-2.5" style="border-top: 1px solid rgba(255,255,255,.06)">
+                <div class="flex flex-wrap items-center justify-center gap-2">
+                    <span>Buy me a lambo:</span>
+                    <span class="mono break-all px-2 py-0.5 rounded" style="background: rgba(255,255,255,.04); color: var(--ink-2)">0x33E0958B98C384c39CA6ccc799119e400a025354</span>
+                    <button id="copyTip" class="w-6 h-6 grid place-items-center rounded hover:bg-white/10 transition" style="color: var(--ink-2)" title="Copy address" aria-label="Copy address"></button>
+                </div>
+                <div>Vibecoded with <span role="img" aria-label="love">❤️</span> by oordinal</div>
             </div>
         </footer>
     </div>
@@ -1402,6 +1410,27 @@
             else Object.values(charts).forEach(c => c.resize());
             history.replaceState(null, '', name === 'how' ? '#how' : location.pathname);
         }
+
+        // Tip address: copy icon that turns into a check mark once copied
+        const COPY_ICON = '<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+        const CHECK_ICON = '<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L19 7"/></svg>';
+        $('copyTip').innerHTML = COPY_ICON;
+        $('copyTip').addEventListener('click', async () => {
+            const btn = $('copyTip');
+            try {
+                await navigator.clipboard.writeText('0x33E0958B98C384c39CA6ccc799119e400a025354');
+                btn.innerHTML = CHECK_ICON;
+                btn.style.color = 'var(--good)';
+                btn.title = 'Copied';
+            } catch {
+                btn.title = 'Copy failed: select the address instead';
+            }
+            setTimeout(() => {
+                btn.innerHTML = COPY_ICON;
+                btn.style.color = 'var(--ink-2)';
+                btn.title = 'Copy address';
+            }, 1500);
+        });
 
         $('tab-dashboard').addEventListener('click', () => showView('dashboard'));
         $('tab-how').addEventListener('click', () => showView('how'));
