@@ -38,6 +38,18 @@ app.get('/api/stats', (req, res) => {
     }
 });
 
+app.get('/api/tx/:hash', (req, res) => {
+    const hash = req.params.hash.toLowerCase();
+    if (!/^0x[0-9a-f]{64}$/.test(hash)) return res.status(400).json({ error: 'invalid transaction hash' });
+    try {
+        const detail = queries.txDetail(hash);
+        if (!detail.events.length) return res.status(404).json({ error: 'not a recorded redemption' });
+        res.json(detail);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/status', (req, res) => {
     res.json(getStatus());
 });

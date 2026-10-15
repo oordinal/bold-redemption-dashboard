@@ -39,6 +39,16 @@ const TROVE_MANAGER = new ethers.Interface([
     'event Redemption(uint256 _attemptedBoldAmount, uint256 _actualBoldAmount, uint256 _ETHSent, uint256 _ETHFee, uint256 _price, uint256 _redemptionPrice)'
 ]);
 const REDEMPTION_TOPIC = TROVE_MANAGER.getEvent('Redemption').topicHash;
+// Per-trove events of a redemption, emitted in this order for each trove:
+// (TroveUpdated | BatchedTroveUpdated), TroveOperation, [BatchUpdated], RedemptionFeePaidToTrove
+const TROVE_EVENTS = new ethers.Interface([
+    'event TroveUpdated(uint256 indexed _troveId, uint256 _debt, uint256 _coll, uint256 _stake, uint256 _annualInterestRate, uint256 _snapshotOfTotalCollRedist, uint256 _snapshotOfTotalDebtRedist)',
+    'event BatchedTroveUpdated(uint256 indexed _troveId, address _interestBatchManager, uint256 _batchDebtShares, uint256 _coll, uint256 _stake, uint256 _snapshotOfTotalCollRedist, uint256 _snapshotOfTotalDebtRedist)',
+    'event TroveOperation(uint256 indexed _troveId, uint8 _operation, uint256 _annualInterestRate, uint256 _debtIncreaseFromRedist, uint256 _debtIncreaseFromUpfrontFee, int256 _debtChangeFromOperation, uint256 _collIncreaseFromRedist, int256 _collChangeFromOperation)',
+    'event BatchUpdated(address indexed _interestBatchManager, uint8 _operation, uint256 _debt, uint256 _coll, uint256 _annualInterestRate, uint256 _annualManagementFee, uint256 _totalDebtShares, uint256 _debtIncreaseFromUpfrontFee)',
+    'event RedemptionFeePaidToTrove(uint256 indexed _troveId, uint256 _ETHFee)'
+]);
+const OP_REDEEM_COLLATERAL = 6n; // ITroveEvents.Operation.redeemCollateral
 const UNI_V3_POOL = new ethers.Interface([
     'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)',
     'function token0() view returns (address)'
@@ -101,6 +111,12 @@ const insertRedemption = db.prepare(`INSERT OR REPLACE INTO redemptions
      @price_curve, @price_uni_v3, @price_uni_v4, @market_price, @spread, @oracle_gap, @fee_pct, @net_edge,
      @gas_used, @base_fee_eth, @priority_fee_eth, @coinbase_tip_eth, @eth_usd,
      @gross_profit_usd, @gas_fee_usd, @builder_tip_usd, @net_profit_usd, @net_margin)`);
+
+const insertTrove = db.prepare(`INSERT OR REPLACE INTO redemption_troves
+    (tx_hash, log_index, branch, trove_id, interest_rate, debt_redeemed, coll_redeemed, fee_coll, debt_after, coll_after, batch_manager)
+    VALUES (@tx_hash, @log_index, @branch, @trove_id, @interest_rate, @debt_redeemed, @coll_redeemed, @fee_coll, @debt_after, @coll_after, @batch_manager)`);
+const txsWithoutTroves = db.prepare(`SELECT tx_hash FROM redemptions
+    WHERE tx_hash NOT IN (SELECT DISTINCT tx_hash FROM redemption_troves) ORDER BY block`);
 
 function lastSyncedBlock() {
     const row = getState.get('last_block');
@@ -316,6 +332,56 @@ function cached(cache, key, fn) {
     return cache.get(key);
 }
 
+// Troves touched by the redemptions in a receipt, in processing order (ascending interest rate per branch)
+function redeemedTroves(receipt) {
+    const { branches } = config;
+    const num = v => Number(ethers.formatEther(v));
+    const rows = [];
+    const updates = new Map(); // latest TroveUpdated / BatchedTroveUpdated per trove
+    for (const log of receipt.logs) {
+        const branch = branches[log.address.toLowerCase()];
+        if (!branch) continue;
+        let ev;
+        try { ev = TROVE_EVENTS.parseLog(log); } catch { continue; }
+        if (!ev) continue;
+        const a = ev.args;
+        const key = ev.name === 'BatchUpdated' ? null : `${log.address}:${a._troveId}`;
+        if (ev.name === 'TroveUpdated') {
+            updates.set(key, { debt_after: num(a._debt), coll_after: num(a._coll), batch_manager: null });
+        } else if (ev.name === 'BatchedTroveUpdated') {
+            // A batched trove's debt is held as shares of the batch; resolved at the following BatchUpdated
+            updates.set(key, { shares: a._batchDebtShares, coll_after: num(a._coll), batch_manager: a._interestBatchManager.toLowerCase() });
+        } else if (ev.name === 'TroveOperation' && a._operation === OP_REDEEM_COLLATERAL) {
+            const u = updates.get(key) || {};
+            rows.push({
+                tx_hash: receipt.hash,
+                log_index: log.index,
+                branch: branch.symbol,
+                trove_id: ethers.toBeHex(a._troveId, 32),
+                interest_rate: num(a._annualInterestRate) * 100,
+                debt_redeemed: -num(a._debtChangeFromOperation),
+                coll_redeemed: -num(a._collChangeFromOperation),
+                fee_coll: null,
+                debt_after: u.debt_after ?? null,
+                coll_after: u.coll_after ?? null,
+                batch_manager: u.batch_manager ?? null,
+                _key: key,
+                _shares: u.shares
+            });
+        } else if (ev.name === 'BatchUpdated') {
+            const row = rows.findLast(r => r.batch_manager === a._interestBatchManager.toLowerCase() && r._shares != null && r.debt_after == null);
+            if (row) {
+                row.debt_after = a._totalDebtShares > 0n ? num(row._shares * a._debt / a._totalDebtShares) : 0;
+                row.interest_rate = num(a._annualInterestRate) * 100;
+            }
+        } else if (ev.name === 'RedemptionFeePaidToTrove') {
+            const row = rows.findLast(r => r._key === key && r.fee_coll == null);
+            if (row) row.fee_coll = num(a._ETHFee);
+        }
+    }
+    return rows.map(({ _key, _shares, ...row }) => row);
+}
+
 async function enrichTx(receipt, logs, caches) {
     const { branches, registryAddress } = config;
     const txHash = receipt.hash;
@@ -375,6 +441,7 @@ async function enrichTx(receipt, logs, caches) {
 
     return {
         events,
+        troves: redeemedTroves(receipt),
         redemption: {
             tx_hash: txHash,
             block: blockNumber,
@@ -422,12 +489,34 @@ async function mapPool(items, limit, fn) {
 }
 
 const saveChunk = db.transaction((rows, toBlock) => {
-    for (const { events, redemption } of rows) {
+    for (const { events, troves, redemption } of rows) {
         events.forEach(e => insertEvent.run(e));
+        troves.forEach(t => insertTrove.run(t));
         insertRedemption.run(redemption);
     }
     setState.run('last_block', String(toBlock));
 });
+
+const saveTroves = db.transaction(rows => rows.forEach(t => insertTrove.run(t)));
+
+// Redemptions synced before trove decoding was added have no trove rows yet: decode them from
+// their receipts once. Runs until every redemption has its troves, then is skipped.
+async function backfillTroves() {
+    if (getState.get('troves_backfilled')?.value === '1') return;
+    const hashes = txsWithoutTroves.all().map(r => r.tx_hash);
+    if (hashes.length) console.log(`Backfilling trove details for ${hashes.length} redemption tx…`);
+    for (let i = 0; i < hashes.length; i += 100) {
+        const chunk = hashes.slice(i, i + 100);
+        const rows = await mapPool(chunk, ENRICH_CONCURRENCY, hash => withRetry(async () => {
+            const receipt = await provider.getTransactionReceipt(hash);
+            if (!receipt) throw new Error(`receipt not available for ${hash}`);
+            return redeemedTroves(receipt);
+        }));
+        saveTroves(rows.flat());
+        state.phase = `backfilling troves ${Math.min(i + chunk.length, hashes.length)}/${hashes.length}`;
+    }
+    setState.run('troves_backfilled', '1');
+}
 
 async function syncData() {
     if (state.running) return getStatus();
@@ -460,6 +549,7 @@ async function syncData() {
             if (txs.length) console.log(`  …block ${toBlock}: ${txs.length} redemption tx`);
         }
 
+        await backfillTroves();
         console.log(`Sync complete: ${state.processed} redemption tx processed, synced to block ${target}.`);
     } catch (e) {
         state.lastError = e.shortMessage || e.message;

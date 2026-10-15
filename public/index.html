@@ -78,6 +78,13 @@
         .legend-btn:hover { background: rgba(255, 255, 255, 0.05); }
         .legend-btn.off { opacity: .45; }
         .legend-btn.off .legend-swatch { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
+        .feed-row { cursor: pointer; }
+        .row-toggle { width: 18px; height: 18px; margin-right: 6px; border-radius: 5px; display: inline-grid; place-items: center; vertical-align: middle; color: var(--muted); transition: transform .15s, color .15s; }
+        .feed-row:hover .row-toggle { color: var(--ink-1); }
+        .row-toggle[aria-expanded="true"] { transform: rotate(90deg); color: var(--series-1); }
+        .detail-row > td { background: rgba(57, 135, 229, 0.035); border-top: 1px solid rgba(57, 135, 229, 0.18); }
+        .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; }
+        .tx-detail .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
         .sort-btn:hover, .sort-btn.active { color: var(--ink-1); }
         .sort-ind { font-size: 9px; opacity: .35; }
@@ -175,6 +182,7 @@
                 <span id="feedCount" class="text-xs mono" style="color: var(--muted)"></span>
             </div>
             <p class="text-xs mb-3 max-w-4xl" style="color: var(--muted)">
+                Select a row for a trove-level breakdown of the redemption.
                 <b style="color: var(--ink-2)">Discount</b> BOLD below $1 ·
                 <b style="color: var(--ink-2)">Oracle gap</b> collateral market price above Liquity's redemption price ·
                 <b style="color: var(--ink-2)">Gross</b> collateral at market minus BOLD bought at market ·
@@ -409,7 +417,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">02 · GROUP</div>
                         <div class="font-semibold mt-1">Aggregation per transaction</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">A redemption emits one <span class="mono">Redemption</span> event per branch it touches, and a single transaction may contain several redemptions. Events are aggregated by transaction hash.</p>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">A redemption emits one <span class="mono">Redemption</span> event per branch it touches, and a single transaction may contain several redemptions. Events are aggregated by transaction hash. The per-trove <span class="mono">TroveOperation</span>, <span class="mono">TroveUpdated</span> and <span class="mono">RedemptionFeePaidToTrove</span> logs provide the trove-level breakdown.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
@@ -603,9 +611,11 @@
             $('feedCount').innerText = `${fmt(rows.length)} txs`;
             $('feedRange').innerText = rows.length ? `Showing ${fmt(first + 1)}–${fmt(first + pageRows.length)} of ${fmt(rows.length)}` : '';
             $('feedPager').innerHTML = rows.length > PAGE_SIZE ? pageButtons(feed.page, pages) : '';
-            $('redemptionFeed').innerHTML = pageRows.map(r => `
-                <tr class="border-t border-white/5 hover:bg-white/[.03]">
-                    <td class="px-3 py-2"><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(r.tx_hash.slice(0, 8))}…<span aria-hidden="true">↗</span></a></td>
+            $('redemptionFeed').innerHTML = pageRows.map(r => {
+                const open = openTx === r.tx_hash;
+                return `
+                <tr class="feed-row border-t border-white/5 hover:bg-white/[.03]" data-tx="${esc(r.tx_hash)}">
+                    <td class="px-3 py-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} redemption details">›</button><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(r.tx_hash.slice(0, 8))}…<span aria-hidden="true">↗</span></a></td>
                     <td class="px-3 py-2" style="color: var(--ink-2)">${dateTime(r.timestamp)}</td>
                     <td class="px-3 py-2 text-right">${fmt(r.amount)}</td>
                     <td class="px-3 py-2">${branchChips(r.branches)}</td>
@@ -619,8 +629,159 @@
                     <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.builder_tip_usd)}</td>
                     <td class="px-3 py-2 text-right font-medium ${signClass(r.net_profit_usd)}">${usd(r.net_profit_usd)}</td>
                     <td class="px-3 py-2 text-right ${signClass(r.net_margin)}">${pct(r.net_margin, 3)}</td>
-                </tr>`).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
+                </tr>${open ? `<tr class="detail-row"><td colspan="14" class="p-0">${txDetailHtml(r, txDetails.get(r.tx_hash))}</td></tr>` : ''}`;
+            }).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
         }
+
+        // Expandable rows: one transaction open at a time; details fetched on first open and cached
+        let openTx = null;
+        const txDetails = new Map(); // tx hash -> detail, null while loading, or { error }
+        const MIN_DEBT = 2000;
+
+        async function loadTxDetail(hash) {
+            if (txDetails.has(hash)) return;
+            txDetails.set(hash, null);
+            try {
+                const res = await fetch(staticMode ? `data/tx/${hash}.json` : `/api/tx/${hash}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                txDetails.set(hash, await res.json());
+            } catch (e) {
+                txDetails.set(hash, { error: e.message });
+            }
+            renderFeedPage();
+        }
+
+        function txDetailHtml(r, d) {
+            const box = inner => `<div class="tx-detail px-4 md:px-6 py-5 max-w-[1200px]">${inner}</div>`;
+            if (d == null) return box('<p class="text-xs" style="color: var(--muted)">Loading redemption details…</p>');
+            if (d.error) return box(`<p class="text-xs" style="color: var(--bad)">Redemption details could not be loaded (${esc(d.error)}).</p>`);
+
+            const sumOf = (rows, key) => rows.reduce((a, x) => a + (x[key] || 0), 0);
+            const branches = [...new Set(d.events.map(e => e.branch))].map(branch => {
+                const ev = d.events.filter(e => e.branch === branch);
+                const troves = d.troves.filter(t => t.branch === branch);
+                const bold = sumOf(ev, 'bold_redeemed'), coll = sumOf(ev, 'coll_sent'), fee = sumOf(ev, 'coll_fee');
+                return { branch, ev, troves, bold, attempted: sumOf(ev, 'bold_attempted'), coll, fee,
+                    oracle: ev[0].coll_price, redemption: ev[0].redemption_price, market: ev[0].coll_market_price };
+            });
+            const calls = Math.max(...branches.map(b => b.ev.length));
+            const price = v => v == null ? '–' : '$' + fmt(v, 2);
+
+            const summary = `
+                <p class="text-sm leading-relaxed" style="color: var(--ink-2)">
+                    Redeemed <b class="text-white num">${fmt(r.amount, 2)} BOLD</b> from <b class="text-white">${d.troves.length} trove${d.troves.length === 1 ? '' : 's'}</b>
+                    on ${branches.length} branch${branches.length === 1 ? '' : 'es'}${calls > 1 ? ` in ${calls} redemption calls` : ''}.
+                    Sent by ${etherscan('address', r.sender, short(r.sender))}
+                    ${r.via_contract ? `through contract ${etherscan('address', r.to_address, short(r.to_address))}` : 'directly to the CollateralRegistry'}.
+                    BOLD before the block: Curve ${r.price_curve == null ? '–' : '$' + r.price_curve.toFixed(4)} ·
+                    Uniswap v3 ${r.price_uni_v3 == null ? '–' : '$' + r.price_uni_v3.toFixed(4)} ·
+                    Uniswap v4 ${r.price_uni_v4 == null ? '–' : '$' + r.price_uni_v4.toFixed(4)}.
+                </p>`;
+
+            const cards = branches.map(b => {
+                const feePct = b.bold ? b.fee * b.redemption / b.bold * 100 : null;
+                const line = (label, value) => `<div class="flex justify-between gap-3"><span style="color: var(--muted)">${label}</span><span class="num text-right">${value}</span></div>`;
+                return `
+                    <div class="rounded-xl p-4 text-xs space-y-1.5" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07)">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="inline-flex items-center gap-2 text-sm font-semibold text-white">${branchIcon(b.branch, 'w-5 h-5')}${esc(b.branch)} branch</span>
+                            <span style="color: var(--muted)">${b.troves.length} trove${b.troves.length === 1 ? '' : 's'}</span>
+                        </div>
+                        ${line('BOLD redeemed', fmt(b.bold, 2) + (b.attempted - b.bold > 1e-6 ? ` <span style="color: var(--muted)">of ${fmt(b.attempted, 2)}</span>` : ''))}
+                        ${line('Collateral paid out', `${fmt(b.coll, 4)} ${esc(b.branch)}`)}
+                        ${line('Fee left in troves', `${fmt(b.fee, 4)} ${esc(b.branch)} <span style="color: var(--muted)">(${pct(feePct, 3).replace('+', '')})</span>`)}
+                        ${line('Oracle price', price(b.oracle))}
+                        ${line('Redemption price', price(b.redemption))}
+                        ${line('Market price', price(b.market))}
+                    </div>`;
+            }).join('');
+
+            const status = t => {
+                const left = t.debt_after ?? 0;
+                if (left < 1e-9) return '<span style="color: var(--ink-2)">Fully redeemed</span>';
+                if (left < MIN_DEBT) return `<span style="color: var(--warn)">Zombie</span> <span style="color: var(--muted)">· ${fmt(left, 2)} left</span>`;
+                return `Partly redeemed <span style="color: var(--muted)">· ${fmt(left, 2)} left</span>`;
+            };
+            const th = (label, right, title) => `<th class="px-3 py-2 font-medium ${right ? 'text-right' : ''}"${title ? ` title="${title}"` : ''}>${label}</th>`;
+            // The contract charges fee = (collateral taken + fee) × redemption rate, so the rate is recoverable per trove
+            const feeRate = t => t.fee_coll == null || t.coll_redeemed + t.fee_coll <= 0 ? null : t.fee_coll / (t.coll_redeemed + t.fee_coll) * 100;
+            const troveRows = d.troves.map((t, i) => `
+                <tr class="border-t border-white/5">
+                    <td class="px-3 py-1.5 num" style="color: var(--muted)">${i + 1}</td>
+                    <td class="px-3 py-1.5">${branchChips(t.branch)}</td>
+                    <td class="px-3 py-1.5 num" title="${esc(t.trove_id)}">${esc(short(t.trove_id))}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
+                    <td class="px-3 py-1.5 num text-right">${t.interest_rate == null ? '–' : t.interest_rate.toFixed(2) + '%'}</td>
+                    <td class="px-3 py-1.5 num text-right">${feeRate(t) == null ? '–' : feeRate(t).toFixed(3) + '%'}</td>
+                    <td class="px-3 py-1.5 num text-right">${fmt(t.debt_redeemed, 2)}</td>
+                    <td class="px-3 py-1.5 num text-right">${fmt(t.coll_redeemed, 4)} <span style="color: var(--muted)">${esc(t.branch)}</span></td>
+                    <td class="px-3 py-1.5 num text-right">${t.fee_coll == null ? '–' : fmt(t.fee_coll, 5)}</td>
+                    <td class="px-3 py-1.5">${status(t)}</td>
+                </tr>`).join('');
+
+            const eth = v => v == null ? '–' : `${fmt(v, 5)} ETH`;
+            // Inclusion costs: read left to right, gross profit minus each cost gives the net result
+            const inUsd = v => v == null || r.eth_usd == null ? null : v * r.eth_usd;
+            const minus = v => v == null ? '–' : usd(-v);
+            const totalCost = r.gas_fee_usd == null || r.builder_tip_usd == null ? null : r.gas_fee_usd + r.builder_tip_usd;
+            const tile = (label, main, sub) => `
+                <div class="rounded-lg px-3 py-2.5" style="background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06)">
+                    <div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</div>
+                    <div class="num text-sm text-white mt-0.5">${main}</div>
+                    <div class="num text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div>
+                </div>`;
+            const positive = r.net_profit_usd == null ? null : r.net_profit_usd >= 0;
+            const netStyle = positive == null ? 'background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08)'
+                : positive ? 'background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.4)'
+                : 'background: rgba(251,113,133,.08); border: 1px solid rgba(251,113,133,.4)';
+            const costs = `
+                <div class="rounded-xl p-4 md:p-5" style="background: linear-gradient(180deg, rgba(57,135,229,.09), rgba(57,135,229,.02)); border: 1px solid rgba(57,135,229,.32)">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                        <div class="text-sm font-semibold text-white">Inclusion costs and result</div>
+                        <div class="num text-[11px]" style="color: var(--muted)">${fmt(r.gas_used)} gas · ETH/USD ${price(r.eth_usd)} · total inclusion cost <span class="bad">${minus(totalCost)}</span></div>
+                    </div>
+                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
+                        ${tile('Gross profit', usd(r.gross_profit_usd), 'before inclusion costs')}
+                        ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth))}
+                        ${tile('Priority fee', minus(inUsd(r.priority_fee_eth)), eth(r.priority_fee_eth))}
+                        ${tile('Direct builder payment', minus(inUsd(r.coinbase_tip_eth)), eth(r.coinbase_tip_eth))}
+                        <div class="rounded-lg px-3 py-2.5" style="${netStyle}">
+                            <div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">Net profit</div>
+                            <div class="num text-xl font-semibold mt-0.5 ${signClass(r.net_profit_usd)}">${usd(r.net_profit_usd)}</div>
+                            <div class="num text-[11px] mt-0.5 ${signClass(r.net_margin)}">${pct(r.net_margin, 3)} margin</div>
+                        </div>
+                    </div>
+                </div>`;
+
+            return box(`
+                <div class="space-y-4">
+                    ${summary}
+                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">${cards}</div>
+                    <div>
+                        <div class="kicker mb-2">Troves, in processing order</div>
+                        <div class="overflow-auto scroll max-h-80 rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                            <table class="w-full text-left text-xs whitespace-nowrap">
+                                <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
+                                    ${th('#')}${th('Branch')}${th('Trove')}${th('Interest rate', true, 'Annual interest rate the borrower pays on this trove. Lower rates are redeemed first.')}${th('Redemption fee', true, 'Redemption fee rate applied to this trove: fee ÷ (collateral taken + fee). Identical for all troves in one redemption call.')}${th('Debt repaid (BOLD)', true)}${th('Collateral taken', true)}${th('Fee to trove', true, 'Redemption fee in collateral, left in the trove for its owner.')}${th('Status')}
+                                </tr></thead>
+                                <tbody>${troveRows}</tbody>
+                            </table>
+                        </div>
+                        <p class="text-[11px] mt-2" style="color: var(--muted)">Interest rate is the borrower's annual rate on the trove; 0.50% is the protocol minimum, which is why it is common
+                            among the first troves redeemed. Each branch processes troves in ascending interest-rate order; a zombie trove left by an earlier redemption is processed first.
+                            Redemption fee is the rate charged on this trove; collateral taken excludes the fee, which stays in the trove.</p>
+                    </div>
+                    ${costs}
+                </div>`);
+        }
+
+        $('redemptionFeed').addEventListener('click', e => {
+            if (e.target.closest('a')) return;
+            const hash = e.target.closest('[data-tx]')?.dataset.tx;
+            if (!hash) return;
+            openTx = openTx === hash ? null : hash;
+            if (openTx) loadTxDetail(hash);
+            renderFeedPage();
+        });
 
         function renderFeed(rows) {
             feed.rows = rows;

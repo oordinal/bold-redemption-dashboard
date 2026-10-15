@@ -39,8 +39,30 @@ const statsQuery = db.prepare(`
            MAX(timestamp) AS last_redemption
     FROM redemptions`);
 
+// Per-transaction detail: the branch-level Redemption events and the troves they touched
+const txEventsQuery = db.prepare('SELECT * FROM redemption_events WHERE tx_hash = ? ORDER BY log_index');
+const txTrovesQuery = db.prepare('SELECT * FROM redemption_troves WHERE tx_hash = ? ORDER BY log_index');
+const allEventsQuery = db.prepare('SELECT * FROM redemption_events ORDER BY tx_hash, log_index');
+const allTrovesQuery = db.prepare('SELECT * FROM redemption_troves ORDER BY tx_hash, log_index');
+
+function groupByTx(rows) {
+    const map = new Map();
+    for (const r of rows) {
+        if (!map.has(r.tx_hash)) map.set(r.tx_hash, []);
+        map.get(r.tx_hash).push(r);
+    }
+    return map;
+}
+
 module.exports = {
     redemptions: (limit = 5000) => redemptionsQuery.all(limit),
     bots: () => botsQuery.all(),
-    stats: () => statsQuery.get()
+    stats: () => statsQuery.get(),
+    txDetail: hash => ({ events: txEventsQuery.all(hash), troves: txTrovesQuery.all(hash) }),
+    // Every transaction's detail at once, for the static export
+    allTxDetails: () => {
+        const events = groupByTx(allEventsQuery.all());
+        const troves = groupByTx(allTrovesQuery.all());
+        return [...events.keys()].map(hash => [hash, { events: events.get(hash), troves: troves.get(hash) || [] }]);
+    }
 };

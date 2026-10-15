@@ -51,3 +51,20 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Troves touched by each redemption, in processing order (decoded from the TroveManager logs)
+CREATE TABLE IF NOT EXISTS redemption_troves (
+    tx_hash TEXT NOT NULL,
+    log_index INTEGER NOT NULL,      -- index of the TroveOperation log, i.e. processing order
+    branch TEXT NOT NULL,
+    trove_id TEXT NOT NULL,          -- uint256 trove ID as 0x-prefixed hex
+    interest_rate REAL,              -- annual interest rate, in %
+    debt_redeemed REAL NOT NULL,     -- BOLD debt cancelled
+    coll_redeemed REAL NOT NULL,     -- collateral sent to the redeemer
+    fee_coll REAL,                   -- redemption fee left in the trove, in collateral
+    debt_after REAL,                 -- remaining debt (derived from batch shares for batched troves)
+    coll_after REAL,
+    batch_manager TEXT,              -- interest batch manager, if the trove is in a batch
+    PRIMARY KEY (tx_hash, log_index)
+);
+CREATE INDEX IF NOT EXISTS idx_redemption_troves_tx ON redemption_troves(tx_hash);
