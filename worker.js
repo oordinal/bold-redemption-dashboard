@@ -18,8 +18,10 @@ const env = key => process.env[key] || DEFAULTS[key];
 
 const START_BLOCK = Number(env('START_BLOCK'));
 const CONFIRMATIONS = 3;
-const MIN_LOG_SPAN = 1000;
-const MAX_LOG_SPAN = 100000;
+const SCAN_CHUNK = 100000; // blocks per scan pass; progress is saved after each one
+// Bump to make existing databases rescan the whole history once. v2: BOLD-burn discovery,
+// which replaced public-RPC eth_getLogs scans that silently returned empty ranges.
+const SCAN_VERSION = '2';
 const ENRICH_CONCURRENCY = 4;
 
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
@@ -62,20 +64,14 @@ function makeProvider(url) {
     return new ethers.JsonRpcProvider(req, 1, { staticNetwork: true, batchMaxCount: 10 });
 }
 
-// Main RPC: Alchemy (key or full URL). Used for everything except the log scan.
+// Alchemy (key or full URL). Its transfers API is required to find redemptions.
 function mainRpcUrl() {
     const k = (process.env.RPC_URL || process.env.ALCHEMY_API_KEY || '').trim();
     if (!k) return 'https://ethereum-rpc.publicnode.com';
     return k.startsWith('http') ? k : `https://eth-mainnet.g.alchemy.com/v2/${k}`;
 }
 
-// Alchemy's free tier caps eth_getLogs at 10 blocks, so the log scan goes to
-// public RPCs that allow wide ranges, rotating between them on failure.
-const LOGS_RPC_URLS = (process.env.LOGS_RPC_URLS || 'https://rpc.flashbots.net,https://ethereum-rpc.publicnode.com')
-    .split(',').map(s => s.trim()).filter(Boolean);
-
 const provider = makeProvider(mainRpcUrl());
-const logProviders = LOGS_RPC_URLS.map(makeProvider);
 const multicall = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, provider);
 
 const state = {
@@ -111,13 +107,14 @@ function lastSyncedBlock() {
     return row ? Number(row.value) : null;
 }
 
-async function withRetry(fn, attempts = 5) {
+// Retries with jittered backoff, which also absorbs Alchemy's per-second rate limit (HTTP 429)
+async function withRetry(fn, attempts = 7) {
     for (let i = 0; ; i++) {
         try {
             return await fn();
         } catch (e) {
             if (i >= attempts - 1) throw e;
-            await new Promise(r => setTimeout(r, 500 * 2 ** i));
+            await new Promise(r => setTimeout(r, 400 * 2 ** i * (0.75 + Math.random() / 2)));
         }
     }
 }
@@ -226,23 +223,62 @@ function collMarketPrice(symbol, prices) {
     return rate == null ? null : prices.eth_usd * rate;
 }
 
-async function* scanLogs(addresses, fromBlock, toBlock) {
-    let span = 20000;
-    let rpc = 0;
-    let failures = 0;
-    while (fromBlock <= toBlock) {
-        const end = Math.min(fromBlock + span - 1, toBlock);
-        try {
-            const logs = await logProviders[rpc].getLogs({ address: addresses, topics: [REDEMPTION_TOPIC], fromBlock, toBlock: end });
-            yield { logs, toBlock: end };
-            fromBlock = end + 1;
-            failures = 0;
-            span = Math.min(span * 2, MAX_LOG_SPAN);
-        } catch (e) {
-            if (++failures > 20) throw new Error(`eth_getLogs keeps failing (${LOGS_RPC_URLS[rpc]}): ${e.shortMessage || e.message}`);
-            if (span > MIN_LOG_SPAN) span = Math.max(Math.floor(span / 2), MIN_LOG_SPAN);
-            else rpc = (rpc + 1) % logProviders.length;
+// Every redemption burns the redeemed BOLD, so redemption txs are found among BOLD burns
+// (Transfers to the zero address). Alchemy's transfers API lists those over any block range,
+// unlike eth_getLogs (10 blocks on the free tier); each burn's receipt then shows whether it
+// carries TroveManager Redemption events.
+async function boldBurnTxs(fromBlock, toBlock) {
+    const txs = new Map(); // tx hash -> block number
+    let pageKey;
+    do {
+        const res = await withRetry(() => provider.send('alchemy_getAssetTransfers', [{
+            fromBlock: ethers.toQuantity(fromBlock),
+            toBlock: ethers.toQuantity(toBlock),
+            toAddress: ethers.ZeroAddress,
+            contractAddresses: [env('BOLD_TOKEN_ADDRESS')],
+            category: ['erc20'],
+            maxCount: '0x3e8',
+            ...(pageKey && { pageKey })
+        }]));
+        res.transfers.forEach(t => txs.set(t.hash, Number(t.blockNum)));
+        pageKey = res.pageKey;
+    } while (pageKey);
+    return txs;
+}
+
+async function burnReceipt(hash, blockNumber) {
+    try {
+        return await withRetry(async () => {
+            // Near the chain head another Alchemy node may not have the receipt yet
+            const receipt = await provider.getTransactionReceipt(hash);
+            if (!receipt) throw new Error(`receipt not available for ${hash}`);
+            return receipt;
+        }, 4);
+    } catch (e) {
+        // Alchemy's transfers index can keep entries from blocks that were later reorged out
+        const block = await withRetry(() => provider.getBlock(blockNumber));
+        if (block && !block.transactions.includes(hash)) {
+            console.warn(`Skipping ${hash}: not in canonical block ${blockNumber} (reorged out)`);
+            return null;
         }
+        throw e;
+    }
+}
+
+async function* scanRedemptions(fromBlock, toBlock) {
+    const { branches } = config;
+    for (let start = fromBlock; start <= toBlock; start += SCAN_CHUNK) {
+        const end = Math.min(start + SCAN_CHUNK - 1, toBlock);
+        const burns = await boldBurnTxs(start, end);
+        const receipts = await mapPool([...burns], ENRICH_CONCURRENCY, ([hash, blockNumber]) => burnReceipt(hash, blockNumber));
+        const txs = receipts
+            .filter(Boolean)
+            .map(receipt => ({
+                receipt,
+                logs: receipt.logs.filter(l => branches[l.address.toLowerCase()] && l.topics[0] === REDEMPTION_TOPIC)
+            }))
+            .filter(t => t.logs.length);
+        yield { txs, toBlock: end };
     }
 }
 
@@ -280,11 +316,11 @@ function cached(cache, key, fn) {
     return cache.get(key);
 }
 
-async function enrichTx(txHash, blockNumber, logs, caches) {
+async function enrichTx(receipt, logs, caches) {
     const { branches, registryAddress } = config;
-    const [tx, receipt, block, prices] = await Promise.all([
-        withRetry(() => provider.getTransaction(txHash)),
-        withRetry(() => provider.getTransactionReceipt(txHash)),
+    const txHash = receipt.hash;
+    const blockNumber = receipt.blockNumber;
+    const [block, prices] = await Promise.all([
         cached(caches.blocks, blockNumber, () => withRetry(() => provider.getBlock(blockNumber))),
         withRetry(() => pricesAt(blockNumber - 1))
     ]);
@@ -319,7 +355,7 @@ async function enrichTx(txHash, blockNumber, logs, caches) {
         ? gapEvents.reduce((s, e) => s + (e.coll_market_price / e.redemption_price - 1) * 100 * e.bold_redeemed, 0) / gapWeight
         : null;
     const market = prices.price_curve ?? prices.price_uni_v3 ?? prices.price_uni_v4;
-    const to = (tx.to || '').toLowerCase();
+    const to = (receipt.to || '').toLowerCase();
     // Dust redemptions (a few wei) round the collateral down to 0, so ratios are meaningless
     const priced = amount >= 1;
 
@@ -343,7 +379,7 @@ async function enrichTx(txHash, blockNumber, logs, caches) {
             tx_hash: txHash,
             block: blockNumber,
             timestamp: block.timestamp * 1000,
-            sender: tx.from.toLowerCase(),
+            sender: receipt.from.toLowerCase(),
             to_address: to,
             // Direct calls go to the CollateralRegistry (or a TroveManager for urgent redemptions)
             via_contract: to !== registryAddress && !branches[to] ? 1 : 0,
@@ -398,7 +434,13 @@ async function syncData() {
     Object.assign(state, { running: true, phase: 'starting', found: 0, processed: 0, startedAt: Date.now(), lastError: null });
 
     try {
+        if (!process.env.RPC_URL && !process.env.ALCHEMY_API_KEY) throw new Error('ALCHEMY_API_KEY is not set');
         await loadConfig();
+        if (getState.get('scan_version')?.value !== SCAN_VERSION) {
+            // Start over from the V2 launch; existing rows are refreshed in place
+            setState.run('last_block', String(START_BLOCK - 1));
+            setState.run('scan_version', SCAN_VERSION);
+        }
         const head = await withRetry(() => provider.getBlockNumber());
         const target = head - CONFIRMATIONS;
         const from = (lastSyncedBlock() ?? START_BLOCK - 1) + 1;
@@ -406,25 +448,19 @@ async function syncData() {
         console.log(`Sync: blocks ${from} → ${target} across ${Object.keys(config.branches).length} branches (${Object.values(config.branches).map(b => b.symbol).join(', ')})`);
 
         const caches = { blocks: new Map(), tips: new Map() };
-        for await (const { logs, toBlock } of scanLogs(Object.keys(config.branches), from, target)) {
-            const byTx = new Map();
-            for (const log of logs) {
-                if (!byTx.has(log.transactionHash)) byTx.set(log.transactionHash, { block: log.blockNumber, logs: [] });
-                byTx.get(log.transactionHash).logs.push(log);
-            }
-            state.found += byTx.size;
-
-            const rows = await mapPool([...byTx], ENRICH_CONCURRENCY, async ([hash, { block, logs }]) => {
-                const row = await enrichTx(hash, block, logs, caches);
+        for await (const { txs, toBlock } of scanRedemptions(from, target)) {
+            state.found += txs.length;
+            const rows = await mapPool(txs, ENRICH_CONCURRENCY, async ({ receipt, logs }) => {
+                const row = await enrichTx(receipt, logs, caches);
                 state.processed++;
                 return row;
             });
             saveChunk(rows, toBlock);
             state.scannedTo = toBlock;
-            if (byTx.size) console.log(`  …block ${toBlock}: +${byTx.size} redemption tx`);
+            if (txs.length) console.log(`  …block ${toBlock}: ${txs.length} redemption tx`);
         }
 
-        console.log(`Sync complete: ${state.processed} new redemption tx, synced to block ${target}.`);
+        console.log(`Sync complete: ${state.processed} redemption tx processed, synced to block ${target}.`);
     } catch (e) {
         state.lastError = e.shortMessage || e.message;
         console.error('Sync failed:', state.lastError);

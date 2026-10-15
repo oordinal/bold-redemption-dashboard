@@ -9,6 +9,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com/3.4.16"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        // Vercel Web Analytics (the plain-HTML equivalent of @vercel/analytics). Only on the hosted
+        // site: the local server has no /_vercel/insights endpoint.
+        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+        if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = '/_vercel/insights/script.js';
+            document.head.appendChild(s);
+        }
+    </script>
     <style>
         :root {
             --bg: #07090d;
@@ -59,18 +70,33 @@
         .tab { padding: 7px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
         .tab:hover { color: var(--ink-1); }
         .tab-active { color: var(--ink-1); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+        .seg { padding: 4px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
+        .seg:hover { color: var(--ink-1); }
+        .seg-active { color: var(--ink-1); background: rgba(57, 135, 229, 0.18); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.45); }
+        .date-in { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 4px 8px; color: var(--ink-1); color-scheme: dark; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+        .legend-btn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.08); transition: opacity .15s, background .15s; }
+        .legend-btn:hover { background: rgba(255, 255, 255, 0.05); }
+        .legend-btn.off { opacity: .45; }
+        .legend-btn.off .legend-swatch { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
+        .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
+        .sort-btn:hover, .sort-btn.active { color: var(--ink-1); }
+        .sort-ind { font-size: 9px; opacity: .35; }
+        .sort-btn.active .sort-ind { opacity: 1; color: var(--series-1); }
+        .pg { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--ink-2); font-family: "JetBrains Mono", ui-monospace, monospace; transition: background .15s; }
+        .pg:hover:not(:disabled):not(.pg-active) { background: rgba(255, 255, 255, 0.05); }
+        .pg:disabled { opacity: .3; cursor: default; }
+        .pg-active { color: var(--ink-1); background: rgba(57, 135, 229, 0.18); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.45); }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
     <div class="max-w-[1500px] mx-auto">
         <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-4">
-                <div class="w-11 h-11 rounded-xl grid place-items-center font-bold text-lg"
-                     style="background: linear-gradient(135deg, var(--series-1), var(--series-3)); box-shadow: 0 0 32px -6px rgba(57,135,229,.6)">B</div>
-                <div>
-                    <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">BOLD Redemptions</h1>
-                    <p class="text-sm" style="color: var(--muted)">Liquity V2 · Ethereum mainnet · redemption arbitrage</p>
-                </div>
+            <div>
+                <h1>
+                    <img src="boldbot-logo.png" alt="boldbot.io: redemption-bot leaderboard" width="900" height="244"
+                         class="h-16 md:h-20 w-auto" style="filter: drop-shadow(0 0 24px rgba(57,135,229,.25))">
+                </h1>
+                <p class="text-sm mt-1.5" style="color: var(--muted)">Liquity V2 · Ethereum mainnet · redemption arbitrage</p>
             </div>
             <nav class="card flex gap-1 p-1 rounded-xl order-last lg:order-none" role="tablist" aria-label="View">
                 <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Dashboard</button>
@@ -98,7 +124,7 @@
                         <h2 class="font-semibold">BOLD price before each redemption</h2>
                         <p class="text-xs mt-1" style="color: var(--muted)">Pool mid price in the block before. Each point is one redemption tx.</p>
                     </div>
-                    <div id="priceLegend" class="flex gap-4 text-xs" style="color: var(--ink-2)"></div>
+                    <div id="priceLegend" class="flex flex-wrap items-center gap-2 text-xs" style="color: var(--ink-2)" aria-label="Show or hide pools"></div>
                 </div>
                 <div class="relative h-80"><canvas id="priceChart"></canvas></div>
             </div>
@@ -113,6 +139,23 @@
                     <div id="botLeaderboard" class="absolute inset-0 overflow-y-auto scroll fade-bottom space-y-1.5 pr-1 pb-6"></div>
                 </div>
             </div>
+        </div>
+
+        <div class="card flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 mt-6">
+            <span class="kicker">Chart range</span>
+            <div id="rangePresets" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Chart time range">
+                <button class="seg" data-range="1m">1M</button>
+                <button class="seg" data-range="3m">3M</button>
+                <button class="seg" data-range="6m">6M</button>
+                <button class="seg" data-range="1y">1Y</button>
+                <button class="seg" data-range="all">All</button>
+            </div>
+            <div class="flex items-center gap-2 text-xs" style="color: var(--muted)">
+                <input id="rangeFrom" type="date" class="date-in" aria-label="Chart range start">
+                <span aria-hidden="true">→</span>
+                <input id="rangeTo" type="date" class="date-in" aria-label="Chart range end">
+            </div>
+            <span class="text-xs lg:ml-auto" style="color: var(--muted)">Applies to the three charts. Tiles, leaderboard and feed always cover every redemption.</span>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
@@ -142,28 +185,17 @@
             <div class="flex flex-wrap items-center gap-4 text-xs mb-4" style="color: var(--ink-2)">
                 <span class="kicker">Branches</span><span id="branchLegend" class="flex flex-wrap gap-4"></span>
             </div>
-            <div class="overflow-auto scroll max-h-[640px] rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+            <div id="feedScroll" class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
                 <table class="w-full text-left text-[13px] mono whitespace-nowrap">
                     <thead style="color: var(--muted)">
-                        <tr class="text-[11px] uppercase tracking-wider">
-                            <th class="px-3 py-2.5 font-medium">Tx</th>
-                            <th class="px-3 py-2.5 font-medium">Time</th>
-                            <th class="px-3 py-2.5 font-medium text-right">BOLD</th>
-                            <th class="px-3 py-2.5 font-medium">Branches</th>
-                            <th class="px-3 py-2.5 font-medium">Sender</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Price</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Discount</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Oracle gap</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Fee</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Gross</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Gas</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Tip</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Net profit</th>
-                            <th class="px-3 py-2.5 font-medium text-right">Margin</th>
-                        </tr>
+                        <tr id="feedHead" class="text-[11px] uppercase tracking-wider"></tr>
                     </thead>
                     <tbody id="redemptionFeed"></tbody>
                 </table>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <span id="feedRange" class="text-xs mono" style="color: var(--muted)"></span>
+                <nav id="feedPager" class="flex flex-wrap items-center gap-1" aria-label="Redemption feed pages"></nav>
             </div>
         </div>
 
@@ -173,92 +205,178 @@
             <section class="card p-6 md:p-8 relative overflow-hidden">
                 <div class="absolute -right-24 -top-24 w-80 h-80 rounded-full pointer-events-none" style="background: radial-gradient(circle, rgba(57,135,229,.18), transparent 70%)"></div>
                 <div class="kicker">How it works</div>
-                <h2 class="text-2xl md:text-3xl font-semibold tracking-tight mt-2 max-w-3xl">Redemptions put a floor under BOLD: anyone can swap 1 BOLD for $1 of collateral, minus a fee.</h2>
-                <p class="mt-4 max-w-3xl leading-relaxed" style="color: var(--ink-2)">
-                    BOLD is borrowed against ETH, wstETH and rETH in Liquity V2. When BOLD trades below $1, buying it on a DEX and redeeming it for
-                    collateral becomes profitable. Bots do exactly that, burning the BOLD and pushing the price back up. This page explains the mechanics,
-                    where the profit comes from, and how every number on the dashboard is measured.
-                </p>
+                <h2 class="text-2xl md:text-3xl font-semibold tracking-tight mt-2 max-w-3xl">Redemptions establish a price floor for BOLD: any holder can exchange 1 BOLD for USD 1 of collateral, net of a dynamic fee.</h2>
+                <div class="mt-4 max-w-3xl leading-relaxed space-y-3" style="color: var(--ink-2)">
+                    <p>
+                        BOLD is the USD-denominated stablecoin of Liquity V2, minted against WETH, wstETH and rETH collateral. The protocol
+                        guarantees redemption at face value: one BOLD can always be exchanged for USD 1 worth of collateral, less a redemption fee.
+                        This mechanism anchors the market price of BOLD from below. When BOLD trades at a discount, acquiring and redeeming it
+                        becomes economically attractive, and the resulting demand restores the price.
+                    </p>
+                    <p>
+                        Redemptions are executed almost exclusively by automated arbitrageurs. A redemption is profitable when the value of the
+                        collateral received exceeds the cost of the BOLD redeemed plus fees and transaction costs, which occurs when BOLD trades
+                        below par, when the protocol's oracle prices lag the market, or both. This section documents the redemption mechanism as
+                        implemented in the contracts, the sources of arbitrage profit, and the methodology behind every figure on the dashboard.
+                    </p>
+                </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
                     <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
                         <div class="kicker">Fee floor</div><div class="text-xl font-semibold mt-1">0.5%</div>
-                        <div class="text-xs mt-1" style="color: var(--muted)">plus a base rate that spikes with volume</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">plus a base rate driven by redemption volume</div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
                         <div class="kicker">Base-rate half-life</div><div class="text-xl font-semibold mt-1">6 hours</div>
-                        <div class="text-xs mt-1" style="color: var(--muted)">the fee decays back toward the floor</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">exponential decay between redemptions</div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
-                        <div class="kicker">Queue order</div><div class="text-xl font-semibold mt-1">Lowest rate first</div>
-                        <div class="text-xs mt-1" style="color: var(--muted)">troves with the cheapest interest are redeemed first</div>
+                        <div class="kicker">Redemption order</div><div class="text-xl font-semibold mt-1">Lowest rate first</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">troves are processed in ascending interest-rate order</div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06)">
-                        <div class="kicker">BOLD burned</div><div class="text-xl font-semibold mt-1" id="howBurned">–</div>
-                        <div class="text-xs mt-1" style="color: var(--muted)">by redemptions in this dataset</div>
+                        <div class="kicker">BOLD redeemed</div><div class="text-xl font-semibold mt-1" id="howBurned">–</div>
+                        <div class="text-xs mt-1" style="color: var(--muted)">cumulative since V2 deployment</div>
                     </div>
                 </div>
             </section>
 
             <section class="card p-5 md:p-8">
+                <div class="kicker">Key terms</div>
+                <h3 class="text-xl font-semibold mt-1">Definitions used throughout this section</h3>
+                <dl id="glossary" class="grid md:grid-cols-2 lg:grid-cols-3 gap-3 mt-6 text-sm leading-relaxed"></dl>
+            </section>
+
+            <section class="card p-5 md:p-8">
                 <div class="kicker">1 · The redemption path</div>
-                <h3 class="text-xl font-semibold mt-1">One call, three branches, many troves</h3>
+                <h3 class="text-xl font-semibold mt-1">A single call, apportioned across branches and troves</h3>
+                <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">
+                    A redemption is initiated with a single call to <span class="mono text-white">CollateralRegistry.redeemCollateral()</span>.
+                    The registry computes the fee and apportions the amount across collateral branches; each branch's
+                    <span class="mono text-white">TroveManager</span> then redeems against its troves. Trove interest rates in the diagram are illustrative.
+                </p>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramPath" class="min-w-[760px] max-w-[1100px] mx-auto"></div></div>
-                <div class="grid md:grid-cols-3 gap-6 mt-6 text-sm leading-relaxed" style="color: var(--ink-2)">
-                    <p><b class="text-white">The fee is set first.</b> The CollateralRegistry decays the base rate for time passed, adds the share of
-                        total BOLD supply being redeemed, and adds the 0.5% floor. The redeemer passes a max fee and the call reverts if it's exceeded.</p>
-                    <p><b class="text-white">The BOLD is split across branches</b> in proportion to each branch's <i>unbacked debt</i>: its total debt minus
-                        the BOLD sitting in its Stability Pool. Branches below their critical collateral ratio, or shut down, are skipped.</p>
-                    <p><b class="text-white">Each branch walks its troves</b> from the lowest interest rate upward, cancelling debt and sending the
-                        matching collateral to the redeemer. The redeemed BOLD is burned, shrinking supply.</p>
+                <div class="grid md:grid-cols-2 gap-x-8 gap-y-5 mt-6 text-sm leading-relaxed" style="color: var(--ink-2)">
+                    <p><b class="text-white">① Fee determination.</b> The registry decays the base rate for the time elapsed since the last fee
+                        update, adds the redeemed amount as a fraction of total BOLD supply, and adds the 0.5% floor. The caller specifies a maximum
+                        acceptable fee; the transaction reverts if the resulting rate exceeds it. The fee model is described in section 3.</p>
+                    <p><b class="text-white">② Allocation across branches.</b> The amount is apportioned pro rata to each branch's <i>unbacked
+                        debt</i>, defined as total branch debt minus the BOLD held in its Stability Pool. Redemptions therefore draw primarily on the
+                        branches least covered by Stability Pool deposits. A single call redeems at most the aggregate unbacked debt; any excess
+                        requires a subsequent call.</p>
+                    <p><b class="text-white">③ Trove traversal.</b> Each TroveManager processes troves in ascending order of interest rate. For each
+                        trove it cancels debt and withdraws collateral of equal value at the redemption price, until the branch allocation is exhausted.
+                        Troves with an individual collateral ratio below 100% are skipped, so a redemption never lowers the collateral ratio of a
+                        trove it touches.</p>
+                    <p><b class="text-white">④ Settlement.</b> The redeemed BOLD is burned and the collateral, net of the fee, is transferred to the
+                        caller. The fee is not collected by the protocol: it remains in the redeemed troves and accrues to their owners.</p>
                 </div>
+                <p class="text-xs mt-6 leading-relaxed max-w-4xl" style="color: var(--muted)">
+                    <b style="color: var(--ink-2)">Edge cases.</b> Branches whose total collateral ratio (TCR) is below the shutdown collateral ratio
+                    (SCR: 110% for WETH, 120% for wstETH and rETH), or that have been shut down, are excluded from regular redemptions. Debt on a
+                    shut-down branch can instead be cleared through <i>urgent redemptions</i>, which carry no fee and pay a 2% collateral bonus; none
+                    have occurred to date. If no eligible branch has unbacked debt, the amount is apportioned pro rata to total branch debt.
+                </p>
             </section>
 
             <div class="grid lg:grid-cols-2 gap-6">
                 <section class="card p-5 md:p-8">
                     <div class="kicker">2 · Inside a branch</div>
-                    <h3 class="text-xl font-semibold mt-1">The cheapest loans are redeemed first</h3>
+                    <h3 class="text-xl font-semibold mt-1">Troves are redeemed in ascending interest-rate order</h3>
                     <div id="diagramBranch" class="mt-6"></div>
-                    <p class="text-sm leading-relaxed mt-4" style="color: var(--ink-2)">
-                        A redeemed borrower loses debt and an equal value of collateral (at the redemption price), so their net position is unchanged,
-                        and the redemption fee is left in their trove as compensation. What they lose is exposure. Borrowers who don't want to be
-                        redeemed choose a higher interest rate, which is what pushes rates up when BOLD sits below peg.
-                    </p>
+                    <div class="text-sm leading-relaxed mt-4 space-y-3" style="color: var(--ink-2)">
+                        <p>
+                            In the example, a 510 BOLD allocation fully redeems the two lowest-rate troves and partially redeems the third. Troves
+                            further up the order are unaffected.
+                        </p>
+                        <p>
+                            <b class="text-white">Impact on borrowers.</b> A redeemed borrower's debt is reduced by the value of the collateral withdrawn,
+                            measured at the redemption price, and the redemption fee is retained in the trove. The borrower's net equity is therefore
+                            unchanged or marginally higher. The cost to the borrower is the loss of collateral exposure, together with any cost of
+                            re-establishing the position.
+                        </p>
+                        <p>
+                            <b class="text-white">Interest rate as redemption protection.</b> Borrowers set their own interest rate; a higher rate moves a
+                            trove further back in the redemption order at the cost of higher interest expense. Sustained redemption activity therefore
+                            pushes borrower rates up. Because borrower interest is distributed largely to Stability Pool depositors, higher rates also
+                            raise the yield on holding BOLD, which supports the peg.
+                        </p>
+                        <p class="text-xs" style="color: var(--muted)">
+                            <b style="color: var(--ink-2)">Zombie troves.</b> A trove left with debt below the 2,000 BOLD minimum is flagged as a
+                            <i>zombie</i>. It cannot be operated until its owner restores the debt above the minimum or closes it, and the most recent
+                            such trove is processed first by the next redemption, which prevents dust positions from obstructing the order.
+                        </p>
+                    </div>
                 </section>
                 <section class="card p-5 md:p-8">
                     <div class="kicker">3 · The redemption fee</div>
-                    <h3 class="text-xl font-semibold mt-1">Big redemptions raise the fee, time lowers it</h3>
+                    <h3 class="text-xl font-semibold mt-1">The fee rises with redemption volume and decays over time</h3>
                     <div id="diagramFee" class="mt-6"></div>
-                    <p class="text-sm leading-relaxed mt-4" style="color: var(--ink-2)">
-                        <span class="mono text-white">fee = 0.5% + baseRate</span>. Each redemption adds <span class="mono text-white">redeemed ÷ BOLD supply</span>
-                        to the base rate, which then halves every 6 hours. A burst of redemptions makes the next one more expensive, so the arbitrage
-                        throttles itself. The base rate started at 100% at launch to block early redemptions.
-                    </p>
+                    <div class="text-sm leading-relaxed mt-4 space-y-3" style="color: var(--ink-2)">
+                        <p>
+                            <span class="mono text-white">fee = 0.5% + baseRate</span>. The base rate records recent redemption volume. Each redemption
+                            increases it by the redeemed amount as a fraction of total BOLD supply, and the updated rate applies to the redemption that
+                            caused the increase. Between redemptions the base rate decays exponentially with a half-life of 6 hours. The fee is capped at 100%.
+                        </p>
+                        <p>
+                            <b class="text-white">Example.</b> With a base rate near zero, redeeming 0.5% of BOLD supply incurs a fee of
+                            0.5% + 0.5% = <b class="text-white">1.0%</b>. An identical redemption immediately afterwards incurs approximately 1.5%. After a
+                            further 6 hours without redemptions, the base rate has halved.
+                        </p>
+                        <p>
+                            <b class="text-white">Rationale.</b> The volume-dependent fee rate-limits redemptions: successive redemptions become progressively
+                            more expensive, which prevents abrupt drawdowns and gives borrowers time to adjust their interest rates. The fee is charged in
+                            collateral and remains with the redeemed troves. At launch the base rate was initialized at 100%, effectively disabling
+                            redemptions until it had decayed.
+                        </p>
+                    </div>
                 </section>
             </div>
 
             <section class="card p-5 md:p-8">
-                <div class="kicker">4 · Why bots redeem</div>
-                <h3 class="text-xl font-semibold mt-1">The arbitrage loop</h3>
-                <p class="text-sm mt-2 max-w-3xl" style="color: var(--muted)">Percentages are BOLD-weighted averages over every redemption in the dataset.</p>
+                <div class="kicker">4 · Arbitrage economics</div>
+                <h3 class="text-xl font-semibold mt-1">The redemption arbitrage</h3>
+                <div class="text-sm mt-2 max-w-3xl leading-relaxed space-y-3" style="color: var(--ink-2)">
+                    <p>
+                        An arbitrageur acquires BOLD, redeems it for collateral and sells the collateral, typically atomically within a single
+                        transaction executed by its own contract. The trade is undertaken when the following condition holds:
+                    </p>
+                    <p class="mono text-white text-[13px] rounded-lg px-4 py-3 inline-block" style="background: rgba(57,135,229,.08); border: 1px solid rgba(57,135,229,.25)">
+                        BOLD discount + oracle gap &gt; redemption fee + gas + builder tip
+                    </p>
+                    <p class="text-xs" style="color: var(--muted)">Percentages in the diagram are averages across all redemptions in the dataset, weighted by BOLD redeemed.</p>
+                </div>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramLoop" class="min-w-[760px] max-w-[1100px] mx-auto"></div></div>
                 <div class="grid lg:grid-cols-5 gap-6 mt-8">
                     <div class="lg:col-span-2 text-sm leading-relaxed space-y-3" style="color: var(--ink-2)">
-                        <p><b class="text-white">Two sources of edge.</b> The obvious one is BOLD trading below $1. The bigger one, on average, is the
-                            <i>oracle gap</i>: Liquity values collateral with Chainlink feeds, which only update after the price moves a set amount
-                            or a set time passes. When ETH has rallied since the last update, a redeemer receives collateral sized at the old, lower
-                            price and can sell it for more.</p>
-                        <p><b class="text-white">Liquity pushes back on LSTs.</b> For wstETH and rETH the redemption price takes the <i>higher</i> of the
-                            market and canonical prices, so redeemers get less collateral. WETH uses Chainlink ETH/USD as is.</p>
+                        <p><b class="text-white">BOLD discount.</b> Acquiring BOLD below par yields a direct margin: at a market price of USD 0.997,
+                            each BOLD costs USD 0.997 and redeems for USD 1 of collateral, a 0.3% gain before costs. The weighted average discount at
+                            redemption has been <b class="text-white" id="howDiscount">–</b>.</p>
+                        <p><b class="text-white">Oracle gap.</b> The protocol sizes collateral payouts using Chainlink prices, which update only when a
+                            deviation threshold or heartbeat interval is reached. When the collateral's market price has risen since the last update, the
+                            redemption price understates its value, and the redeemer receives collateral worth more than USD 1 per BOLD. The weighted
+                            average oracle gap has been <b class="text-white" id="howGap">–</b>, and it exceeded the discount for
+                            <b class="text-white" id="howGapShare">–</b> of redeemed volume, making it the dominant source of profit.
+                            <span id="howAbovePeg"></span></p>
+                        <p><b class="text-white">Mitigation for staked ETH.</b> For wstETH and rETH, the redemption price uses the higher of two reference
+                            prices, which reduces the collateral paid out and hence the oracle-gap arbitrage. WETH redemptions use the Chainlink ETH/USD
+                            price directly.</p>
                     </div>
-                    <div class="lg:col-span-3 overflow-x-auto scroll">
-                        <table class="w-full text-sm">
-                            <thead><tr class="kicker text-left">
-                                <th class="py-2 pr-4 font-semibold" style="background: none">Branch</th>
-                                <th class="py-2 pr-4 font-semibold" style="background: none">Oracle price</th>
-                                <th class="py-2 font-semibold" style="background: none">Price used for redemptions</th>
-                            </tr></thead>
-                            <tbody id="priceTable" style="color: var(--ink-2)"></tbody>
-                        </table>
+                    <div class="lg:col-span-3">
+                        <div class="overflow-x-auto scroll">
+                            <table class="w-full text-sm">
+                                <thead><tr class="kicker text-left">
+                                    <th class="py-2 pr-4 font-semibold" style="background: none">Branch</th>
+                                    <th class="py-2 pr-4 font-semibold" style="background: none">Price for all other operations</th>
+                                    <th class="py-2 font-semibold" style="background: none">Price used for redemptions</th>
+                                </tr></thead>
+                                <tbody id="priceTable" style="color: var(--ink-2)"></tbody>
+                            </table>
+                        </div>
+                        <p class="text-xs mt-3 leading-relaxed" style="color: var(--muted)">
+                            The <i>canonical rate</i> is the ETH value of one wstETH or rETH as reported by its token contract (Lido, Rocket Pool); the
+                            <i>market rate</i> is the price observed on secondary markets. Under normal conditions the two are close. A larger divergence
+                            is treated as a potential anomaly, in which case the protocol reverts to the more conservative price.
+                        </p>
                     </div>
                 </div>
             </section>
@@ -266,65 +384,81 @@
             <section class="card p-5 md:p-8">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                        <div class="kicker">5 · Anatomy of an average redemption</div>
-                        <h3 class="text-xl font-semibold mt-1">Where the profit on 10,000 BOLD comes from, and where it goes</h3>
+                        <div class="kicker">5 · Profit attribution</div>
+                        <h3 class="text-xl font-semibold mt-1">Decomposition of an average redemption, scaled to 10,000 BOLD</h3>
                     </div>
-                    <span class="text-xs mono" style="color: var(--muted)">live · BOLD-weighted over all redemptions</span>
+                    <span class="text-xs mono" style="color: var(--muted)">live · weighted by BOLD redeemed</span>
                 </div>
+                <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">
+                    Green bars are sources of profit, red bars are costs, and blue bars are subtotals. All values are in USD and derived from the
+                    averages across all redemptions on the dashboard.
+                </p>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramWaterfall" class="min-w-[680px] max-w-[1100px] mx-auto"></div></div>
-                <p class="text-xs mt-3" style="color: var(--muted)">Discount, oracle gap and fee are averages of per-redemption percentages, so they add up to gross profit only approximately. Gross and net bars are the measured totals.</p>
+                <p class="text-xs mt-3" style="color: var(--muted)">Discount, oracle gap and fee are weighted averages of per-redemption percentages and therefore reconcile to gross profit only approximately. Gross and net profit are measured totals.</p>
             </section>
 
             <section class="card p-5 md:p-8">
                 <div class="kicker">6 · Methodology</div>
-                <h3 class="text-xl font-semibold mt-1">From raw chain data to the table</h3>
+                <h3 class="text-xl font-semibold mt-1">From on-chain data to the dashboard</h3>
                 <div class="grid md:grid-cols-4 gap-3 mt-6">
                     <div class="rounded-xl p-4 relative" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">01 · SCAN</div>
-                        <div class="font-semibold mt-1">Find redemptions</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">The three TroveManagers are read from the CollateralRegistry. Their <span class="mono">Redemption</span> events are fetched from block 22,516,069 (V2 launch) via public RPCs, since Alchemy's free tier limits log queries to 10 blocks.</p>
+                        <div class="font-semibold mt-1">Redemption discovery</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Every redemption burns BOLD. All BOLD burns since block 22,516,069 (V2 deployment) are retrieved through Alchemy's asset-transfers API, and each burn's receipt is inspected for <span class="mono">Redemption</span> events emitted by the three TroveManagers, which are resolved from the CollateralRegistry.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">02 · GROUP</div>
-                        <div class="font-semibold mt-1">One row per transaction</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">A redemption emits one event per branch it touches, and bots sometimes redeem several times in one tx. Events are grouped by transaction and summed.</p>
+                        <div class="font-semibold mt-1">Aggregation per transaction</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">A redemption emits one <span class="mono">Redemption</span> event per branch it touches, and a single transaction may contain several redemptions. Events are aggregated by transaction hash.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
-                        <div class="font-semibold mt-1">Prices and costs</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Via Alchemy: the tx and receipt (sender, gas), the block (time, base fee, builder), one multicall of every pool price at block N−1, and internal ETH transfers to the builder.</p>
+                        <div class="font-semibold mt-1">Pricing and costs</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, and internal ETH transfers to the fee recipient.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">04 · SERVE</div>
-                        <div class="font-semibold mt-1">Store and refresh</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Rows go into SQLite. The server syncs new blocks every 5 minutes (3 confirmations) and the dashboard polls its API.</p>
+                        <div class="font-semibold mt-1">Storage and refresh</div>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Results are stored in SQLite. The local server syncs new blocks every 5 minutes with 3 confirmations; the hosted version is refreshed every 30 minutes by a scheduled GitHub Actions job.</p>
                     </div>
                 </div>
 
-                <h4 class="font-semibold mt-10 mb-3">What each column means</h4>
+                <div class="rounded-xl p-4 mt-3 flex gap-3 text-sm leading-relaxed" style="background: rgba(25,158,112,.06); border: 1px solid rgba(25,158,112,.3); color: var(--ink-2)">
+                    <span class="mono text-xs mt-0.5" style="color: var(--good)">✓</span>
+                    <span><b class="text-white">Completeness check.</b> <span class="mono">CollateralRegistry.lastFeeOperationTime</span> records the time
+                        of the latest redemption and is modified by no other operation. For every block containing a recorded redemption, its value at the
+                        preceding block was compared with the timestamp of the previous recorded redemption; no discrepancy was found. Because this value
+                        advances only in whole minutes, the five blocks following each recorded redemption were additionally checked for the registry's
+                        <span class="mono">BaseRateUpdated</span> event, which every redemption emits; all such events belong to recorded transactions.
+                        Last verified on 15 October 2026 across 1,858 redemption blocks.</span>
+                </div>
+
+                <h4 class="font-semibold mt-10 mb-3">Column definitions</h4>
                 <div class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
                     <table class="w-full text-sm">
                         <thead><tr class="kicker text-left">
                             <th class="px-4 py-2.5 font-semibold">Column</th>
-                            <th class="px-4 py-2.5 font-semibold">Meaning</th>
-                            <th class="px-4 py-2.5 font-semibold">How it's computed</th>
+                            <th class="px-4 py-2.5 font-semibold">Definition</th>
+                            <th class="px-4 py-2.5 font-semibold">Computation</th>
                         </tr></thead>
                         <tbody id="columnTable" style="color: var(--ink-2)"></tbody>
                     </table>
                 </div>
 
-                <h4 class="font-semibold mt-10 mb-3">Limitations: read net profit as an upper bound</h4>
+                <h4 class="font-semibold mt-10 mb-3">Limitations: net profit should be read as an upper bound</h4>
                 <ol id="limitations" class="grid md:grid-cols-2 gap-3 text-sm leading-relaxed" style="color: var(--ink-2)"></ol>
             </section>
         </main>
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
-            Prices from Curve and Uniswap BOLD/USDC and ETH/USDC on Uniswap v3, in the block before each redemption. Builder tips via Alchemy internal transfers. See “How it works” for the full methodology.
+            Data sources: Curve and Uniswap BOLD/USDC and Uniswap v3 ETH/USDC prices, sampled at the block preceding each redemption;
+            builder payments from Alchemy internal-transfer data. The full methodology is described under “How it works”.
             <div class="mt-6 pt-5 mx-auto max-w-2xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
-                <span class="kicker">Independent project</span><br>
-                This dashboard is built completely independently. It is not affiliated with, endorsed by or in any way related to
-                Liquity or Liquity AG, the company behind the Liquity protocol. The names Liquity and BOLD are used only to describe
-                the protocol whose public on-chain data is shown here.
+                <span class="kicker">Disclaimer</span><br>
+                This dashboard is an independent project. It is not affiliated with, endorsed by, sponsored by or otherwise associated with
+                Liquity AG or the Liquity protocol. References to Liquity and BOLD serve solely to identify the protocol whose public on-chain
+                data is analyzed. All information is provided for informational purposes only, without any warranty as to its accuracy or
+                completeness, and does not constitute financial, investment or legal advice.
             </div>
         </footer>
     </div>
@@ -381,6 +515,7 @@
         function upsertChart(id, config) {
             if (charts[id]) {
                 charts[id].data = config.data;
+                charts[id].options = config.options;
                 charts[id].update('none');
             } else {
                 charts[id] = new Chart($(id), config);
@@ -410,9 +545,65 @@
 
         $('branchLegend').innerHTML = branchLegend();
 
-        function renderFeed(rows) {
+        // Feed: every redemption, sorted and paged in the browser
+        const PAGE_SIZE = 50;
+        const FEED_COLUMNS = [
+            ['Tx', null], ['Time', 'timestamp'], ['BOLD', 'amount', true], ['Branches', 'branches'], ['Sender', 'sender'],
+            ['Price', 'market_price', true], ['Discount', 'spread', true], ['Oracle gap', 'oracle_gap', true], ['Fee', 'fee_pct', true],
+            ['Gross', 'gross_profit_usd', true], ['Gas', 'gas_fee_usd', true], ['Tip', 'builder_tip_usd', true],
+            ['Net profit', 'net_profit_usd', true], ['Margin', 'net_margin', true]
+        ];
+        const TEXT_KEYS = new Set(['branches', 'sender']);
+        const feed = { rows: [], key: 'timestamp', dir: 'desc', page: 1 };
+
+        function renderFeedHead() {
+            $('feedHead').innerHTML = FEED_COLUMNS.map(([label, key, right]) => {
+                const align = right ? 'text-right' : '';
+                if (!key) return `<th class="px-3 py-2.5 font-medium ${align}">${label}</th>`;
+                const active = feed.key === key;
+                const ind = active ? (feed.dir === 'asc' ? '▲' : '▼') : '↕';
+                const sort = active ? (feed.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+                return `<th class="px-3 py-2.5 font-medium ${align}" aria-sort="${sort}">
+                    <button class="sort-btn ${active ? 'active' : ''} ${right ? 'flex-row-reverse' : ''}" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button></th>`;
+            }).join('');
+        }
+
+        function sortedFeed() {
+            const { key, dir } = feed;
+            const sign = dir === 'asc' ? 1 : -1;
+            return [...feed.rows].sort((a, b) => {
+                const va = a[key], vb = b[key];
+                // Empty values always go last, whichever the direction
+                if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+                const c = TEXT_KEYS.has(key) ? String(va).localeCompare(String(vb)) : va - vb;
+                return c * sign || b.timestamp - a.timestamp;
+            });
+        }
+
+        function pageButtons(page, pages) {
+            const nums = new Set([1, pages, page - 1, page, page + 1].filter(n => n >= 1 && n <= pages));
+            const list = [...nums].sort((a, b) => a - b);
+            const btn = (label, target, opts = {}) =>
+                `<button class="pg ${opts.active ? 'pg-active' : ''}" data-page="${target}" ${opts.disabled ? 'disabled' : ''} ${opts.active ? 'aria-current="page"' : ''} aria-label="${opts.aria || 'Page ' + target}">${label}</button>`;
+            let out = btn('«', 1, { disabled: page === 1, aria: 'First page' }) + btn('‹', page - 1, { disabled: page === 1, aria: 'Previous page' });
+            list.forEach((n, i) => {
+                if (i && n - list[i - 1] > 1) out += '<span class="px-1 text-xs" style="color: var(--muted)">…</span>';
+                out += btn(n, n, { active: n === page });
+            });
+            return out + btn('›', page + 1, { disabled: page === pages, aria: 'Next page' }) + btn('»', pages, { disabled: page === pages, aria: 'Last page' });
+        }
+
+        function renderFeedPage() {
+            const rows = sortedFeed();
+            const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+            feed.page = Math.min(Math.max(feed.page, 1), pages);
+            const first = (feed.page - 1) * PAGE_SIZE;
+            const pageRows = rows.slice(first, first + PAGE_SIZE);
+            renderFeedHead();
             $('feedCount').innerText = `${fmt(rows.length)} txs`;
-            $('redemptionFeed').innerHTML = rows.map(r => `
+            $('feedRange').innerText = rows.length ? `Showing ${fmt(first + 1)}–${fmt(first + pageRows.length)} of ${fmt(rows.length)}` : '';
+            $('feedPager').innerHTML = rows.length > PAGE_SIZE ? pageButtons(feed.page, pages) : '';
+            $('redemptionFeed').innerHTML = pageRows.map(r => `
                 <tr class="border-t border-white/5 hover:bg-white/[.03]">
                     <td class="px-3 py-2"><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(r.tx_hash.slice(0, 8))}…<span aria-hidden="true">↗</span></a></td>
                     <td class="px-3 py-2" style="color: var(--ink-2)">${dateTime(r.timestamp)}</td>
@@ -430,6 +621,28 @@
                     <td class="px-3 py-2 text-right ${signClass(r.net_margin)}">${pct(r.net_margin, 3)}</td>
                 </tr>`).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
         }
+
+        function renderFeed(rows) {
+            feed.rows = rows;
+            renderFeedPage();
+        }
+
+        $('feedHead').addEventListener('click', e => {
+            const key = e.target.closest('[data-key]')?.dataset.key;
+            if (!key) return;
+            if (feed.key === key) feed.dir = feed.dir === 'asc' ? 'desc' : 'asc';
+            else Object.assign(feed, { key, dir: TEXT_KEYS.has(key) ? 'asc' : 'desc' });
+            feed.page = 1;
+            renderFeedPage();
+        });
+
+        $('feedPager').addEventListener('click', e => {
+            const btn = e.target.closest('[data-page]');
+            if (!btn || btn.disabled) return;
+            feed.page = Number(btn.dataset.page);
+            renderFeedPage();
+            $('feedScroll').scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
 
         function renderBots(bots) {
             $('botCount').innerText = `${bots.length} bots`;
@@ -458,19 +671,16 @@
             border: { color: css('--grid') }
         };
 
-        function renderPriceChart(rows) {
+        function renderPriceChart(rows, from, to) {
             const asc = [...rows].reverse();
             const venues = [
                 ['price_curve', 'Curve', css('--series-1')],
                 ['price_uni_v3', 'Uniswap v3', css('--series-2')],
                 ['price_uni_v4', 'Uniswap v4', css('--series-3')]
             ];
-            $('priceLegend').innerHTML = venues.map(([, label, color]) =>
-                `<span class="flex items-center gap-1.5"><span class="legend-swatch" style="background:${color}"></span>${label}</span>`
-            ).join('') + `<span class="flex items-center gap-1.5"><span style="width:12px;height:1px;background:${css('--muted')}"></span>$1 peg</span>`;
-
             const datasets = venues.map(([key, label, color]) => ({
                 label,
+                hidden: hiddenPools.has(label),
                 data: asc.filter(r => r[key] != null).map(r => ({ x: r.timestamp, y: r[key], amount: r.amount })),
                 backgroundColor: color,
                 borderColor: css('--surface'),
@@ -479,12 +689,16 @@
                 pointHoverRadius: 6,
                 pointHitRadius: 6
             }));
-            if (asc.length) {
-                datasets.push({
-                    type: 'line', label: '$1 peg', borderColor: css('--muted'), borderWidth: 1,
-                    pointRadius: 0, pointHitRadius: 0, data: [{ x: asc[0].timestamp, y: 1 }, { x: asc.at(-1).timestamp, y: 1 }]
-                });
-            }
+            datasets.push({
+                type: 'line', label: '$1 peg', borderColor: css('--muted'), borderWidth: 1,
+                pointRadius: 0, pointHitRadius: 0, data: [{ x: from, y: 1 }, { x: to, y: 1 }]
+            });
+            // Legend doubles as the pool toggles, with each pool's point count in the range
+            $('priceLegend').innerHTML = venues.map(([, label, color], i) => {
+                const off = hiddenPools.has(label);
+                return `<button class="legend-btn ${off ? 'off' : ''}" data-pool="${label}" aria-pressed="${!off}" title="${off ? 'Show' : 'Hide'} ${label}">
+                    <span class="legend-swatch" style="background:${color}"></span>${label}<span class="mono" style="color: var(--muted)">${fmt(datasets[i].data.length)}</span></button>`;
+            }).join('') + `<span class="flex items-center gap-1.5 px-2"><span style="width:12px;height:1px;background:${css('--muted')}"></span>$1 peg</span>`;
             upsertChart('priceChart', {
                 type: 'scatter',
                 data: { datasets },
@@ -503,34 +717,37 @@
                         }
                     },
                     scales: {
-                        x: { ...timeAxis, min: asc[0]?.timestamp, max: asc.at(-1)?.timestamp },
+                        x: { ...timeAxis, min: from, max: to },
                         y: { ticks: { callback: v => '$' + v.toFixed(3) }, border: { display: false } }
                     }
                 }
             });
         }
 
-        function weekly(rows, value) {
-            const WEEK = 7 * 864e5;
+        const WEEK = 7 * 864e5;
+        const mondayOf = ts => {
+            const d = new Date(ts);
+            return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+        };
+
+        function weekly(rows, value, from, to) {
             const weeks = new Map();
             for (const r of rows) {
                 const v = value(r);
                 if (v == null) continue;
-                const d = new Date(r.timestamp);
-                const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-                weeks.set(monday, (weeks.get(monday) || 0) + v);
+                const w = mondayOf(r.timestamp);
+                weeks.set(w, (weeks.get(w) || 0) + v);
             }
-            const keys = [...weeks.keys()].sort((a, b) => a - b);
             const labels = [], data = [];
-            for (let w = keys[0]; keys.length && w <= keys.at(-1); w += WEEK) {
+            for (let w = mondayOf(from); w <= to; w += WEEK) {
                 labels.push(w);
                 data.push(weeks.get(w) || 0);
             }
             return { labels, data };
         }
 
-        function renderWeeklyChart(id, rows, value, color, unitLabel) {
-            const { labels, data } = weekly(rows, value);
+        function renderWeeklyChart(id, rows, value, color, unitLabel, from, to) {
+            const { labels, data } = weekly(rows, value, from, to);
             upsertChart(id, {
                 type: 'bar',
                 data: {
@@ -555,6 +772,59 @@
             });
         }
 
+        // Chart time range: a preset or a custom from/to, applied to the three charts only
+        const DAY = 864e5;
+        const RANGE_DAYS = { '1m': 30, '3m': 91, '6m': 182, '1y': 365 };
+        const chartRange = { preset: '1y', from: null, to: null };
+        const hiddenPools = new Set();
+        let chartRows = [];
+        const isoDate = ts => new Date(ts).toISOString().slice(0, 10);
+
+        function rangeBounds() {
+            const now = Date.now();
+            if (chartRange.preset === 'custom') return [chartRange.from, chartRange.to];
+            if (chartRange.preset === 'all') return [chartRows.length ? chartRows.at(-1).timestamp : now - RANGE_DAYS['1y'] * DAY, now];
+            return [now - RANGE_DAYS[chartRange.preset] * DAY, now];
+        }
+
+        function renderCharts() {
+            const [from, to] = rangeBounds();
+            const rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
+            renderPriceChart(rows, from, to);
+            renderWeeklyChart('volumeChart', rows, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`, from, to);
+            renderWeeklyChart('profitChart', rows, r => r.net_profit_usd, css('--series-3'), v => usd(v), from, to);
+            for (const btn of $('rangePresets').querySelectorAll('[data-range]')) {
+                btn.classList.toggle('seg-active', btn.dataset.range === chartRange.preset);
+                btn.setAttribute('aria-pressed', btn.dataset.range === chartRange.preset);
+            }
+            $('rangeFrom').value = isoDate(from);
+            $('rangeTo').value = isoDate(to);
+        }
+
+        $('rangePresets').addEventListener('click', e => {
+            const preset = e.target.closest('[data-range]')?.dataset.range;
+            if (!preset) return;
+            chartRange.preset = preset;
+            renderCharts();
+        });
+
+        function onCustomRange() {
+            let from = Date.parse($('rangeFrom').value), to = Date.parse($('rangeTo').value);
+            if (Number.isNaN(from) || Number.isNaN(to)) return;
+            if (from > to) [from, to] = [to, from];
+            Object.assign(chartRange, { preset: 'custom', from, to: to + DAY - 1 });
+            renderCharts();
+        }
+        $('rangeFrom').addEventListener('change', onCustomRange);
+        $('rangeTo').addEventListener('change', onCustomRange);
+
+        $('priceLegend').addEventListener('click', e => {
+            const pool = e.target.closest('[data-pool]')?.dataset.pool;
+            if (!pool) return;
+            hiddenPools.has(pool) ? hiddenPools.delete(pool) : hiddenPools.add(pool);
+            renderCharts();
+        });
+
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
         const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status' };
@@ -575,12 +845,11 @@
             const [redemptions, bots, stats] = await Promise.all(
                 [API.redemptions, API.bots, API.stats].map(u => fetch(u, { cache: 'no-cache' }).then(r => r.json()))
             );
+            chartRows = redemptions;
             renderStats(stats);
             renderFeed(redemptions);
             renderBots(bots);
-            renderPriceChart(redemptions);
-            renderWeeklyChart('volumeChart', redemptions, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`);
-            renderWeeklyChart('profitChart', redemptions, r => r.net_profit_usd, css('--series-3'), v => usd(v));
+            renderCharts();
         }
 
         function setPill(color, text, pulse) {
@@ -658,9 +927,9 @@
                 + T(345, 158, 'redeemCollateral()', { size: 11, fill: 'var(--muted)', anchor: 'middle', mono: true })
                 + T(260, 196, '① fee = 0.5% + base rate', { size: 12 })
                 + T(260, 220, '② split by unbacked debt', { size: 12 })
-                + T(260, 244, '③ burn the redeemed BOLD', { size: 12 });
+                + T(260, 244, '④ burn the redeemed BOLD', { size: 12 });
             // Troves column header
-            s += T(800, 26, 'TROVES · LOWEST RATE FIRST', { size: 10, weight: 600, fill: 'var(--muted)' });
+            s += T(800, 26, '③ TROVES · LOWEST RATE FIRST', { size: 10, weight: 600, fill: 'var(--muted)' });
             for (const [sym, y] of branches) {
                 const cy = y + 32;
                 s += `<path d="M450 195 C 495 195, 495 ${cy}, 536 ${cy}" fill="none" stroke="${blue}" stroke-width="2" marker-end="url(#pa-blue)"/>`;
@@ -699,9 +968,9 @@
             });
             const top = 44, bottom = 44 + 2 * 36 + 22;
             s += `<path d="M598 ${top} h8 V ${bottom} h-8" fill="none" stroke="${blue}" stroke-width="1.5"/>`
-                + T(616, (top + bottom) / 2 - 2, 'redeem', { size: 12, fill: 'var(--ink-2)' })
+                + T(616, (top + bottom) / 2 - 2, 'allocation', { size: 12, fill: 'var(--ink-2)' })
                 + T(616, (top + bottom) / 2 + 14, '510 BOLD', { size: 12, weight: 600, fill: 'var(--ink-1)' });
-            s += T(90, 286, '↓ the redemption walks down the list until the BOLD is used up', { size: 12, fill: 'var(--muted)' });
+            s += T(90, 286, '↓ processed in ascending rate order until the allocation is exhausted', { size: 12, fill: 'var(--muted)' });
             return s + '</svg>';
         }
 
@@ -751,9 +1020,9 @@
                 + T(x + 110, y + 38, title, { size: 16, weight: 600, fill: 'var(--ink-1)', anchor: 'middle' })
                 + T(x + 110, y + 60, sub, { size: 11, fill: 'var(--muted)', anchor: 'middle' });
             s += box(40, 30, 'USDC', 'start capital')
-                + box(740, 30, 'BOLD', 'bought below $1')
+                + box(740, 30, 'BOLD', 'acquired on a DEX')
                 + box(740, 226, 'ETH · wstETH · rETH', '$1 of collateral per BOLD, minus fee')
-                + box(40, 226, 'USDC + profit', 'if the edge beats the costs', true);
+                + box(40, 226, 'USDC + profit', 'net of fees and inclusion costs', true);
             const arrow = (d) => `<path d="${d}" fill="none" stroke="${blue}" stroke-width="2" marker-end="url(#lp-blue)"/>`;
             s += arrow('M262 72 H 736') + arrow('M850 116 V 222') + arrow('M738 268 H 264') + arrow('M150 224 V 118');
             s += T(500, 58, '① Buy BOLD on Curve / Uniswap', { size: 13, fill: 'var(--ink-1)', anchor: 'middle' })
@@ -762,7 +1031,7 @@
                 + T(836, 182, `− fee ${pct(st.avg_fee, 2).replace('+', '')}`, { size: 12, fill: bad, anchor: 'end', mono: true });
             s += T(500, 254, '③ Sell collateral at market', { size: 13, fill: 'var(--ink-1)', anchor: 'middle' })
                 + T(500, 290, `+ oracle gap ${pct(st.avg_oracle_gap, 2)}`, { size: 12, fill: good, anchor: 'middle', mono: true });
-            s += T(164, 162, '④ Repeat while edge > 0', { size: 13, fill: 'var(--ink-1)' })
+            s += T(164, 162, '④ Repeat while profitable', { size: 13, fill: 'var(--ink-1)' })
                 + T(164, 182, `− gas &amp; tip ${costPct == null ? '–' : costPct.toFixed(2) + '%'}`, { size: 12, fill: bad, mono: true });
             s += `<rect x="390" y="146" width="220" height="48" rx="24" fill="rgba(57,135,229,.12)" stroke="rgba(57,135,229,.45)"/>`
                 + T(500, 167, 'NET MARGIN', { size: 10, weight: 600, fill: 'var(--muted)', anchor: 'middle' })
@@ -805,36 +1074,51 @@
             return s + '</svg>';
         }
 
+        const GLOSSARY = [
+            ['BOLD', 'The USD stablecoin of Liquity V2. Minted when a borrower draws debt against collateral and burned on repayment, liquidation or redemption. There is no centralized issuer.'],
+            ['Trove', 'An individual collateralized debt position: the deposited collateral and the BOLD debt drawn against it. Each trove carries a borrower-selected annual interest rate.'],
+            ['Collateral branch', 'An isolated instance of the protocol for one collateral asset (WETH, wstETH, rETH), with its own troves, Stability Pool and price feed. Redemptions on a branch are executed by its TroveManager contract.'],
+            ['WETH, wstETH, rETH', 'WETH is wrapped ether. wstETH (Lido) and rETH (Rocket Pool) are liquid staking tokens whose ETH value accrues staking rewards, so each token is worth more than 1 ETH.'],
+            ['Stability Pool', 'A per-branch pool of BOLD deposits that absorbs the debt of liquidated troves in exchange for their collateral and a share of borrower interest. Debt covered by Stability Pool deposits is considered backed.'],
+            ['Collateral ratio', 'Collateral value divided by debt. Troves below the minimum collateral ratio (MCR: 110% for WETH, 120% for wstETH and rETH) can be liquidated. A branch whose total collateral ratio (TCR) falls below the shutdown ratio (SCR, at the same levels) is shut down.'],
+            ['Oracle', 'The on-chain price source. Liquity V2 uses Chainlink feeds, which publish a new price only when a deviation threshold or heartbeat interval is reached; on-chain prices therefore lag the market.'],
+            ['Redemption price', 'The collateral price used to size the payout per redeemed BOLD. It equals the oracle price for WETH and may exceed it for wstETH and rETH (see section 4).'],
+            ['Peg', 'The USD 1 target price of BOLD. Redemptions defend the peg from below by making BOLD trading under par profitable to acquire and redeem.'],
+            ['Arbitrage bot', 'An automated agent, typically a smart contract driven by off-chain software, that executes the acquire, redeem and sell sequence atomically whenever it is profitable.'],
+            ['Gas and builder tip', 'Each transaction pays a base fee, which is burned, and optionally a priority fee. Priority fees and any ETH transferred directly to the block\'s fee recipient (coinbase) compensate the builder for inclusion and ordering.'],
+            ['Mid price', 'The marginal price of a liquidity pool for an infinitesimal trade. Executed trades additionally incur the pool fee and price impact.']
+        ];
+
         const PRICE_ROWS = [
-            ['WETH', 'Chainlink ETH/USD', 'Same price. The oracle gap is just how far ETH moved since Chainlink last updated.'],
-            ['wstETH', 'Chainlink stETH/USD × stETH per wstETH', 'max(stETH/USD, ETH/USD) × canonical rate, when the two feeds are within 1%.'],
-            ['rETH', 'Chainlink rETH/ETH × ETH/USD', 'max(market, canonical) rETH price, when they are within 2%.']
+            ['WETH', 'Chainlink ETH/USD', 'Identical to the oracle price. The oracle gap reflects ETH price movement since the last Chainlink update.'],
+            ['wstETH', 'Chainlink stETH/USD × canonical rate', 'max(stETH/USD, ETH/USD) × canonical rate, provided the two feeds are within 1% of each other; otherwise stETH/USD × canonical rate.'],
+            ['rETH', 'min(market rate, canonical rate) × ETH/USD, where the market rate is Chainlink rETH/ETH', 'max(market rate, canonical rate) × ETH/USD, provided the two rates are within 2% of each other; otherwise the minimum.']
         ];
 
         const COLUMNS = [
-            ['Tx', 'The redemption transaction', 'Hash of the tx that emitted the Redemption events'],
-            ['Time', 'When it was included', 'Block timestamp'],
-            ['BOLD', 'BOLD actually redeemed and burned', 'Σ <span class="mono">_actualBoldAmount</span> over the tx\'s Redemption events'],
-            ['Branches', 'Collateral branches the redemption hit', 'The TroveManagers that emitted events'],
-            ['Sender', 'Account that sent the tx. BOT = called through a contract, or 3+ redemptions', '<span class="mono">tx.from</span>'],
-            ['Price', 'BOLD mid price just before the block', 'Curve BOLD/USDC <span class="mono">1 / get_p(0)</span> at block N−1; Uniswap v3, then v4 as fallback'],
-            ['Discount', 'How far BOLD traded below $1', '<span class="mono">(1 − price) × 100</span>'],
-            ['Oracle gap', 'Collateral market price above Liquity\'s redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, BOLD-weighted across branches. Market = Uniswap ETH/USDC × LST exchange rate'],
-            ['Fee', 'Redemption fee, as a share of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
+            ['Tx', 'Redemption transaction', 'Transaction hash'],
+            ['Time', 'Inclusion time', 'Block timestamp'],
+            ['BOLD', 'BOLD redeemed and burned', 'Σ <span class="mono">_actualBoldAmount</span> across the transaction\'s <span class="mono">Redemption</span> events'],
+            ['Branches', 'Collateral branches redeemed against', 'TroveManagers that emitted <span class="mono">Redemption</span> events'],
+            ['Sender', 'Transaction originator; flagged BOT if it redeemed through a contract or at least three times', '<span class="mono">tx.from</span>'],
+            ['Price', 'BOLD mid price prior to the block', 'Curve BOLD/USDC <span class="mono">1 / get_p(0)</span> at block N−1; falls back to Uniswap v3, then v4'],
+            ['Discount', 'BOLD discount to par', '<span class="mono">(1 − price) × 100</span>'],
+            ['Oracle gap', 'Collateral market price relative to the redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; market = Uniswap v3 ETH/USDC × LST canonical rate'],
+            ['Fee', 'Redemption fee as a percentage of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
             ['Gross', 'Profit before inclusion costs', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
-            ['Gas', 'Base fee, burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>'],
-            ['Tip', 'Everything paid to the block builder', '<span class="mono">(gasUsed × priority fee + direct coinbase transfers) × ETH/USD</span>'],
-            ['Net profit', 'What the redeemer kept', '<span class="mono">Gross − Gas − Tip</span>'],
-            ['Margin', 'Net profit relative to capital used', '<span class="mono">Net ÷ (BOLD × price) × 100</span>']
+            ['Gas', 'Base fee burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>'],
+            ['Tip', 'Total payment to the block builder', '<span class="mono">(gasUsed × priority fee + direct coinbase transfers) × ETH/USD</span>'],
+            ['Net profit', 'Profit after inclusion costs', '<span class="mono">Gross − Gas − Tip</span>'],
+            ['Margin', 'Net profit relative to capital deployed', '<span class="mono">Net ÷ (BOLD × price) × 100</span>']
         ];
 
         const LIMITATIONS = [
-            ['Prices are from the block before.', 'Contract state can only be read at block boundaries. Trades earlier in the same block, such as a large BOLD sale a bot back-runs, aren\'t reflected, so the real discount can be larger or smaller.'],
-            ['Mid price, not execution price.', 'Buying BOLD costs the pool fee (0.04% on Curve, 0.05% on Uniswap v3) plus price impact: about +0.044% for 1k USDC and +0.065% for 100k on Curve. That is a quarter to a third of the average margin.'],
-            ['Collateral is valued at mid too.', 'Selling ETH, wstETH or rETH also costs fees and slippage, and LSTs can trade slightly below their canonical exchange rate.'],
-            ['Senders are single accounts.', 'One operator running several accounts appears as several bots. The bot flag is a heuristic: redeeming through a contract, or 3+ redemptions.'],
-            ['Gas covers the whole transaction.', 'Including the swaps the bot made. That is right for profitability, but a tx bundling other strategies would blur the attribution.'],
-            ['Dust is excluded from ratios.', 'Redemptions under 1 BOLD round the collateral to zero, so their fee, edge and profit are left blank.']
+            ['Block-level pricing.', 'Contract state is observable only at block boundaries. Price movements earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured; the realized discount may be larger or smaller than reported.'],
+            ['Mid price rather than execution price.', 'Acquiring BOLD incurs the pool fee (0.04% on Curve, 0.05% on Uniswap v3) and price impact: approximately 0.044% for a 1,000 USDC purchase and 0.065% for 100,000 USDC on Curve (measured in October 2026). {MARGIN_SHARE}'],
+            ['Collateral valued at mid price.', 'Disposing of the collateral also incurs fees and slippage, and liquid staking tokens can trade below their canonical rate. Neither cost is reflected.'],
+            ['Attribution by originating account.', 'Operators running multiple accounts appear as separate entities. The bot classification is heuristic: redemption through a contract, or at least three redemptions.'],
+            ['Transaction-level costs.', 'Gas and builder payments cover the entire transaction, including the arbitrageur\'s swaps. This is appropriate for profitability analysis but over-attributes costs where a transaction bundles unrelated strategies.'],
+            ['Dust redemptions.', 'Redemptions below 1 BOLD round the collateral payout to zero; their fee, edge and profit fields are left blank.']
         ];
 
         let lastStats = null;
@@ -856,14 +1140,33 @@
                         <td class="px-4 py-2.5">${meaning}</td>
                         <td class="px-4 py-2.5 text-[13px]">${how}</td>
                     </tr>`).join('');
+                $('glossary').innerHTML = GLOSSARY.map(([term, def]) => `
+                    <div class="rounded-xl p-4" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                        <dt class="font-semibold text-white">${term}</dt>
+                        <dd class="mt-1" style="color: var(--ink-2)">${def}</dd>
+                    </div>`).join('');
+            }
+            if (lastStats || !$('limitations').innerHTML) {
+                const m = lastStats?.avg_margin;
+                const share = m ? `This corresponds to roughly ${Math.round(0.044 / m * 100)}–${Math.round(0.065 / m * 100)}% of the average net margin of ${pct(m, 3).replace('+', '')}.` : '';
                 $('limitations').innerHTML = LIMITATIONS.map(([title, body], i) => `
                     <li class="rounded-xl p-4 flex gap-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
                         <span class="mono text-xs mt-0.5" style="color: var(--warn)">0${i + 1}</span>
-                        <span><b class="text-white">${title}</b> ${body}</span>
+                        <span><b class="text-white">${title}</b> ${body.replace('{MARGIN_SHARE}', share)}</span>
                     </li>`).join('');
             }
             if (lastStats) {
                 $('howBurned').innerText = `${compact(lastStats.total_bold)} BOLD`;
+                $('howDiscount').innerText = pct(lastStats.avg_spread, 2);
+                $('howGap').innerText = pct(lastStats.avg_oracle_gap, 2);
+                const priced = chartRows.filter(r => r.spread != null && r.oracle_gap != null);
+                const vol = priced.reduce((a, r) => a + r.amount, 0);
+                if (vol) {
+                    const gapLed = priced.filter(r => r.oracle_gap > r.spread).reduce((a, r) => a + r.amount, 0);
+                    $('howGapShare').innerText = `${Math.round(gapLed / vol * 100)}%`;
+                    const abovePeg = priced.filter(r => r.spread <= 0).length / priced.length;
+                    $('howAbovePeg').innerText = `${Math.round(abovePeg * 100)}% of redemptions occurred with BOLD at or above par and were driven entirely by the oracle gap.`;
+                }
                 $('diagramLoop').innerHTML = diagramLoop(lastStats);
                 $('diagramWaterfall').innerHTML = diagramWaterfall(lastStats);
             }

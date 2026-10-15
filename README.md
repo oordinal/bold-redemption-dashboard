@@ -14,7 +14,7 @@ npm install
 npm start                   # http://localhost:3000
 ```
 
-The first start syncs every redemption since the V2 launch (about 5 minutes); after that the server
+The first start syncs every redemption since the V2 launch (about 15 minutes); after that the server
 syncs new blocks every 5 minutes and the **Sync now** button triggers one on demand.
 
 ## How the hosted version works
@@ -40,5 +40,7 @@ import the repository in Vercel with the default settings.
 | `export.js` | Sync, then write the static JSON snapshot (used by the GitHub Action) |
 | `public/index.html` | The dashboard and the How it works tab |
 
-Event logs come from public RPCs (`rpc.flashbots.net`, `ethereum-rpc.publicnode.com`), because
-Alchemy's free tier limits `eth_getLogs` to 10 blocks. Everything else goes through Alchemy.
+Redemptions are found through BOLD burns: every redemption burns the redeemed BOLD, and Alchemy's
+transfers API lists those burns over any block range (its free tier limits `eth_getLogs` to 10
+blocks). Each burn's receipt is then checked for `Redemption` events. Completeness can be checked
+against the CollateralRegistry's `lastFeeOperationTime`, which only redemptions update.
