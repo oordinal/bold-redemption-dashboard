@@ -649,6 +649,18 @@
         let openTx = null;
         const txDetails = new Map(); // tx hash -> detail, null while loading, or { error }
         const MIN_DEBT = 2000;
+        // Each trove is an NFT (token ID = trove ID) of its branch's TroveNFT contract, read from TroveManager.troveNFT()
+        const TROVE_NFT = {
+            WETH: '0x1A0FC0b843aFD9140267D25d4E575Cb37a838013',
+            wstETH: '0x857aECeBF75f1012DC18E15020C97096aeA31b04',
+            rETH: '0x7ae430E25b67f19B431e1D1Dc048a5BCF24C0873'
+        };
+        const troveLink = t => {
+            const nft = TROVE_NFT[t.branch];
+            if (!nft) return `<span title="${esc(t.trove_id)}">${esc(short(t.trove_id))}</span>`;
+            return `<a class="inline-flex items-center gap-1 hover:underline decoration-dotted underline-offset-4" style="color: #8bb8f0" target="_blank" rel="noopener"
+                title="Trove ${esc(t.trove_id)}: view its NFT history on Etherscan" href="https://etherscan.io/nft/${nft}/${BigInt(t.trove_id).toString()}">${esc(short(t.trove_id))}<span aria-hidden="true">↗</span></a>`;
+        };
 
         async function loadTxDetail(hash) {
             if (txDetails.has(hash)) return;
@@ -748,7 +760,7 @@
                     <td class="px-3 py-1.5 num" style="color: var(--muted)">${i + 1}</td>
                     ${calls > 1 ? `<td class="px-3 py-1.5 num" style="color: var(--muted)">${callOf(t) ?? '–'}</td>` : ''}
                     <td class="px-3 py-1.5">${branchChips(t.branch)}</td>
-                    <td class="px-3 py-1.5 num" title="${esc(t.trove_id)}">${esc(short(t.trove_id))}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
+                    <td class="px-3 py-1.5 num">${troveLink(t)}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
                     <td class="px-3 py-1.5 num text-right">${t.interest_rate == null ? '–' : t.interest_rate.toFixed(2) + '%'}</td>
                     <td class="px-3 py-1.5 num text-right">${feeRate(t) == null ? '–' : feeRate(t).toFixed(3) + '%'}</td>
                     <td class="px-3 py-1.5 num text-right">${fmt(t.debt_redeemed, 2)}</td>
