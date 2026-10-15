@@ -664,22 +664,47 @@
                 return { branch, ev, troves, bold, attempted: sumOf(ev, 'bold_attempted'), coll, fee,
                     oracle: ev[0].coll_price, redemption: ev[0].redemption_price, market: ev[0].coll_market_price };
             });
-            const calls = Math.max(...branches.map(b => b.ev.length));
+            // A transaction can call redeemCollateral() several times. Each call emits one Redemption event
+            // per branch, in branch order, so a new call starts whenever that order restarts. Troves are
+            // logged before their branch's Redemption event, which assigns each trove to its call.
+            const BRANCH_ORDER = { WETH: 0, wstETH: 1, rETH: 2 };
+            const callList = [];
+            let lastIdx = Infinity;
+            for (const e of [...d.events].sort((a, b) => a.log_index - b.log_index)) {
+                const idx = BRANCH_ORDER[e.branch] ?? 99;
+                if (idx <= lastIdx) callList.push([]);
+                callList.at(-1).push(e);
+                lastIdx = idx;
+            }
+            const callRate = e => e.coll_sent + e.coll_fee > 0 ? e.coll_fee / (e.coll_sent + e.coll_fee) * 100 : null;
+            const callOf = t => {
+                const i = callList.findIndex(c => c.some(e => e.branch === t.branch && e.log_index > t.log_index));
+                return i < 0 ? null : i + 1;
+            };
+            const calls = callList.length;
             const price = v => v == null ? '–' : '$' + fmt(v, 2);
 
+            // Address links styled like the feed's Tx links so they stand out in the summary text
+            const addrLink = addr => `<a class="num inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" target="_blank" rel="noopener" title="${esc(addr)} on Etherscan" href="https://etherscan.io/address/${esc(addr)}">${esc(short(addr))}<span aria-hidden="true">↗</span></a>`;
+            // Pool prices with the same colour dots as the price chart
+            const poolPrice = (label, color, v) => `<span class="inline-flex items-center gap-1.5"><span class="legend-swatch" style="background:${color}"></span>${label} <span class="num text-white">${v == null ? '–' : '$' + v.toFixed(4)}</span></span>`;
             const summary = `
-                <p class="text-sm leading-relaxed" style="color: var(--ink-2)">
-                    Redeemed <b class="text-white num">${fmt(r.amount, 2)} BOLD</b> from <b class="text-white">${d.troves.length} trove${d.troves.length === 1 ? '' : 's'}</b>
-                    on ${branches.length} branch${branches.length === 1 ? '' : 'es'}${calls > 1 ? ` in ${calls} redemption calls` : ''}.
-                    Sent by ${etherscan('address', r.sender, short(r.sender))}
-                    ${r.via_contract ? `through contract ${etherscan('address', r.to_address, short(r.to_address))}` : 'directly to the CollateralRegistry'}.
-                    BOLD before the block: Curve ${r.price_curve == null ? '–' : '$' + r.price_curve.toFixed(4)} ·
-                    Uniswap v3 ${r.price_uni_v3 == null ? '–' : '$' + r.price_uni_v3.toFixed(4)} ·
-                    Uniswap v4 ${r.price_uni_v4 == null ? '–' : '$' + r.price_uni_v4.toFixed(4)}.
-                </p>`;
+                <div class="text-sm leading-relaxed space-y-1.5" style="color: var(--ink-2)">
+                    <p>
+                        Redeemed <b class="text-white num">${fmt(r.amount, 2)} BOLD</b> from <b class="text-white">${d.troves.length} trove${d.troves.length === 1 ? '' : 's'}</b>
+                        on ${branches.length} branch${branches.length === 1 ? '' : 'es'}${calls > 1 ? ` in <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style="background: rgba(250,178,25,.12); color: var(--warn); border: 1px solid rgba(250,178,25,.35)">${calls} redemption calls</span>` : ''}.
+                        Sent by ${addrLink(r.sender)}
+                        ${r.via_contract ? `through contract ${addrLink(r.to_address)}` : 'directly to the CollateralRegistry'}.
+                    </p>
+                    <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                        <span style="color: var(--muted)">BOLD before the block</span>
+                        ${poolPrice('Curve', css('--series-1'), r.price_curve)}
+                        ${poolPrice('Uniswap v3', css('--series-2'), r.price_uni_v3)}
+                        ${poolPrice('Uniswap v4', css('--series-3'), r.price_uni_v4)}
+                    </p>
+                </div>`;
 
             const cards = branches.map(b => {
-                const feePct = b.bold ? b.fee * b.redemption / b.bold * 100 : null;
                 const line = (label, value) => `<div class="flex justify-between gap-3"><span style="color: var(--muted)">${label}</span><span class="num text-right">${value}</span></div>`;
                 return `
                     <div class="rounded-xl p-4 text-xs space-y-1.5" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07)">
@@ -689,7 +714,7 @@
                         </div>
                         ${line('BOLD redeemed', fmt(b.bold, 2) + (b.attempted - b.bold > 1e-6 ? ` <span style="color: var(--muted)">of ${fmt(b.attempted, 2)}</span>` : ''))}
                         ${line('Collateral paid out', `${fmt(b.coll, 4)} ${esc(b.branch)}`)}
-                        ${line('Fee left in troves', `${fmt(b.fee, 4)} ${esc(b.branch)} <span style="color: var(--muted)">(${pct(feePct, 3).replace('+', '')})</span>`)}
+                        ${line('<span title="Charged in collateral and left in the redeemed troves for their owners">Redemption fee</span>', `${fmt(b.fee, 4)} ${esc(b.branch)}`)}
                         ${line('Oracle price', price(b.oracle))}
                         ${line('Redemption price', price(b.redemption))}
                         ${line('Market price', price(b.market))}
@@ -704,15 +729,18 @@
             };
             const th = (label, right, title) => `<th class="px-3 py-2 font-medium ${right ? 'text-right' : ''}"${title ? ` title="${title}"` : ''}>${label}</th>`;
             // The contract charges fee = (collateral taken + fee) × redemption rate, so the rate is recoverable per trove
+            const debtShare = t => t.debt_after == null || t.debt_redeemed + t.debt_after <= 0 ? null : t.debt_redeemed / (t.debt_redeemed + t.debt_after) * 100;
             const feeRate = t => t.fee_coll == null || t.coll_redeemed + t.fee_coll <= 0 ? null : t.fee_coll / (t.coll_redeemed + t.fee_coll) * 100;
             const troveRows = d.troves.map((t, i) => `
                 <tr class="border-t border-white/5">
                     <td class="px-3 py-1.5 num" style="color: var(--muted)">${i + 1}</td>
+                    ${calls > 1 ? `<td class="px-3 py-1.5 num" style="color: var(--muted)">${callOf(t) ?? '–'}</td>` : ''}
                     <td class="px-3 py-1.5">${branchChips(t.branch)}</td>
                     <td class="px-3 py-1.5 num" title="${esc(t.trove_id)}">${esc(short(t.trove_id))}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
                     <td class="px-3 py-1.5 num text-right">${t.interest_rate == null ? '–' : t.interest_rate.toFixed(2) + '%'}</td>
                     <td class="px-3 py-1.5 num text-right">${feeRate(t) == null ? '–' : feeRate(t).toFixed(3) + '%'}</td>
                     <td class="px-3 py-1.5 num text-right">${fmt(t.debt_redeemed, 2)}</td>
+                    <td class="px-3 py-1.5 num text-right">${debtShare(t) == null ? '–' : debtShare(t).toFixed(1) + '%'}</td>
                     <td class="px-3 py-1.5 num text-right">${fmt(t.coll_redeemed, 4)} <span style="color: var(--muted)">${esc(t.branch)}</span></td>
                     <td class="px-3 py-1.5 num text-right">${t.fee_coll == null ? '–' : fmt(t.fee_coll, 5)}</td>
                     <td class="px-3 py-1.5">${status(t)}</td>
@@ -755,13 +783,40 @@
             return box(`
                 <div class="space-y-4">
                     ${summary}
-                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">${cards}</div>
+
+                    <div class="flex flex-col lg:flex-row gap-3 items-stretch">
+                        ${calls > 1 ? `
+                        <div class="shrink-0 rounded-xl p-4 lg:max-w-[26rem]" style="background: rgba(250,178,25,.04); border: 1px solid rgba(250,178,25,.25)">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-semibold text-white">Redemption calls</span>
+                                <span class="text-xs" style="color: var(--muted)">${calls} calls</span>
+                            </div>
+                            <div class="overflow-x-auto scroll">
+                            <table class="text-left text-xs whitespace-nowrap">
+                                <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
+                                    ${th('Call')}${th('BOLD redeemed', true)}${th('Branches')}${th('Troves', true)}${th('Fee rate', true)}
+                                </tr></thead>
+                                <tbody>${callList.map((c, i) => `
+                                    <tr class="border-t border-white/5">
+                                        <td class="px-3 py-1.5 num">${i + 1}</td>
+                                        <td class="px-3 py-1.5 num text-right">${fmt(sumOf(c, 'bold_redeemed'), 2)}</td>
+                                        <td class="px-3 py-1.5">${branchChips(c.map(e => e.branch).join(','))}</td>
+                                        <td class="px-3 py-1.5 num text-right">${d.troves.filter(t => callOf(t) === i + 1).length}</td>
+                                        <td class="px-3 py-1.5 num text-right">${callRate(c[0]) == null ? '–' : callRate(c[0]).toFixed(3) + '%'}</td>
+                                    </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-[11px] mt-2 leading-relaxed" style="color: var(--muted)">This transaction called <span class="num">redeemCollateral()</span> ${calls} times. Each call raises the base rate by its own size, so later calls pay a slightly higher fee.</p>
+                    </div>` : ''}
+                        <div class="grid gap-3 flex-1 min-w-0" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr))">${cards}</div>
+                    </div>
                     <div>
                         <div class="kicker mb-2">Troves, in processing order</div>
                         <div class="overflow-auto scroll max-h-80 rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
                             <table class="w-full text-left text-xs whitespace-nowrap">
                                 <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
-                                    ${th('#')}${th('Branch')}${th('Trove')}${th('Interest rate', true, 'Annual interest rate the borrower pays on this trove. Lower rates are redeemed first.')}${th('Redemption fee', true, 'Redemption fee rate applied to this trove: fee ÷ (collateral taken + fee). Identical for all troves in one redemption call.')}${th('Debt repaid (BOLD)', true)}${th('Collateral taken', true)}${th('Fee to trove', true, 'Redemption fee in collateral, left in the trove for its owner.')}${th('Status')}
+                                    ${th('#')}${calls > 1 ? th('Call', false, 'Redemption call within this transaction') : ''}${th('Branch')}${th('Trove')}${th('Interest rate', true, 'Annual interest rate the borrower pays on this trove. Lower rates are redeemed first.')}${th('Redemption fee', true, 'Redemption fee rate applied to this trove: fee ÷ (collateral taken + fee). Identical for all troves in one redemption call.')}${th('Debt repaid (BOLD)', true)}${th('% of debt', true, "Share of the trove's total debt (including accrued interest) repaid by this redemption: repaid ÷ (repaid + remaining).")}${th('Collateral taken', true)}${th('Fee to trove', true, 'Redemption fee in collateral, left in the trove for its owner.')}${th('Status')}
                                 </tr></thead>
                                 <tbody>${troveRows}</tbody>
                             </table>
