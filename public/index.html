@@ -91,6 +91,15 @@
         .feed-row.is-open > td:first-child { box-shadow: inset 3px 0 0 var(--series-1); }
         .detail-row > td { background: rgba(57, 135, 229, 0.05); border-top: 1px solid rgba(57, 135, 229, 0.18); border-bottom: 1px solid rgba(57, 135, 229, 0.35); }
         .detail-row .tx-detail { box-shadow: inset 3px 0 0 var(--series-1); }
+        /* Information bubble: an "i" in a circle that shows a short note on hover or keyboard focus */
+        .info-tip { position: relative; display: inline-grid; place-items: center; flex: none; width: 13px; height: 13px; margin-left: 5px; border-radius: 50%;
+            border: 1px solid currentColor; color: var(--muted); font: 600 9px/1 Inter, system-ui, sans-serif; text-transform: none; letter-spacing: 0; cursor: help; transition: color .15s; }
+        .info-tip:hover, .info-tip:focus-visible { color: var(--ink-1); outline: none; }
+        .info-pop { position: absolute; bottom: calc(100% + 8px); left: -12px; z-index: 20; width: 270px; padding: 8px 10px; border-radius: 8px;
+            background: #1a2130; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
+            color: var(--ink-2); font: 400 12px/1.45 Inter, system-ui, sans-serif; text-align: left; white-space: normal;
+            opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s, visibility .12s; }
+        .info-tip:hover .info-pop, .info-tip:focus .info-pop { opacity: 1; visibility: visible; }
         .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; position: sticky; left: 0; width: var(--detail-w, 100%); box-sizing: border-box; }
         .tx-detail .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
@@ -193,7 +202,7 @@
                 Select a row for a trove-level breakdown of the redemption.
                 <b style="color: var(--ink-2)">Discount</b> BOLD below $1 ·
                 <b style="color: var(--ink-2)">Oracle gap</b> collateral market price above Liquity's redemption price ·
-                <b style="color: var(--ink-2)">Gross</b> collateral at market minus BOLD bought at market ·
+                <b style="color: var(--ink-2)">Gross</b> collateral at market minus BOLD bought at market, both at prices in the block before (an estimate: it can be slightly negative when the price moves within the block) ·
                 <b style="color: var(--ink-2)">Gas</b> base fee burned ·
                 <b style="color: var(--ink-2)">Tip</b> priority fee + direct coinbase payment to the builder ·
                 <b style="color: var(--ink-2)">Margin</b> net profit over BOLD purchase cost.
@@ -574,21 +583,22 @@
         const FEED_COLUMNS = [
             ['Tx', null], ['Time', 'timestamp'], ['BOLD', 'amount', true], ['Branches', 'branches'], ['Sender', 'sender'],
             ['Price', 'market_price', true], ['Discount', 'spread', true], ['Oracle gap', 'oracle_gap', true], ['Fee', 'fee_pct', true],
-            ['Gross', 'gross_profit_usd', true], ['Gas', 'gas_fee_usd', true], ['Tip', 'builder_tip_usd', true],
+            ['Gross', 'gross_profit_usd', true, 'Estimated at prices in the block before the redemption; can be slightly negative when the price moves within the block'],
+            ['Gas', 'gas_fee_usd', true], ['Tip', 'builder_tip_usd', true],
             ['Net profit', 'net_profit_usd', true], ['Margin', 'net_margin', true]
         ];
         const TEXT_KEYS = new Set(['branches', 'sender']);
         const feed = { rows: [], key: 'timestamp', dir: 'desc', page: 1 };
 
         function renderFeedHead() {
-            $('feedHead').innerHTML = FEED_COLUMNS.map(([label, key, right]) => {
+            $('feedHead').innerHTML = FEED_COLUMNS.map(([label, key, right, note]) => {
                 const align = right ? 'text-right' : '';
                 if (!key) return `<th class="px-3 py-2.5 font-medium ${align}">${label}</th>`;
                 const active = feed.key === key;
                 const ind = active ? (feed.dir === 'asc' ? '▲' : '▼') : '↕';
                 const sort = active ? (feed.dir === 'asc' ? 'ascending' : 'descending') : 'none';
                 return `<th class="px-3 py-2.5 font-medium ${align}" aria-sort="${sort}">
-                    <button class="sort-btn ${active ? 'active' : ''} ${right ? 'flex-row-reverse' : ''}" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button></th>`;
+                    <button class="sort-btn ${active ? 'active' : ''} ${right ? 'flex-row-reverse' : ''}" data-key="${key}" title="Sort by ${label.toLowerCase()}${note ? `. ${note}` : ''}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button></th>`;
             }).join('');
         }
 
@@ -655,6 +665,12 @@
                 </tr>${open ? `<tr class="detail-row"><td colspan="14" class="p-0">${txDetailHtml(r, txDetails.get(r.tx_hash))}</td></tr>` : ''}`;
             }).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
         }
+
+        const infoTip = (text, label) => `<button type="button" class="info-tip" aria-label="About ${esc(label.toLowerCase())}">i<span class="info-pop" role="tooltip">${text}</span></button>`;
+        const GROSS_NOTE = 'An estimate at prices in the block before the redemption, not the bot\'s actual result. If the price moves within the block '
+            + 'before the bot sells the collateral, the estimate can be slightly negative even though the trade made money. The actual result cannot '
+            + 'be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost money '
+            + 'would revert and never appear here.';
 
         // Expandable rows: one transaction open at a time; details fetched on first open and cached
         let openTx = null;
@@ -802,9 +818,9 @@
             const inUsd = v => v == null || r.eth_usd == null ? null : v * r.eth_usd;
             const minus = v => v == null ? '–' : usd(-v);
             const totalCost = r.gas_fee_usd == null || r.builder_tip_usd == null ? null : r.gas_fee_usd + r.builder_tip_usd;
-            const tile = (label, main, sub) => `
+            const tile = (label, main, sub, info) => `
                 <div class="rounded-lg px-3 py-2.5" style="background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06)">
-                    <div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</div>
+                    <div class="flex items-center text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}${info ? infoTip(info, label) : ''}</div>
                     <div class="num text-sm text-white mt-0.5">${main}</div>
                     <div class="num text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div>
                 </div>`;
@@ -819,7 +835,7 @@
                         <div class="num text-[11px]" style="color: var(--muted)">${fmt(r.gas_used)} gas · ETH/USD ${price(r.eth_usd)} · total inclusion cost <span class="bad">${minus(totalCost)}</span></div>
                     </div>
                     <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
-                        ${tile('Gross profit', usd(r.gross_profit_usd), 'before inclusion costs')}
+                        ${tile('Gross profit', usd(r.gross_profit_usd), 'before inclusion costs', GROSS_NOTE)}
                         ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth))}
                         ${tile('Priority fee', minus(inUsd(r.priority_fee_eth)), eth(r.priority_fee_eth))}
                         ${tile('Direct builder payment', minus(inUsd(r.coinbase_tip_eth)), eth(r.coinbase_tip_eth))}
@@ -1372,7 +1388,7 @@
             ['Discount', 'BOLD discount to par', '<span class="mono">(1 − price) × 100</span>'],
             ['Oracle gap', 'Collateral market price relative to the redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; market = Uniswap v3 ETH/USDC × LST canonical rate'],
             ['Fee', 'Redemption fee as a percentage of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
-            ['Gross', 'Profit before inclusion costs', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
+            ['Gross', 'Profit before inclusion costs, estimated at prices in the block before', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
             ['Gas', 'Base fee burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>'],
             ['Tip', 'Total payment to the block builder', '<span class="mono">(gasUsed × priority fee + direct coinbase transfers) × ETH/USD</span>'],
             ['Net profit', 'Profit after inclusion costs', '<span class="mono">Gross − Gas − Tip</span>'],
@@ -1380,7 +1396,7 @@
         ];
 
         const LIMITATIONS = [
-            ['Block-level pricing.', 'Contract state is observable only at block boundaries. Price movements earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured; the realized discount may be larger or smaller than reported.'],
+            ['Block-level pricing.', 'Contract state is observable only at block boundaries. Price movements earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured; the realized discount may be larger or smaller than reported. The same applies to collateral: when ETH rises within the block before the bot sells, the estimated gross profit can be slightly negative for a transaction that actually made money. The actual result cannot be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost money would revert and never appear here.'],
             ['Mid price rather than execution price.', 'Acquiring BOLD incurs the pool fee (0.04% on Curve, 0.05% on Uniswap v3) and price impact: approximately 0.044% for a 1,000 USDC purchase and 0.065% for 100,000 USDC on Curve (measured in October 2026). {MARGIN_SHARE}'],
             ['Collateral valued at mid price.', 'Disposing of the collateral also incurs fees and slippage, and liquid staking tokens can trade below their canonical rate. Neither cost is reflected.'],
             ['Attribution by originating account.', 'Operators running multiple accounts appear as separate entities. The bot classification is heuristic: redemption through a contract, or at least three redemptions.'],
