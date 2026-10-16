@@ -86,7 +86,11 @@
         .row-toggle { width: 18px; height: 18px; margin-right: 6px; border-radius: 5px; display: inline-grid; place-items: center; vertical-align: middle; color: var(--muted); transition: transform .15s, color .15s; }
         .feed-row:hover .row-toggle { color: var(--ink-1); }
         .row-toggle[aria-expanded="true"] { transform: rotate(90deg); color: var(--series-1); }
-        .detail-row > td { background: rgba(57, 135, 229, 0.035); border-top: 1px solid rgba(57, 135, 229, 0.18); }
+        /* The open transaction and its detail panel read as one highlighted block, marked by an accent bar on the left */
+        .feed-row.is-open > td { background: rgba(57, 135, 229, 0.12); }
+        .feed-row.is-open > td:first-child { box-shadow: inset 3px 0 0 var(--series-1); }
+        .detail-row > td { background: rgba(57, 135, 229, 0.05); border-top: 1px solid rgba(57, 135, 229, 0.18); border-bottom: 1px solid rgba(57, 135, 229, 0.35); }
+        .detail-row .tx-detail { box-shadow: inset 3px 0 0 var(--series-1); }
         .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; position: sticky; left: 0; width: var(--detail-w, 100%); box-sizing: border-box; }
         .tx-detail .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
@@ -102,12 +106,12 @@
 <body class="min-h-screen p-4 md:p-8">
     <div class="max-w-[1500px] mx-auto">
         <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
-            <div>
+            <div class="flex flex-col items-center text-center">
                 <h1>
-                    <img src="boldbot-logo.png" alt="boldbot.io: redemption-bot leaderboard" width="900" height="244"
-                         class="h-16 md:h-20 w-auto" style="filter: drop-shadow(0 0 24px rgba(57,135,229,.25))">
+                    <img src="boldbot-logo-v4.svg" alt="boldbot.io: redemption-bot leaderboard" width="1148" height="204"
+                         class="h-14 md:h-[72px] w-auto" style="filter: drop-shadow(0 0 24px rgba(57,135,229,.25))">
                 </h1>
-                <p class="text-sm mt-1.5" style="color: var(--muted)">Liquity V2 · Ethereum mainnet · redemption arbitrage</p>
+                <p class="text-sm mt-1.5" style="color: var(--muted)">Liquity V2 · BOLD redemptions on Ethereum mainnet</p>
             </div>
             <nav class="card flex gap-1 p-1 rounded-xl order-last lg:order-none" role="tablist" aria-label="View">
                 <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Dashboard</button>
@@ -633,7 +637,7 @@
             $('redemptionFeed').innerHTML = pageRows.map(r => {
                 const open = openTx === r.tx_hash;
                 return `
-                <tr class="feed-row border-t border-white/5 hover:bg-white/[.03]" data-tx="${esc(r.tx_hash)}">
+                <tr class="feed-row border-t border-white/5 hover:bg-white/[.03]${open ? ' is-open' : ''}" data-tx="${esc(r.tx_hash)}">
                     <td class="px-3 py-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} redemption details">›</button><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(short(r.tx_hash))}<span aria-hidden="true">↗</span></a></td>
                     <td class="px-3 py-2" style="color: var(--ink-2)">${dateTime(r.timestamp)}</td>
                     <td class="px-3 py-2 text-right">${fmt(r.amount)}</td>

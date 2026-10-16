@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 1147.7 204.0" width="1147.7" height="204.0" style="--visor:#0b1220">
+<defs>
+  <radialGradient id="eyeGlow">
+    <stop offset="0.3" stop-color="#46e3f2" stop-opacity="0.55"/><stop offset="0.65" stop-color="#2fc4f0" stop-opacity="0.18"/><stop offset="1" stop-color="#2d9bff" stop-opacity="0"/></radialGradient>
+  <radialGradient id="eyeCore">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#d4fcff"/><stop offset="1" stop-color="#7eeefa"/></radialGradient>
+  <linearGradient id="gHead" x1="20" y1="20" x2="180" y2="200" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#46e3f2"/><stop offset="1" stop-color="#2d6bff"/>
+  </linearGradient>
+  <linearGradient id="gWord" x1="636.0" y1="46" x2="1137.7" y2="186.0" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#2d7bff"/><stop offset="1" stop-color="#46e3f2"/>
+  </linearGradient>
+  
+  <mask id="wm" maskUnits="userSpaceOnUse" x="-100" y="-100" width="3000" height="1000">
+    <g transform="translate(250 186.0) scale(1.0144927536231885 -1.0144927536231885)" fill="#fff"><polygon points="0,50.0 22,50.0 22,125 0,138"/><rect x="0" y="0" width="102" height="100" rx="40"/><rect x="117" y="0" width="102" height="100" rx="40"/><polygon points="234,0 256,0 256,125 234,138"/><rect x="271" y="0" width="102" height="100" rx="40"/><polygon points="351,50.0 373,50.0 373,138 351,125"/><polygon points="388,50.0 410,50.0 410,125 388,138"/><rect x="388" y="0" width="102" height="100" rx="40"/><rect x="505" y="0" width="102" height="100" rx="40"/><polygon points="636,0 658,0 658,111 636,124"/><rect x="622" y="78" width="62" height="22"/><polygon points="736,0 758,0 758,87 736,100"/><rect x="773" y="0" width="102" height="100" rx="40"/></g><g transform="translate(250 186.0) scale(1.0144927536231885 -1.0144927536231885)" fill="#000"><rect x="22" y="22" width="58" height="56" rx="17"/><rect x="139" y="22" width="58" height="56" rx="17"/><rect x="293" y="22" width="58" height="56" rx="17"/><rect x="410" y="22" width="58" height="56" rx="17"/><rect x="527" y="22" width="58" height="56" rx="17"/><rect x="795" y="22" width="58" height="56" rx="17"/></g>
+  </mask>
+</defs>
+
+<g transform="translate(0 0) scale(1.0)">
+  <circle cx="100" cy="13" r="9" fill="url(#gHead)"/>
+  <rect x="97" y="20" width="6" height="18" rx="2" fill="url(#gHead)"/>
+  <path data-ear="1" d="M15 104 L15 142 Q15 144 13 144 C8 144 5 135 5 123 C5 111 8 102 13 102 Q15 102 15 104 Z" fill="url(#gHead)"/>
+  <path data-ear="1" d="M185 104 L185 142 Q185 144 187 144 C192 144 195 135 195 123 C195 111 192 102 187 102 Q185 102 185 104 Z" fill="url(#gHead)"/>
+  <rect x="20" y="40" width="160" height="152" rx="54" fill="url(#gHead)"/>
+  <path d="M40 104 C58 112 84 110 110 100 C132 92 150 90 160 100 L160 132 Q160 156 136 156 L64 156 Q40 156 40 132 Z" fill="#0b1220"/>
+  <circle cx="78" cy="128" r="24" fill="url(#eyeGlow)"/>
+  <circle cx="122" cy="128" r="24" fill="url(#eyeGlow)"/>
+  <circle cx="78" cy="128" r="9.5" fill="url(#eyeCore)"/>
+  <circle cx="122" cy="128" r="9.5" fill="url(#eyeCore)"/>
+</g>
+<rect x="240" y="-50" width="396.01" height="400" fill="#f3f6fa" mask="url(#wm)"/>
+<rect x="636.01" y="-50" width="511.67" height="400" fill="url(#gWord)" mask="url(#wm)"/>
+<circle cx="970.29" cy="174.84" r="11.16" fill="#3fd8f0"/>
+</svg>
