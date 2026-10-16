@@ -87,7 +87,7 @@
         .feed-row:hover .row-toggle { color: var(--ink-1); }
         .row-toggle[aria-expanded="true"] { transform: rotate(90deg); color: var(--series-1); }
         .detail-row > td { background: rgba(57, 135, 229, 0.035); border-top: 1px solid rgba(57, 135, 229, 0.18); }
-        .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; }
+        .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; position: sticky; left: 0; width: var(--detail-w, 100%); box-sizing: border-box; }
         .tx-detail .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
         .sort-btn:hover, .sort-btn.active { color: var(--ink-1); }
@@ -613,7 +613,14 @@
             return out + btn('›', page + 1, { disabled: page === pages, aria: 'Next page' }) + btn('»', pages, { disabled: page === pages, aria: 'Last page' });
         }
 
+        // The detail panel matches the visible width of the (horizontally scrollable) feed
+        function syncDetailWidth() {
+            document.documentElement.style.setProperty('--detail-w', `${$('feedScroll').clientWidth}px`);
+        }
+        window.addEventListener('resize', syncDetailWidth);
+
         function renderFeedPage() {
+            syncDetailWidth();
             const rows = sortedFeed();
             const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
             feed.page = Math.min(Math.max(feed.page, 1), pages);
@@ -676,7 +683,7 @@
         }
 
         function txDetailHtml(r, d) {
-            const box = inner => `<div class="tx-detail px-4 md:px-6 py-5 max-w-[1200px]">${inner}</div>`;
+            const box = inner => `<div class="tx-detail px-4 md:px-5 py-5">${inner}</div>`;
             if (d == null) return box('<p class="text-xs" style="color: var(--muted)">Loading redemption details…</p>');
             if (d.error) return box(`<p class="text-xs" style="color: var(--bad)">Redemption details could not be loaded (${esc(d.error)}).</p>`);
 
@@ -706,6 +713,14 @@
                 return i < 0 ? null : i + 1;
             };
             const calls = callList.length;
+            const troveKey = t => `${t.branch}:${t.trove_id}`;
+            const hitsOf = new Map();
+            d.troves.forEach(t => hitsOf.set(troveKey(t), (hitsOf.get(troveKey(t)) || 0) + 1));
+            const countTroves = list => {
+                const distinct = new Set(list.map(troveKey)).size;
+                const label = `${distinct} trove${distinct === 1 ? '' : 's'}`;
+                return list.length > distinct ? `${label} (${list.length} redemptions)` : label;
+            };
             const price = v => v == null ? '–' : '$' + fmt(v, 2);
 
             // Address links styled like the feed's Tx links so they stand out in the summary text
@@ -715,7 +730,7 @@
             const summary = `
                 <div class="text-sm leading-relaxed space-y-1.5" style="color: var(--ink-2)">
                     <p>
-                        Redeemed <b class="text-white num">${fmt(r.amount, 2)} BOLD</b> from <b class="text-white">${d.troves.length} trove${d.troves.length === 1 ? '' : 's'}</b>
+                        Redeemed <b class="text-white num">${fmt(r.amount, 2)} BOLD</b> from <b class="text-white">${countTroves(d.troves)}</b>
                         on ${branches.length} branch${branches.length === 1 ? '' : 'es'}${calls > 1 ? ` in <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style="background: rgba(250,178,25,.12); color: var(--warn); border: 1px solid rgba(250,178,25,.35)">${calls} redemption calls</span>` : ''}.
                         Sent by ${addrLink(r.sender)}
                         ${r.via_contract ? `through contract ${addrLink(r.to_address)}` : 'directly to the CollateralRegistry'}.
@@ -734,7 +749,7 @@
                     <div class="rounded-xl p-4 text-xs space-y-1.5" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07)">
                         <div class="flex items-center justify-between mb-2">
                             <span class="inline-flex items-center gap-2 text-sm font-semibold text-white">${branchIcon(b.branch, 'w-5 h-5')}${esc(b.branch)} branch</span>
-                            <span style="color: var(--muted)">${b.troves.length} trove${b.troves.length === 1 ? '' : 's'}</span>
+                            <span style="color: var(--muted)">${countTroves(b.troves)}</span>
                         </div>
                         ${line('BOLD redeemed', fmt(b.bold, 2) + (b.attempted - b.bold > 1e-6 ? ` <span style="color: var(--muted)">of ${fmt(b.attempted, 2)}</span>` : ''))}
                         ${line('Collateral paid out', `${fmt(b.coll, 4)} ${esc(b.branch)}`)}
@@ -751,23 +766,31 @@
                 if (left < MIN_DEBT) return `<span style="color: var(--warn)">Zombie</span> <span style="color: var(--muted)">· ${fmt(left, 2)} left</span>`;
                 return `Partly redeemed <span style="color: var(--muted)">· ${fmt(left, 2)} left</span>`;
             };
-            const th = (label, right, title) => `<th class="px-3 py-2 font-medium ${right ? 'text-right' : ''}"${title ? ` title="${title}"` : ''}>${label}</th>`;
+            const th = (label, right, title) => `<th class="px-2.5 py-2 font-medium ${right ? 'text-right' : ''}"${title ? ` title="${title}"` : ''}>${label}</th>`;
             // The contract charges fee = (collateral taken + fee) × redemption rate, so the rate is recoverable per trove
             const debtShare = t => t.debt_after == null || t.debt_redeemed + t.debt_after <= 0 ? null : t.debt_redeemed / (t.debt_redeemed + t.debt_after) * 100;
             const feeRate = t => t.fee_coll == null || t.coll_redeemed + t.fee_coll <= 0 ? null : t.fee_coll / (t.coll_redeemed + t.fee_coll) * 100;
+            const seen = new Map();
+            const hitTag = t => {
+                const total = hitsOf.get(troveKey(t));
+                if (total < 2) return '';
+                const n = (seen.get(troveKey(t)) || 0) + 1;
+                seen.set(troveKey(t), n);
+                return ` <span class="ml-1 px-1.5 py-px rounded text-[10px] tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" title="The same trove was redeemed against in ${total} separate calls">hit ${n}/${total}</span>`;
+            };
             const troveRows = d.troves.map((t, i) => `
                 <tr class="border-t border-white/5">
-                    <td class="px-3 py-1.5 num" style="color: var(--muted)">${i + 1}</td>
-                    ${calls > 1 ? `<td class="px-3 py-1.5 num" style="color: var(--muted)">${callOf(t) ?? '–'}</td>` : ''}
-                    <td class="px-3 py-1.5">${branchChips(t.branch)}</td>
-                    <td class="px-3 py-1.5 num">${troveLink(t)}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
-                    <td class="px-3 py-1.5 num text-right">${t.interest_rate == null ? '–' : t.interest_rate.toFixed(2) + '%'}</td>
-                    <td class="px-3 py-1.5 num text-right">${feeRate(t) == null ? '–' : feeRate(t).toFixed(3) + '%'}</td>
-                    <td class="px-3 py-1.5 num text-right">${fmt(t.debt_redeemed, 2)}</td>
-                    <td class="px-3 py-1.5 num text-right">${debtShare(t) == null ? '–' : debtShare(t).toFixed(1) + '%'}</td>
-                    <td class="px-3 py-1.5 num text-right">${fmt(t.coll_redeemed, 4)} <span style="color: var(--muted)">${esc(t.branch)}</span></td>
-                    <td class="px-3 py-1.5 num text-right">${t.fee_coll == null ? '–' : fmt(t.fee_coll, 5)}</td>
-                    <td class="px-3 py-1.5">${status(t)}</td>
+                    <td class="px-2.5 py-1.5 num" style="color: var(--muted)">${i + 1}</td>
+                    ${calls > 1 ? `<td class="px-2.5 py-1.5 num" style="color: var(--muted)">${callOf(t) ?? '–'}</td>` : ''}
+                    <td class="px-2.5 py-1.5">${branchChips(t.branch)}</td>
+                    <td class="px-2.5 py-1.5 num">${troveLink(t)}${hitTag(t)}${t.batch_manager ? ` <a class="ml-1 px-1.5 py-px rounded text-[10px] uppercase tracking-wide hover:brightness-125" style="background: rgba(255,255,255,.06); color: var(--ink-2)" target="_blank" rel="noopener" title="Interest batch manager ${esc(t.batch_manager)}" href="https://etherscan.io/address/${esc(t.batch_manager)}">batch</a>` : ''}</td>
+                    <td class="px-2.5 py-1.5 num text-right">${t.interest_rate == null ? '–' : t.interest_rate.toFixed(2) + '%'}</td>
+                    <td class="px-2.5 py-1.5 num text-right">${feeRate(t) == null ? '–' : feeRate(t).toFixed(3) + '%'}</td>
+                    <td class="px-2.5 py-1.5 num text-right">${fmt(t.debt_redeemed, 2)}</td>
+                    <td class="px-2.5 py-1.5 num text-right">${debtShare(t) == null ? '–' : debtShare(t).toFixed(1) + '%'}</td>
+                    <td class="px-2.5 py-1.5 num text-right">${fmt(t.coll_redeemed, 4)} <span style="color: var(--muted)">${esc(t.branch)}</span></td>
+                    <td class="px-2.5 py-1.5 num text-right">${t.fee_coll == null ? '–' : fmt(t.fee_coll, 5)}</td>
+                    <td class="px-2.5 py-1.5">${status(t)}</td>
                 </tr>`).join('');
 
             const eth = v => v == null ? '–' : `${fmt(v, 5)} ETH`;
@@ -836,11 +859,11 @@
                         <div class="grid gap-3 flex-1 min-w-0" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr))">${cards}</div>
                     </div>
                     <div>
-                        <div class="kicker mb-2">Troves, in processing order</div>
+                        <div class="kicker mb-2">Trove redemptions, in processing order</div>
                         <div class="overflow-auto scroll max-h-80 rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
                             <table class="w-full text-left text-xs whitespace-nowrap">
                                 <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
-                                    ${th('#')}${calls > 1 ? th('Call', false, 'Redemption call within this transaction') : ''}${th('Branch')}${th('Trove')}${th('Interest rate', true, 'Annual interest rate the borrower pays on this trove. Lower rates are redeemed first.')}${th('Redemption fee', true, 'Redemption fee rate applied to this trove: fee ÷ (collateral taken + fee). Identical for all troves in one redemption call.')}${th('Debt repaid (BOLD)', true)}${th('% of debt', true, "Share of the trove's total debt (including accrued interest) repaid by this redemption: repaid ÷ (repaid + remaining).")}${th('Collateral taken', true)}${th('Fee to trove', true, 'Redemption fee in collateral, left in the trove for its owner.')}${th('Status')}
+                                    ${th('#')}${calls > 1 ? th('Call', false, 'Redemption call within this transaction') : ''}${th('Branch')}${th('Trove')}${th('Interest rate', true, 'Annual interest rate the borrower pays on this trove. Lower rates are redeemed first.')}${th('Redemption fee', true, 'Redemption fee rate applied to this trove: fee ÷ (collateral taken + fee). Identical for all troves in one redemption call.')}${th('Debt repaid', true, 'BOLD debt cancelled on this trove by the redemption.')}${th('% of debt', true, "Share of the trove's total debt (including accrued interest) repaid by this redemption: repaid ÷ (repaid + remaining).")}${th('Collateral taken', true)}${th('Fee to trove', true, 'Redemption fee in collateral, left in the trove for its owner.')}${th('Status')}
                                 </tr></thead>
                                 <tbody>${troveRows}</tbody>
                             </table>
