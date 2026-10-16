@@ -634,7 +634,7 @@
                 const open = openTx === r.tx_hash;
                 return `
                 <tr class="feed-row border-t border-white/5 hover:bg-white/[.03]" data-tx="${esc(r.tx_hash)}">
-                    <td class="px-3 py-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} redemption details">›</button><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(r.tx_hash.slice(0, 8))}…<span aria-hidden="true">↗</span></a></td>
+                    <td class="px-3 py-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} redemption details">›</button><a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.12); color: #8bb8f0" target="_blank" rel="noopener" title="View redemption on Etherscan" href="https://etherscan.io/tx/${esc(r.tx_hash)}">${esc(short(r.tx_hash))}<span aria-hidden="true">↗</span></a></td>
                     <td class="px-3 py-2" style="color: var(--ink-2)">${dateTime(r.timestamp)}</td>
                     <td class="px-3 py-2 text-right">${fmt(r.amount)}</td>
                     <td class="px-3 py-2">${branchChips(r.branches)}</td>
