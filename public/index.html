@@ -202,7 +202,7 @@
                 Select a row for a trove-level breakdown of the redemption.
                 <b style="color: var(--ink-2)">Discount</b> BOLD below $1 ·
                 <b style="color: var(--ink-2)">Oracle gap</b> collateral market price above Liquity's redemption price ·
-                <b style="color: var(--ink-2)">Gross</b> collateral at market minus BOLD bought at market, both at prices in the block before (an estimate: it can be slightly negative when the price moves within the block) ·
+                <b style="color: var(--ink-2)">Gross</b> estimated profit: collateral at the ETH price when the redemption executed, minus BOLD at its price in the block before ·
                 <b style="color: var(--ink-2)">Gas</b> base fee burned ·
                 <b style="color: var(--ink-2)">Tip</b> priority fee + direct coinbase payment to the builder ·
                 <b style="color: var(--ink-2)">Margin</b> net profit over BOLD purchase cost.
@@ -439,7 +439,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
                         <div class="font-semibold mt-1">Pricing and costs</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, and internal ETH transfers to the fee recipient.</p>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, the Uniswap ETH/USDC trades earlier in block N (for the ETH price at the moment of the redemption), and internal ETH transfers to the fee recipient.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">04 · SERVE</div>
@@ -583,7 +583,7 @@
         const FEED_COLUMNS = [
             ['Tx', null], ['Time', 'timestamp'], ['BOLD', 'amount', true], ['Branches', 'branches'], ['Sender', 'sender'],
             ['Price', 'market_price', true], ['Discount', 'spread', true], ['Oracle gap', 'oracle_gap', true], ['Fee', 'fee_pct', true],
-            ['Gross', 'gross_profit_usd', true, 'Estimated at prices in the block before the redemption; can be slightly negative when the price moves within the block'],
+            ['Gross', 'gross_profit_usd', true, 'Estimated: collateral at the ETH price when the redemption executed, BOLD at its price in the block before; pool fees and slippage not included'],
             ['Gas', 'gas_fee_usd', true], ['Tip', 'builder_tip_usd', true],
             ['Net profit', 'net_profit_usd', true], ['Margin', 'net_margin', true]
         ];
@@ -667,10 +667,11 @@
         }
 
         const infoTip = (text, label) => `<button type="button" class="info-tip" aria-label="About ${esc(label.toLowerCase())}">i<span class="info-pop" role="tooltip">${text}</span></button>`;
-        const GROSS_NOTE = 'An estimate at prices in the block before the redemption, not the bot\'s actual result. If the price moves within the block '
-            + 'before the bot sells the collateral, the estimate can be slightly negative even though the trade made money. The actual result cannot '
-            + 'be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost money '
-            + 'would revert and never appear here.';
+        const GROSS_NOTE = 'An estimate, not the bot\'s actual result: the collateral is valued at the Uniswap ETH price at the moment the redemption '
+            + 'executed, and BOLD at its price in the block before. Pool fees and the price impact of the bot\'s own trades are not included, so for large '
+            + 'trades the estimate tends to run high. It can also occasionally be slightly negative even though the trade made money. The actual result '
+            + 'cannot be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost '
+            + 'money would revert and never appear here.';
 
         // Expandable rows: one transaction open at a time; details fetched on first open and cached
         let openTx = null;
@@ -1386,9 +1387,9 @@
             ['Sender', 'Transaction originator; flagged BOT if it redeemed through a contract or at least three times', '<span class="mono">tx.from</span>'],
             ['Price', 'BOLD mid price prior to the block', 'Curve BOLD/USDC <span class="mono">1 / get_p(0)</span> at block N−1; falls back to Uniswap v3, then v4'],
             ['Discount', 'BOLD discount to par', '<span class="mono">(1 − price) × 100</span>'],
-            ['Oracle gap', 'Collateral market price relative to the redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; market = Uniswap v3 ETH/USDC × LST canonical rate'],
+            ['Oracle gap', 'Collateral market price relative to the redemption price', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; market = Uniswap v3 ETH/USDC at the moment of the redemption × LST canonical rate'],
             ['Fee', 'Redemption fee as a percentage of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
-            ['Gross', 'Profit before inclusion costs, estimated at prices in the block before', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
+            ['Gross', 'Profit before inclusion costs (estimate)', '<span class="mono">Σ collateral × market price − BOLD × price</span>'],
             ['Gas', 'Base fee burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>'],
             ['Tip', 'Total payment to the block builder', '<span class="mono">(gasUsed × priority fee + direct coinbase transfers) × ETH/USD</span>'],
             ['Net profit', 'Profit after inclusion costs', '<span class="mono">Gross − Gas − Tip</span>'],
@@ -1396,9 +1397,9 @@
         ];
 
         const LIMITATIONS = [
-            ['Block-level pricing.', 'Contract state is observable only at block boundaries. Price movements earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured; the realized discount may be larger or smaller than reported. The same applies to collateral: when ETH rises within the block before the bot sells, the estimated gross profit can be slightly negative for a transaction that actually made money. The actual result cannot be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost money would revert and never appear here.'],
+            ['Block-level BOLD pricing.', 'BOLD prices are read at block boundaries. Price movements earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured; the realized discount may be larger or smaller than reported. Collateral is valued at the exact Uniswap ETH/USDC price when the redemption executed, taken from the pool\'s last trade earlier in the block (trades by the redeeming bot itself are skipped). Gross profit remains an estimate and can occasionally be slightly negative for a transaction that actually made money. The actual result cannot be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost money would revert and never appear here.'],
             ['Mid price rather than execution price.', 'Acquiring BOLD incurs the pool fee (0.04% on Curve, 0.05% on Uniswap v3) and price impact: approximately 0.044% for a 1,000 USDC purchase and 0.065% for 100,000 USDC on Curve (measured in October 2026). {MARGIN_SHARE}'],
-            ['Collateral valued at mid price.', 'Disposing of the collateral also incurs fees and slippage, and liquid staking tokens can trade below their canonical rate. Neither cost is reflected.'],
+            ['Collateral valued at mid price.', 'Collateral is valued at the pool price just before the redemption, but selling it also incurs pool fees and price impact: a large sale pushes the price down as it executes. Neither cost is reflected, so gross profit is best read as an upper estimate, most of all for large redemptions in fast-moving blocks, where other traders have just moved the pool and the bot\'s own sale moves it back. Liquid staking tokens can also trade below their canonical rate.'],
             ['Attribution by originating account.', 'Operators running multiple accounts appear as separate entities. The bot classification is heuristic: redemption through a contract, or at least three redemptions.'],
             ['Transaction-level costs.', 'Gas and builder payments cover the entire transaction, including the arbitrageur\'s swaps. This is appropriate for profitability analysis but over-attributes costs where a transaction bundles unrelated strategies.'],
             ['Dust redemptions.', 'Redemptions below 1 BOLD round the collateral payout to zero; their fee, edge and profit fields are left blank.']

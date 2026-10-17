@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
     base_fee_eth REAL,               -- gas_used x block base fee (burned)
     priority_fee_eth REAL,           -- gas_used x priority fee, paid to the block builder
     coinbase_tip_eth REAL,           -- ETH sent straight to the block builder from inside the tx
-    eth_usd REAL,                    -- ETH/USDC in the block before
+    eth_usd REAL,                    -- ETH/USDC on Uniswap v3 at the moment of the redemption (last swap earlier in the block)
     gross_profit_usd REAL,           -- collateral at market price - BOLD bought at market_price
     gas_fee_usd REAL,                -- base fee in USD
     builder_tip_usd REAL,            -- priority fee + coinbase tip in USD
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS redemption_events (
     coll_fee REAL NOT NULL,
     coll_price REAL NOT NULL,        -- Liquity oracle price
     redemption_price REAL NOT NULL,  -- price used to size the collateral lot
-    coll_market_price REAL,          -- ETH/USDC on Uniswap v3 x the LST's exchange rate, in the block before
+    coll_market_price REAL,          -- ETH/USDC on Uniswap v3 at the moment of the redemption x the LST's exchange rate
     PRIMARY KEY (tx_hash, log_index)
 );
 

@@ -21,12 +21,14 @@ const CONFIRMATIONS = 3;
 const SCAN_CHUNK = 100000; // blocks per scan pass; progress is saved after each one
 // Bump to make existing databases rescan the whole history once. v2: BOLD-burn discovery,
 // which replaced public-RPC eth_getLogs scans that silently returned empty ranges.
-const SCAN_VERSION = '2';
+// v3: collateral valued at the ETH/USDC price at the moment of the redemption (ethPriceBeforeTx).
+const SCAN_VERSION = '3';
 const ENRICH_CONCURRENCY = 4;
 
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 // Uniswap v3 USDC/WETH 0.05%, the reference ETH market price
 const ETH_USDC_POOL = '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640';
+const UNI_V3_SWAP_TOPIC = ethers.id('Swap(address,address,int256,int256,uint160,uint128,int24)');
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
 const COLLATERAL_REGISTRY_ABI = [
@@ -232,6 +234,25 @@ async function pricesAt(blockTag) {
     return out;
 }
 
+// ETH/USDC price at the moment a tx executes. The pool's Swap events carry its price after each trade, so the
+// last swap earlier in the same block gives the price the redemption met. Swaps by the redeeming bot itself
+// (its EOA or contract as caller or recipient) are skipped: they are part of its own trade, not a market move.
+// Returns null when nobody else traded the pool earlier in the block: the previous block's price is then exact.
+async function ethPriceBeforeTx(receipt, caches) {
+    const blockNumber = receipt.blockNumber;
+    const swaps = await cached(caches.ethSwaps, blockNumber, () => withRetry(() => provider.getLogs({
+        address: ETH_USDC_POOL, topics: [UNI_V3_SWAP_TOPIC], fromBlock: blockNumber, toBlock: blockNumber
+    })));
+    const bot = new Set([receipt.from.toLowerCase(), (receipt.to || '').toLowerCase()]);
+    const party = topic => ethers.getAddress(ethers.dataSlice(topic, 12)).toLowerCase();
+    const last = swaps
+        .filter(l => l.transactionIndex < receipt.index && !bot.has(party(l.topics[1])) && !bot.has(party(l.topics[2])))
+        .reduce((a, l) => (!a || l.index > a.index ? l : a), null);
+    if (!last) return null;
+    const sqrtPriceX96 = ethers.AbiCoder.defaultAbiCoder().decode(['int256', 'int256', 'uint160', 'uint128', 'int24'], last.data)[2];
+    return 1e12 / (Number(sqrtPriceX96) / 2 ** 96) ** 2; // WETH per USDC in raw units, inverted to USD per ETH
+}
+
 function collMarketPrice(symbol, prices) {
     if (prices.eth_usd == null) return null;
     if (symbol === 'WETH') return prices.eth_usd;
@@ -386,10 +407,14 @@ async function enrichTx(receipt, logs, caches) {
     const { branches, registryAddress } = config;
     const txHash = receipt.hash;
     const blockNumber = receipt.blockNumber;
-    const [block, prices] = await Promise.all([
+    const [block, prices, ethNow] = await Promise.all([
         cached(caches.blocks, blockNumber, () => withRetry(() => provider.getBlock(blockNumber))),
-        withRetry(() => pricesAt(blockNumber - 1))
+        withRetry(() => pricesAt(blockNumber - 1)),
+        ethPriceBeforeTx(receipt, caches)
     ]);
+    // BOLD prices stay at the previous block (moves within the block are mostly the redeemer's own purchase);
+    // ETH, and through it the collateral, is priced at the moment of the redemption
+    if (ethNow != null) prices.eth_usd = ethNow;
     const tips = await cached(caches.tips, blockNumber, () => coinbaseTransfers(blockNumber, block.miner));
 
     const events = logs.map(log => {
@@ -536,7 +561,7 @@ async function syncData() {
         Object.assign(state, { phase: 'scanning', fromBlock: from, targetBlock: target, scannedTo: from - 1 });
         console.log(`Sync: blocks ${from} → ${target} across ${Object.keys(config.branches).length} branches (${Object.values(config.branches).map(b => b.symbol).join(', ')})`);
 
-        const caches = { blocks: new Map(), tips: new Map() };
+        const caches = { blocks: new Map(), tips: new Map(), ethSwaps: new Map() };
         for await (const { txs, toBlock } of scanRedemptions(from, target)) {
             state.found += txs.length;
             const rows = await mapPool(txs, ENRICH_CONCURRENCY, async ({ receipt, logs }) => {
