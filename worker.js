@@ -22,13 +22,30 @@ const SCAN_CHUNK = 100000; // blocks per scan pass; progress is saved after each
 // Bump to make existing databases rescan the whole history once. v2: BOLD-burn discovery,
 // which replaced public-RPC eth_getLogs scans that silently returned empty ranges.
 // v3: collateral valued at the ETH/USDC price at the moment of the redemption (ethPriceBeforeTx).
-const SCAN_VERSION = '3';
+// v4: flash-loan venue and BOLD sources per redemption (flashVenues, boldSources).
+const SCAN_VERSION = '4';
 const ENRICH_CONCURRENCY = 4;
 
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 // Uniswap v3 USDC/WETH 0.05%, the reference ETH market price
 const ETH_USDC_POOL = '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640';
 const UNI_V3_SWAP_TOPIC = ethers.id('Swap(address,address,int256,int256,uint160,uint128,int24)');
+const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+// Flash-loan events, keyed by topic; a venue is named only when the event comes from its known contract
+// (Uniswap v3 Flash comes from any pool). Financing without such an event is found by flashSwapVenue.
+const FLASH_EVENTS = {
+    [ethers.id('FlashLoan(address,address,uint256)')]: { '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb': 'Morpho' },
+    [ethers.id('FlashLoan(address,address,uint256,uint256)')]: {
+        '0xba12222222228d8ba445958a75a0704d566bf2c8': 'Balancer', '0x60744434d6339a6b27d73d9eda62b6f66a0a04fa': 'Maker'
+    },
+    [ethers.id('FlashLoan(address,address,address,uint256,uint8,uint256,uint16)')]: {
+        '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2': 'Aave', '0xc13e21b648a5ee794902342038ff3adab66be987': 'Spark'
+    },
+    [ethers.id('Flash(address,address,uint256,uint256,uint256,uint256)')]: '*Uniswap v3 flash loan'
+};
+const FLASH_LENDERS = new Set(Object.values(FLASH_EVENTS).flatMap(v => typeof v === 'string' ? [] : Object.keys(v)));
+const UNI_V4_POOL_MANAGER_ADDRESS = '0x000000000004444c5dc75cb358380d2e3de08a90';
+const BALANCER_V3_VAULT = '0xba1333333333a1ba1108e8412f11850a5c319ba9';
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
 const COLLATERAL_REGISTRY_ABI = [
@@ -108,11 +125,13 @@ const insertRedemption = db.prepare(`INSERT OR REPLACE INTO redemptions
     (tx_hash, block, timestamp, sender, to_address, via_contract, branches, amount, coll_value_usd, fee_usd,
      price_curve, price_uni_v3, price_uni_v4, market_price, spread, oracle_gap, fee_pct, net_edge,
      gas_used, base_fee_eth, priority_fee_eth, coinbase_tip_eth, eth_usd,
-     gross_profit_usd, gas_fee_usd, builder_tip_usd, net_profit_usd, net_margin)
+     gross_profit_usd, gas_fee_usd, builder_tip_usd, net_profit_usd, net_margin,
+     flash_venue, bold_src_curve, bold_src_uni_v3, bold_src_uni_v4, bold_src_other, bold_src_held)
     VALUES (@tx_hash, @block, @timestamp, @sender, @to_address, @via_contract, @branches, @amount, @coll_value_usd, @fee_usd,
      @price_curve, @price_uni_v3, @price_uni_v4, @market_price, @spread, @oracle_gap, @fee_pct, @net_edge,
      @gas_used, @base_fee_eth, @priority_fee_eth, @coinbase_tip_eth, @eth_usd,
-     @gross_profit_usd, @gas_fee_usd, @builder_tip_usd, @net_profit_usd, @net_margin)`);
+     @gross_profit_usd, @gas_fee_usd, @builder_tip_usd, @net_profit_usd, @net_margin,
+     @flash_venue, @bold_src_curve, @bold_src_uni_v3, @bold_src_uni_v4, @bold_src_other, @bold_src_held)`);
 
 const insertTrove = db.prepare(`INSERT OR REPLACE INTO redemption_troves
     (tx_hash, log_index, branch, trove_id, interest_rate, debt_redeemed, coll_redeemed, fee_coll, debt_after, coll_after, batch_manager)
@@ -251,6 +270,71 @@ async function ethPriceBeforeTx(receipt, caches) {
     if (!last) return null;
     const sqrtPriceX96 = ethers.AbiCoder.defaultAbiCoder().decode(['int256', 'int256', 'uint160', 'uint128', 'int24'], last.data)[2];
     return 1e12 / (Number(sqrtPriceX96) / 2 ** 96) ** 2; // WETH per USDC in raw units, inverted to USD per ETH
+}
+
+// Flash-loan lenders used in the tx, e.g. "Morpho" or "Balancer,Morpho"; null when none is detected
+function flashVenues(receipt) {
+    const venues = new Set();
+    for (const log of receipt.logs) {
+        const known = FLASH_EVENTS[log.topics[0]];
+        if (!known) continue;
+        const venue = typeof known === 'string' ? known.slice(1) : known[log.address.toLowerCase()];
+        if (venue) venues.add(venue);
+    }
+    const swap = flashSwapVenue(receipt);
+    if (swap) venues.add(swap);
+    return venues.size ? [...venues].sort().join(',') : null;
+}
+
+// Flash swap: the redeemer's first token movement is a pool paying it (the output of a swap not yet paid for),
+// and that pool is paid back later in the tx, typically with the redeemed collateral. Pools of the known
+// flash-loan lenders are left to their events.
+function flashSwapVenue(receipt) {
+    const redeemer = new Set([receipt.from.toLowerCase(), (receipt.to || '').toLowerCase()]);
+    const moves = [];
+    for (const log of receipt.logs) {
+        if (log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 3) continue;
+        const from = ethers.dataSlice(log.topics[1], 12).toLowerCase(), to = ethers.dataSlice(log.topics[2], 12).toLowerCase();
+        if (from === ethers.ZeroAddress || to === ethers.ZeroAddress) continue;
+        if (redeemer.has(to) && !redeemer.has(from)) moves.push({ dir: 'in', party: from });
+        else if (redeemer.has(from) && !redeemer.has(to)) moves.push({ dir: 'out', party: to });
+    }
+    const first = moves[0];
+    if (!first || first.dir !== 'in' || FLASH_LENDERS.has(first.party)) return null;
+    if (!moves.slice(1).some(m => m.dir === 'out' && m.party === first.party)) return null;
+    if (first.party === UNI_V4_POOL_MANAGER_ADDRESS) return 'Uniswap v4 flash swap';
+    if (first.party === BALANCER_V3_VAULT) return 'Balancer v3 flash swap';
+    const uniV3 = receipt.logs.some(l => l.address.toLowerCase() === first.party && l.topics[0] === UNI_V3_SWAP_TOPIC);
+    return uniV3 ? 'Uniswap v3 flash swap' : 'Other flash swap';
+}
+
+// Where the redeemed BOLD came from within the tx. Each address is counted by its net BOLD outflow, so routers
+// passing BOLD along and loans repaid within the tx cancel out. What was not sourced in the tx was already held.
+function boldSources(receipt, amount) {
+    const { pools } = config;
+    const bold = env('BOLD_TOKEN_ADDRESS').toLowerCase();
+    const redeemer = new Set([receipt.from.toLowerCase(), (receipt.to || '').toLowerCase()]);
+    const net = new Map();
+    for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== bold || log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 3) continue;
+        const from = ethers.dataSlice(log.topics[1], 12).toLowerCase(), to = ethers.dataSlice(log.topics[2], 12).toLowerCase();
+        if (from === ethers.ZeroAddress || to === ethers.ZeroAddress) continue; // mint, or the redemption's burn
+        const v = Number(ethers.formatEther(log.data));
+        net.set(from, (net.get(from) || 0) + v);
+        net.set(to, (net.get(to) || 0) - v);
+    }
+    const venue = {
+        [pools.curve?.address.toLowerCase()]: 'curve', [pools.uniV3?.address.toLowerCase()]: 'uni_v3', [pools.uniV4?.address.toLowerCase()]: 'uni_v4'
+    };
+    const src = { curve: 0, uni_v3: 0, uni_v4: 0, other: 0 };
+    for (const [addr, out] of net) if (out > 1e-9 && !redeemer.has(addr)) src[venue[addr] || 'other'] += out;
+    // Scale down if the tx sourced more BOLD than it redeemed (the rest stayed with the redeemer)
+    const sourced = src.curve + src.uni_v3 + src.uni_v4 + src.other;
+    const k = sourced > amount ? amount / sourced : 1;
+    return {
+        bold_src_curve: src.curve * k, bold_src_uni_v3: src.uni_v3 * k, bold_src_uni_v4: src.uni_v4 * k, bold_src_other: src.other * k,
+        bold_src_held: Math.max(amount - sourced * k, 0)
+    };
 }
 
 function collMarketPrice(symbol, prices) {
@@ -496,7 +580,9 @@ async function enrichTx(receipt, logs, caches) {
             gas_fee_usd: gasFeeUsd,
             builder_tip_usd: builderTipUsd,
             net_profit_usd: netProfit,
-            net_margin: netProfit != null ? netProfit / purchaseCost * 100 : null
+            net_margin: netProfit != null ? netProfit / purchaseCost * 100 : null,
+            flash_venue: flashVenues(receipt),
+            ...boldSources(receipt, amount)
         }
     };
 }
@@ -523,6 +609,58 @@ const saveChunk = db.transaction((rows, toBlock) => {
 });
 
 const saveTroves = db.transaction(rows => rows.forEach(t => insertTrove.run(t)));
+
+// Redeemer addresses: deployers of the contracts redeemers call (Etherscan) and ENS names, looked up once per
+// address (ENS rechecked monthly). Failures are logged and retried at the next sync; they never fail the sync.
+const ENS_RECHECK_MS = 30 * 864e5;
+const newAddresses = db.prepare(`INSERT OR IGNORE INTO addresses (address, is_contract)
+    SELECT sender, 0 FROM redemptions UNION SELECT to_address, 1 FROM redemptions WHERE via_contract = 1`);
+const contractsWithoutDeployer = db.prepare('SELECT address FROM addresses WHERE is_contract = 1 AND deployer_checked_at IS NULL');
+const setDeployer = db.prepare('UPDATE addresses SET deployer = ?, created_tx = ?, deployer_checked_at = ? WHERE address = ?');
+const addressesForEns = db.prepare('SELECT address FROM addresses WHERE ens_checked_at IS NULL OR ens_checked_at < ?');
+const setEns = db.prepare('UPDATE addresses SET ens = ?, ens_checked_at = ? WHERE address = ?');
+
+async function refreshAddresses() {
+    newAddresses.run();
+    const key = process.env.ETHERSCAN_API_KEY;
+    const pending = contractsWithoutDeployer.all().map(r => r.address);
+    if (key && pending.length) {
+        state.phase = 'looking up contract deployers';
+        // Etherscan answers up to 5 contracts per request; the free tier allows a few requests per second
+        for (let i = 0; i < pending.length; i += 5) {
+            const chunk = pending.slice(i, i + 5);
+            try {
+                const url = `https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getcontractcreation&contractaddresses=${chunk.join(',')}&apikey=${key}`;
+                const res = await withRetry(async () => {
+                    const r = await fetch(url).then(x => x.json());
+                    if (r.status !== '1' && !/no data/i.test(r.message || '') && !/no data/i.test(String(r.result))) throw new Error(`Etherscan: ${r.result || r.message}`);
+                    return r;
+                }, 4);
+                const found = new Map((Array.isArray(res.result) ? res.result : []).map(c => [c.contractAddress.toLowerCase(), c]));
+                for (const a of chunk) {
+                    const c = found.get(a);
+                    setDeployer.run(c ? c.contractCreator.toLowerCase() : null, c ? c.txHash : null, Date.now(), a);
+                }
+            } catch (e) {
+                console.warn(`Deployer lookup failed (${chunk.length} contracts): ${e.message}`);
+            }
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
+    const ensDue = addressesForEns.all(Date.now() - ENS_RECHECK_MS).map(r => r.address);
+    if (ensDue.length) state.phase = 'looking up ENS names';
+    await mapPool(ensDue, ENRICH_CONCURRENCY, async a => {
+        try {
+            // lookupAddress returns the primary name only if it also resolves back to the address
+            const name = await withRetry(() => provider.lookupAddress(a), 4);
+            setEns.run(name || null, Date.now(), a);
+        } catch (e) {
+            // A resolver that reverts has no usable name: record that rather than retrying at every sync
+            if (e.code === 'CALL_EXCEPTION') setEns.run(null, Date.now(), a);
+            else console.warn(`ENS lookup failed for ${a}: ${e.shortMessage || e.message}`);
+        }
+    });
+}
 
 // Redemptions synced before trove decoding was added have no trove rows yet: decode them from
 // their receipts once. Runs until every redemption has its troves, then is skipped.
@@ -575,6 +713,11 @@ async function syncData() {
         }
 
         await backfillTroves();
+        try {
+            await refreshAddresses();
+        } catch (e) {
+            console.warn(`Address details not refreshed: ${e.message}`);
+        }
         console.log(`Sync complete: ${state.processed} redemption tx processed, synced to block ${target}.`);
     } catch (e) {
         state.lastError = e.shortMessage || e.message;
@@ -590,7 +733,8 @@ function getStatus() {
     return { ...state, lastSyncedBlock: lastSyncedBlock() };
 }
 
-module.exports = { syncData, getStatus };
+// flashVenues, boldSources and loadConfig are exposed for checks against individual transactions
+module.exports = { syncData, getStatus, flashVenues, boldSources, loadConfig };
 
 if (require.main === module) {
     syncData()

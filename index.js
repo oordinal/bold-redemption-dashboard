@@ -38,6 +38,22 @@ app.get('/api/stats', (req, res) => {
     }
 });
 
+app.get('/api/addresses', (req, res) => {
+    try {
+        res.json(queries.addresses());
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/batches', (req, res) => {
+    try {
+        res.json(queries.batchRows());
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/tx/:hash', (req, res) => {
     const hash = req.params.hash.toLowerCase();
     if (!/^0x[0-9a-f]{64}$/.test(hash)) return res.status(400).json({ error: 'invalid transaction hash' });

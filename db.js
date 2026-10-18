@@ -15,4 +15,11 @@ if (cols.length && !cols.some(c => c.name === 'net_profit_usd')) {
 
 db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 
+// Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves existing tables as they are
+const have = new Set(db.prepare('PRAGMA table_info(redemptions)').all().map(c => c.name));
+for (const [name, type] of [['flash_venue', 'TEXT'], ['bold_src_curve', 'REAL'], ['bold_src_uni_v3', 'REAL'],
+    ['bold_src_uni_v4', 'REAL'], ['bold_src_other', 'REAL'], ['bold_src_held', 'REAL']]) {
+    if (!have.has(name)) db.exec(`ALTER TABLE redemptions ADD COLUMN ${name} ${type}`);
+}
+
 module.exports = db;

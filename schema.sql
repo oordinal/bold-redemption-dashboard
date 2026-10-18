@@ -27,7 +27,13 @@ CREATE TABLE IF NOT EXISTS redemptions (
     gas_fee_usd REAL,                -- base fee in USD
     builder_tip_usd REAL,            -- priority fee + coinbase tip in USD
     net_profit_usd REAL,             -- gross profit - gas fee - builder tip
-    net_margin REAL                  -- net profit, in % of the BOLD purchase cost
+    net_margin REAL,                 -- net profit, in % of the BOLD purchase cost
+    flash_venue TEXT,                -- flash-loan lenders detected in the tx, e.g. "Morpho" or "Morpho,Balancer"; NULL if none
+    bold_src_curve REAL,             -- BOLD redeemed sourced in the tx from the Curve BOLD/USDC pool (net outflow)
+    bold_src_uni_v3 REAL,            -- ... from the Uniswap v3 BOLD/USDC pool
+    bold_src_uni_v4 REAL,            -- ... from Uniswap v4 (PoolManager, any BOLD pool)
+    bold_src_other REAL,             -- ... from any other address: other pools and DEXs, lending markets
+    bold_src_held REAL               -- BOLD not sourced in the tx: already held by the redeemer
 );
 CREATE INDEX IF NOT EXISTS idx_redemptions_block ON redemptions(block);
 CREATE INDEX IF NOT EXISTS idx_redemptions_sender ON redemptions(sender);
@@ -68,3 +74,15 @@ CREATE TABLE IF NOT EXISTS redemption_troves (
     PRIMARY KEY (tx_hash, log_index)
 );
 CREATE INDEX IF NOT EXISTS idx_redemption_troves_tx ON redemption_troves(tx_hash);
+
+-- Redeemer addresses (senders and the contracts they call): who deployed each contract and any ENS name.
+-- Filled once per address after a sync; used to group senders and contracts into operators.
+CREATE TABLE IF NOT EXISTS addresses (
+    address TEXT PRIMARY KEY,
+    is_contract BOOLEAN NOT NULL,    -- 1 for a contract redeemers call, 0 for a sender
+    deployer TEXT,                   -- account that created the contract (Etherscan), NULL if unknown or a sender
+    created_tx TEXT,                 -- creation transaction
+    ens TEXT,                        -- primary ENS name, verified forward and back; NULL if none
+    deployer_checked_at INTEGER,     -- ms since epoch of the last deployer lookup (NULL: not yet)
+    ens_checked_at INTEGER           -- ms since epoch of the last ENS lookup
+);

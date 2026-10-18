@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BOLD Redemption Dashboard</title>
-    <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" href="favicon.ico?v=2" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=2">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -63,6 +63,13 @@
         .scroll::-webkit-scrollbar { width: 6px; height: 6px; }
         .scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
         .fade-bottom { mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent); }
+        /* Cards sharing one height on wide screens; their lists scroll inside (natural height on narrow screens) */
+        @media (min-width: 1024px) {
+            .card-fixed { height: 23rem; display: flex; flex-direction: column; }
+            .card-fixed .fill { flex: 1 1 auto; min-height: 0; position: relative; }
+            .card-fixed .fill > .scroll-area { position: absolute; inset: 0; overflow-y: auto; padding: 0 4px 24px 0;
+                mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent); }
+        }
         .dot { width: 8px; height: 8px; border-radius: 50%; position: relative; }
         .dot.pulse::after {
             content: ""; position: absolute; inset: -4px; border-radius: 50%;
@@ -100,6 +107,33 @@
             color: var(--ink-2); font: 400 12px/1.45 Inter, system-ui, sans-serif; text-align: left; white-space: normal;
             opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s, visibility .12s; }
         .info-tip:hover .info-pop, .info-tip:focus .info-pop { opacity: 1; visibility: visible; }
+        .info-tip.below .info-pop { bottom: auto; top: calc(100% + 8px); }
+        .info-tip.to-left .info-pop { left: auto; right: -12px; }
+        /* Instant tooltip for values marked with data-tip (one shared box, positioned next to the value) */
+        .tip-target { cursor: help; text-decoration: underline dotted rgba(255, 255, 255, 0.28); text-underline-offset: 4px; }
+        th[data-tip] { cursor: help; }
+        #tipBox { position: fixed; z-index: 60; pointer-events: none; min-width: 180px; max-width: 300px; padding: 8px 11px; border-radius: 9px;
+            background: #1a2130; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 14px 32px -14px rgba(0, 0, 0, 0.8);
+            color: var(--ink-2); font: 400 12px/1.5 Inter, system-ui, sans-serif; text-transform: none; letter-spacing: normal;
+            opacity: 0; transform: translateY(3px); transition: opacity .1s, transform .1s; }
+        #tipBox.show { opacity: 1; transform: none; }
+        #tipBox .tip-title { color: var(--ink-1); font-weight: 600; margin-bottom: 4px; }
+        #tipBox .tip-row { display: flex; justify-content: space-between; gap: 18px; }
+        #tipBox .tip-row span:last-child { color: var(--ink-1); font-family: "JetBrains Mono", ui-monospace, monospace; }
+        .op-row { cursor: pointer; }
+        .op-row:hover > td { background: rgba(255, 255, 255, 0.03); }
+        .op-row.is-open > td { background: rgba(57, 135, 229, 0.10); }
+        .op-row.is-open > td:first-child { box-shadow: inset 3px 0 0 var(--series-1); }
+        .op-detail > td { background: rgba(57, 135, 229, 0.04); }
+        /* Hovering a contract's sender count lights up those senders in the list */
+        .link-count { cursor: default; padding: 1px 5px; border-radius: 5px; text-decoration: underline dotted rgba(255, 255, 255, 0.28); text-underline-offset: 4px; transition: background .12s; }
+        .link-count:hover { background: rgba(57, 135, 229, 0.2); }
+        tr.is-linked > td { background: rgba(57, 135, 229, 0.12); transition: background .12s; }
+        tr.is-linked .role-pill { box-shadow: 0 0 0 1px rgba(139, 184, 240, 0.8); color: #cfe0f7 !important; }
+        /* The glow is left out on small screens: mobile Safari renders filtered images at reduced resolution */
+        @media (min-width: 768px) { .logo { filter: drop-shadow(0 0 24px rgba(57, 135, 229, 0.25)); } }
+        .share-bar { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+        .share-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--series-1); }
         .tx-detail { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: normal; position: sticky; left: 0; width: var(--detail-w, 100%); box-sizing: border-box; }
         .tx-detail .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         .sort-btn { display: inline-flex; align-items: center; gap: 4px; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
@@ -118,13 +152,13 @@
             <div class="flex flex-col items-center text-center">
                 <h1>
                     <img src="boldbot-logo-v4.svg" alt="boldbot.io: redemption-bot leaderboard" width="1148" height="204"
-                         class="h-14 md:h-[72px] w-auto" style="filter: drop-shadow(0 0 24px rgba(57,135,229,.25))">
+                         class="logo h-11 md:h-16 w-auto">
                 </h1>
                 <p class="text-sm mt-1.5" style="color: var(--muted)">Liquity V2 · BOLD redemptions on Ethereum mainnet</p>
             </div>
             <nav class="card flex gap-1 p-1 rounded-xl order-last lg:order-none" role="tablist" aria-label="View">
                 <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Dashboard</button>
-                <button id="tab-how" class="tab" role="tab" aria-selected="false">How it works</button>
+                <button id="tab-how" class="tab" role="tab" aria-selected="false">Methodology</button>
             </nav>
             <div class="flex items-center gap-3">
                 <div id="syncPill" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm card">
@@ -143,11 +177,12 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="card lg:col-span-2 p-5 md:p-6">
-                <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
-                    <div>
-                        <h2 class="font-semibold">BOLD price before each redemption</h2>
-                        <p class="text-xs mt-1" style="color: var(--muted)">Pool mid price in the block before. Each point is one redemption tx.</p>
-                    </div>
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 class="font-semibold">BOLD price before each redemption</h2>
+                    <span id="priceCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-4">
+                    <p class="text-xs" style="color: var(--muted)">Pool mid price in the block before. Each point is one redemption tx.<br><span id="priceScope"></span></p>
                     <div id="priceLegend" class="flex flex-wrap items-center gap-2 text-xs" style="color: var(--ink-2)" aria-label="Show or hide pools"></div>
                 </div>
                 <div class="relative h-80"><canvas id="priceChart"></canvas></div>
@@ -158,7 +193,7 @@
                     <h2 class="font-semibold">Bot leaderboard</h2>
                     <span id="botCount" class="text-xs mono" style="color: var(--muted)"></span>
                 </div>
-                <p class="text-xs mb-3" style="color: var(--muted)">Senders redeeming via a contract or 3+ times · ranked by net profit after gas and tips</p>
+                <p class="text-xs mb-3" style="color: var(--muted)">Senders redeeming via a contract or 3+ times · ranked by net profit after gas and tips<br><span id="botScope"></span></p>
                 <div class="relative flex-1 min-h-[20rem] lg:min-h-0">
                     <div id="botLeaderboard" class="absolute inset-0 overflow-y-auto scroll fade-bottom space-y-1.5 pr-1 pb-6"></div>
                 </div>
@@ -179,19 +214,91 @@
                 <span aria-hidden="true">→</span>
                 <input id="rangeTo" type="date" class="date-in" aria-label="Chart range end">
             </div>
-            <span class="text-xs lg:ml-auto" style="color: var(--muted)">Applies to the three charts. Tiles, leaderboard and feed always cover every redemption.</span>
+            <span class="text-xs lg:ml-auto" style="color: var(--muted)">Applies to the charts, the bot leaderboard and the cards below. Tiles and feed cover every redemption.</span>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <div class="card p-5 md:p-6">
-                <h2 class="font-semibold mb-4">Weekly BOLD redeemed</h2>
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 class="font-semibold">Weekly BOLD redeemed</h2>
+                    <span id="volumeTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-4" style="color: var(--muted)">BOLD redeemed per week, Monday to Sunday (UTC)<br><span id="volumeScope"></span></p>
                 <div class="relative h-56"><canvas id="volumeChart"></canvas></div>
             </div>
             <div class="card p-5 md:p-6">
-                <h2 class="font-semibold mb-4">Weekly net profit <span class="text-xs font-normal" style="color: var(--muted)">USD, after gas and builder tips</span></h2>
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 class="font-semibold">Weekly net profit</h2>
+                    <span id="profitTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-4" style="color: var(--muted)">USD, after gas and builder tips<br><span id="profitScope"></span></p>
                 <div class="relative h-56"><canvas id="profitChart"></canvas></div>
             </div>
         </div>
+
+        <div id="anatomyRow" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 hidden">
+            <section class="card card-fixed p-5 md:p-6" aria-labelledby="sourceTitle">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 id="sourceTitle" class="font-semibold">BOLD sourcing</h2>
+                    <span id="sourceCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-4" style="color: var(--muted)">Where the redeemed BOLD came from within each transaction, by BOLD<br><span class="range-scope"></span></p>
+                <div class="fill"><div id="sourceRows" class="scroll-area scroll space-y-1.5"></div></div>
+            </section>
+            <section class="card card-fixed p-5 md:p-6" aria-labelledby="flashTitle">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 id="flashTitle" class="font-semibold flex items-center">Flash financing<span id="flashInfo" class="inline-flex items-center"></span></h2>
+                    <span id="flashCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-4" style="color: var(--muted)">Flash loans and flash swaps detected in each redemption transaction, by share of transactions<br><span class="range-scope"></span></p>
+                <div class="fill"><div id="flashRows" class="scroll-area scroll space-y-1.5"></div></div>
+            </section>
+        </div>
+
+        <section id="batchCard" class="card card-fixed p-5 md:p-6 mt-6 hidden" aria-labelledby="batchTitle">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <h2 id="batchTitle" class="font-semibold flex items-center">Batch-managed troves<span id="batchInfo" class="inline-flex items-center"></span></h2>
+                <span id="batchCount" class="text-xs mono" style="color: var(--muted)"></span>
+            </div>
+            <p class="text-xs mb-4" style="color: var(--muted)">Redeemed troves whose interest rate was set by a batch manager (an interest-rate delegate)<br><span id="batchScope">All redemptions</span></p>
+            <div class="fill grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)] gap-6">
+                <div id="batchFigures" class="grid sm:grid-cols-2 gap-3"></div>
+                <div class="min-w-0 flex flex-col">
+                    <div class="kicker mb-2">Managers by BOLD redeemed from their troves</div>
+                    <div class="relative h-56 lg:h-auto lg:flex-1 lg:min-h-0">
+                        <div id="batchManagers" class="absolute inset-0 overflow-y-auto scroll fade-bottom space-y-1.5 pr-1 pb-6"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="operatorCard" class="card p-5 md:p-6 mt-6 hidden" aria-labelledby="operatorTitle">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <h2 id="operatorTitle" class="font-semibold flex items-center">Operators<span id="operatorInfo" class="inline-flex items-center"></span></h2>
+                <span id="operatorCount" class="text-xs mono" style="color: var(--muted)"></span>
+            </div>
+            <p class="text-xs mb-4" style="color: var(--muted)">Redeemers grouped into likely operators: senders with the contracts they call, and contracts with a common deployer · select a row for its addresses<br><span id="operatorScope"></span></p>
+            <div class="overflow-auto scroll max-h-[30rem] rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                <table class="w-full text-sm">
+                    <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-left font-medium">#</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-left font-medium">Operator</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">Contracts</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">Senders</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">Txs</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">BOLD</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">Net profit</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium">Share</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium" data-tip="Net profit per redemption transaction, after gas and builder payments">Net / tx</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-right font-medium"><span class="inline-flex items-center">Builders<span id="builderInfo" class="inline-flex items-center normal-case tracking-normal"></span></span></th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-left font-medium" data-tip="The operator's most used flash loan or flash swap, and its share of the operator's transactions. Hover over a value for the full breakdown.">Financing</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-left font-medium" data-tip="Main source of the BOLD the operator redeemed, and its share of the operator's BOLD. Hover over a value for the full breakdown.">BOLD source</th>
+                        <th class="px-2.5 py-2.5 whitespace-nowrap text-left font-medium">Active</th>
+                    </tr></thead>
+                    <tbody id="operatorRows" class="mono text-[13px]"></tbody>
+                </table>
+            </div>
+        </section>
 
         <div class="card mt-6 p-5 md:p-6">
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
@@ -423,7 +530,39 @@
             </section>
 
             <section class="card p-5 md:p-8">
-                <div class="kicker">6 · Methodology</div>
+                <div class="kicker">6 · Sourcing, financing and operators</div>
+                <h3 class="text-xl font-semibold mt-1">How the redemption cards are computed</h3>
+                <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">The cards below the weekly charts describe how redeemers operate. All four follow the chart range and are computed from each redemption transaction's own records, with deployers and names added from Etherscan and ENS.</p>
+                <div class="grid md:grid-cols-2 gap-3 mt-6">
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">BOLD SOURCING</div>
+                        <div class="font-semibold mt-1">Where the redeemed BOLD came from</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>Every BOLD transfer inside the transaction is counted, and each address is credited with the BOLD it sent out minus the BOLD it received. Routers that pass BOLD along, and loans of BOLD repaid within the same transaction, therefore cancel out.</p>
+                            <p>Addresses that supplied BOLD are classified as the Curve BOLD/USDC pool, the Uniswap v3 BOLD/USDC pool, Uniswap v4 (any BOLD pool) or other venues (other pools and DEXs, lending markets where BOLD was borrowed). BOLD the redeemer did not obtain within the transaction counts as already held. Shares are weighted by BOLD redeemed.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">FLASH FINANCING</div>
+                        <div class="font-semibold mt-1">How redemptions are funded</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p><b class="text-white">Flash loans</b> are recognised by the event their lender emits, and named only when the event comes from the lender's known contract: Morpho, Balancer, Aave, Spark and Maker, plus Uniswap v3's flash-loan event from any of its pools.</p>
+                            <p><b class="text-white">Flash swaps</b> are recognised by their pattern: the redeemer's first token received comes from a pool that it pays back later in the same transaction, usually with the redeemed collateral. The pool is classified by the swap events it emits. Shares are per transaction, and a transaction can combine several methods. "None detected" covers own capital and patterns not recognised.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">BATCH-MANAGED TROVES</div>
+                        <div class="font-semibold mt-1">Troves whose rate a manager set</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>For each trove hit, the redemption's own logs show whether the trove belonged to an interest-rate batch, and which manager ran it, at that moment. This was checked against the troves' on-chain state just before redemption for 960 trove redemptions, with no mismatch.</p>
+                            <p>Two shares are shown: the BOLD redeemed from batch-managed troves, and the distinct troves hit while batch-managed (a trove hit several times counts if it was managed at any of those hits). Troves whose owner delegated the rate individually, without a batch, cannot be identified.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">OPERATORS</div>
+                        <div class="font-semibold mt-1">Grouping redeemers into operators</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>Addresses are linked when a sender calls a contract, and when contracts share a deployer or were deployed by one of the group's senders; every linked address belongs to one operator. Deployers come from Etherscan's contract-creation data, and well-known public deployment factories are ignored. Names are ENS primary names that resolve back to the address.</p>
+                            <p>Effective operators is 1 ÷ Σ(share of net profit)², counting profitable operators only. Per operator, financing is the most used method, BOLD source the largest source, and builders the priority fees and direct builder payments as a share of gross profit on its profitable transactions.</p></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5 md:p-8">
+                <div class="kicker">7 · Methodology</div>
                 <h3 class="text-xl font-semibold mt-1">From on-chain data to the dashboard</h3>
                 <div class="grid md:grid-cols-4 gap-3 mt-6">
                     <div class="rounded-xl p-4 relative" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
@@ -439,12 +578,12 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
                         <div class="font-semibold mt-1">Pricing and costs</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, the Uniswap ETH/USDC trades earlier in block N (for the ETH price at the moment of the redemption), and internal ETH transfers to the fee recipient.</p>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, the Uniswap ETH/USDC trades earlier in block N (for the ETH price at the moment of the redemption), and internal ETH transfers to the fee recipient. The receipt's token transfers and events also give the BOLD sources and the flash financing. Newly seen bot contracts are looked up on Etherscan for their deployer, and redeemer addresses on ENS for a name.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">04 · SERVE</div>
                         <div class="font-semibold mt-1">Storage and refresh</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Results are stored in SQLite. The local server syncs new blocks every 5 minutes with 3 confirmations; the hosted version is refreshed every 30 minutes by a scheduled GitHub Actions job.</p>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Results are stored in SQLite. The local server syncs new blocks every 5 minutes with 3 confirmations; the hosted version is refreshed by a GitHub Actions job scheduled every 30 minutes, which GitHub can delay, so updates may arrive a few hours apart.</p>
                     </div>
                 </div>
 
@@ -476,8 +615,8 @@
         </main>
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
-            <p>Data sources: Curve and Uniswap BOLD/USDC and Uniswap v3 ETH/USDC prices, sampled at the block preceding each redemption.</p>
-            <p class="mt-1">Builder payments from Alchemy internal-transfer data. The full methodology is described under “How it works”.</p>
+            <p>Data sources: Curve and Uniswap BOLD/USDC prices from the block preceding each redemption; Uniswap v3 ETH/USDC price at the moment of the redemption (the pool's last trade earlier in the same block).</p>
+            <p class="mt-1">Builder payments from Alchemy internal-transfer data; flash financing and BOLD sources from each transaction's own records; contract deployers from Etherscan; names from ENS. The full methodology is described under “Methodology”.</p>
             <div class="mt-6 pt-5 mx-auto max-w-4xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
                 <span class="kicker">Disclaimer</span><br>
                 This dashboard is an independent project. It is not affiliated with, endorsed by, sponsored by or otherwise associated with
@@ -524,6 +663,42 @@
             const glyph = icon ? icon.glyph : `<text x="12" y="16" text-anchor="middle" font-size="11" font-weight="700">${esc(sym[0])}</text>`;
             return `<svg viewBox="0 0 24 24" class="rounded-full ${cls || 'w-5 h-5'}" style="background: ${icon ? icon.color : '#5b6170'}" fill="#fff" role="img" aria-label="${esc(sym)}"><title>${esc(sym)} branch</title>${glyph}</svg>`;
         };
+        // Instant tooltips: any element with data-tip (optional data-tip-title). "Label: value · Label: value" renders as rows.
+        const tipBox = document.createElement('div');
+        tipBox.id = 'tipBox';
+        tipBox.setAttribute('role', 'tooltip');
+        document.body.appendChild(tipBox);
+        function showTip(el) {
+            tipBox.replaceChildren();
+            if (el.dataset.tipTitle) tipBox.appendChild(Object.assign(document.createElement('div'), { className: 'tip-title', textContent: el.dataset.tipTitle }));
+            for (const part of el.dataset.tip.split(' · ')) {
+                const i = part.indexOf(': ');
+                if (i < 0 || !el.dataset.tipTitle) { tipBox.appendChild(Object.assign(document.createElement('div'), { textContent: part })); continue; }
+                const row = Object.assign(document.createElement('div'), { className: 'tip-row' });
+                row.append(Object.assign(document.createElement('span'), { textContent: part.slice(0, i) }),
+                    Object.assign(document.createElement('span'), { textContent: part.slice(i + 2) }));
+                tipBox.appendChild(row);
+            }
+            const r = el.getBoundingClientRect(), w = tipBox.offsetWidth, h = tipBox.offsetHeight;
+            const top = r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8;
+            const left = Math.min(Math.max(r.left + r.width / 2 - w / 2, 8), window.innerWidth - w - 8);
+            Object.assign(tipBox.style, { top: `${top}px`, left: `${left}px` });
+            tipBox.classList.add('show');
+        }
+        const hideTip = () => tipBox.classList.remove('show');
+        document.addEventListener('pointerover', e => { const el = e.target.closest('[data-tip]'); if (el) showTip(el); });
+        document.addEventListener('pointerout', e => {
+            const el = e.target.closest('[data-tip]');
+            if (el && !el.contains(e.relatedTarget)) hideTip();
+        });
+        window.addEventListener('scroll', hideTip, true);
+
+        // Podium colours for rank badges (gold, silver, bronze), shared by the leaderboard and the operators
+        const rankStyle = i => i === 0 ? 'background: linear-gradient(135deg,#f5c451,#c98500); color:#1a1405'
+            : i === 1 ? 'background: linear-gradient(135deg,#d9dde3,#8d96a3); color:#11161e'
+            : i === 2 ? 'background: linear-gradient(135deg,#e59a6b,#a8582c); color:#1a0e06'
+            : 'background: rgba(255,255,255,.06); color: var(--muted)';
+        const rankBadge = i => `<span class="w-6 h-6 shrink-0 rounded-md inline-grid place-items-center text-[11px] font-semibold mono" style="${rankStyle(i)}">${i + 1}</span>`;
         // Overlapping icon stack; each icon carries a ring in the surface colour so the overlaps stay legible
         const branchChips = branches => `<span class="inline-flex items-center -space-x-1.5">${
             (branches || '').split(',').filter(Boolean).map(sym => branchIcon(sym, 'w-5 h-5 ring-2 ring-[#11161e]')).join('')
@@ -574,6 +749,316 @@
                     <div class="text-2xl md:text-[28px] font-semibold tracking-tight mt-2 ${cls}">${value}</div>
                     <div class="text-xs mt-1 mono" style="color: var(--muted)">${sub}</div>
                 </div>`).join('');
+        }
+
+        // Batch-managed troves: share of redeemed BOLD and of distinct redeemed troves, plus the managers involved
+        const BATCH_NOTE = 'A trove counts as batch-managed if it was in a batch at the moment a redemption hit it; a trove hit several times counts '
+            + 'if it was in a batch at any of those hits. Troves at the bottom of the rate queue can be hit hundreds of times, so the share of '
+            + 'troves differs from the share of hits shown below it. Borrowers can also delegate their rate individually without joining a batch: '
+            + 'those troves cannot be identified here and count as not managed. The share of all BOLD debt held in batches is not included, '
+            + 'so these figures do not show whether managed troves are redeemed more or less often than their size would suggest.';
+
+        // BOLD sourcing and flash-loan venues, from the redemption rows in the chart range
+        const SOURCE_NOTES = {
+            other: 'BOLD from addresses other than the three main pools: other Curve pools (such as BOLD/LUSD), other DEXs, '
+                + 'and lending markets where the redeemer borrowed BOLD (such as an Euler vault). Each address counts by the BOLD it '
+                + 'sent out minus what it received in the transaction, so routers and loans repaid within the transaction cancel out.',
+            held: 'BOLD the redeemer did not obtain within the transaction: it already held it, for example bought in an earlier '
+                + 'transaction or minted by opening its own trove.'
+        };
+        const FLASH_NOTES = {
+            card: 'How redeemers fund the BOLD purchase without capital of their own. A flash loan is recognised by the event its lender '
+                + 'emits (Morpho, Balancer, Aave, Spark, Maker). A flash swap is a swap whose output the pool pays first and the redeemer pays '
+                + 'back later in the same transaction, usually with the redeemed collateral: the redeemer\'s first token received comes '
+                + 'from a pool that it pays back afterwards. A transaction can combine several, so the shares can add up to more than 100%.',
+            none: 'Neither a flash loan nor a flash swap was found. This covers redeemers using their own capital and financing that '
+                + 'follows a different pattern, for example a loan routed through another contract.'
+        };
+        const shareRow = (label, note, share, main, sub) => `
+            <div class="flex items-center gap-3 px-3 py-2 rounded-lg" style="background: rgba(255,255,255,.025)">
+                <div class="w-28 sm:w-44 shrink-0 text-[13px] flex items-center">${label}${note ? infoTip(note, label) : ''}</div>
+                <div class="flex-1 min-w-[32px] share-bar" title="${fmt(share, 1)}%"><span style="width: ${Math.min(share, 100)}%"></span></div>
+                <div class="text-right shrink-0 sm:w-44">
+                    <div class="mono text-[13px]">${fmt(share, 1)}%</div>
+                    <div class="text-[11px] mono whitespace-nowrap" style="color: var(--muted)">${main}${sub ? `<span class="hidden sm:inline"> · </span><span class="block sm:inline">${sub}</span>` : ''}</div>
+                </div>
+            </div>`;
+
+        function renderAnatomy(rows, from, to) {
+            const has = chartRows.some(r => r.bold_src_held != null);
+            $('anatomyRow').classList.toggle('hidden', !has);
+            if (!has) return;
+            const scope = `Chart range: ${date(from)} – ${date(to)}`;
+            document.querySelectorAll('.range-scope').forEach(el => { el.innerText = scope; });
+            const sourced = rows.filter(r => r.bold_src_held != null);
+            const empty = '<p class="text-sm" style="color: var(--muted)">No redemptions in this range.</p>';
+
+            // Sources, weighted by BOLD; the venues sorted by size, BOLD already held last
+            const total = sourced.reduce((s, r) => s + r.amount, 0);
+            const venues = [['curve', 'Curve BOLD/USDC'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues']]
+                .map(([k, label]) => ({ k, label, bold: sourced.reduce((s, r) => s + (r[`bold_src_${k}`] || 0), 0),
+                    txs: sourced.filter(r => r[`bold_src_${k}`] > 0.01).length }))
+                .sort((a, b) => b.bold - a.bold);
+            const held = { k: 'held', label: 'Already held', bold: sourced.reduce((s, r) => s + (r.bold_src_held || 0), 0),
+                txs: sourced.filter(r => r.bold_src_held > 0.01).length };
+            $('sourceCount').innerText = `${compact(total)} BOLD`;
+            $('sourceRows').innerHTML = total ? [...venues, held].map(v => shareRow(v.label, SOURCE_NOTES[v.k], v.bold / total * 100,
+                `${compact(v.bold)} BOLD`, `${fmt(v.txs)} ${v.txs === 1 ? 'tx' : 'txs'}`)).join('') : empty;
+
+            // Flash loans and flash swaps, by share of transactions; a transaction counts once for each one it used
+            const lenders = new Map();
+            for (const r of sourced) for (const v of (r.flash_venue || '').split(',').filter(Boolean)) {
+                const x = lenders.get(v) || { txs: 0, bold: 0 }; x.txs++; x.bold += r.amount; lenders.set(v, x);
+            }
+            const none = sourced.filter(r => !r.flash_venue);
+            $('flashInfo').innerHTML = infoTip(FLASH_NOTES.card, 'Flash financing').replace('class="info-tip"', 'class="info-tip below"');
+            $('flashCount').innerText = `${fmt(sourced.length)} txs`;
+            $('flashRows').innerHTML = sourced.length ? [...[...lenders].sort((a, b) => b[1].txs - a[1].txs)
+                .map(([v, x]) => shareRow(v, null, x.txs / sourced.length * 100, `${fmt(x.txs)} txs`, `${compact(x.bold)} BOLD`)),
+                shareRow('None detected', FLASH_NOTES.none, none.length / sourced.length * 100, `${fmt(none.length)} txs`,
+                    `${compact(none.reduce((s, r) => s + r.amount, 0))} BOLD`)].join('') : empty;
+        }
+
+        // Operators: senders joined with the contracts they call, and contracts joined when they share a deployer (or were
+        // deployed by one of the group's senders). The grouping uses every redemption; the figures follow the chart range.
+        let addressInfo = new Map();
+        let openOperator = null;
+        const OPERATOR_NOTE = 'Senders and contracts count as one operator when a sender calls a contract, or when contracts were deployed '
+            + 'by the same account or by one of the group\'s senders (deployers from Etherscan). It is a likely grouping, not a certainty: an '
+            + 'operator using unrelated addresses appears as several operators, and a contract shared by unrelated senders would merge '
+            + 'them. Names are ENS primary names where one exists. Effective operators is 1 ÷ Σ(share of net profit)², the number of equally '
+            + 'profitable operators that would give the same concentration.';
+        // Deployment contracts anyone can use: sharing one of them says nothing about who operates a contract
+        const PUBLIC_FACTORIES = new Set([
+            '0x4e59b44847b379578588920ca78fbf26c0b4956c', // deterministic deployment proxy
+            '0xba5ed099633d3b313e4d5f7bdc1305d3c28ba5ed', // CreateX
+            '0x0000000000ffe8b47b3e2130213b802212439497', // ImmutableCreate2Factory
+            '0xce0042b868300000d44a59004da54a005ffdcf9f', // Safe singleton factory
+            '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67', // Safe proxy factory 1.4.1
+            '0xa6b71e26c5e0845f74c812102ca7114b6a896ab2'  // Safe proxy factory 1.3.0
+        ]);
+        function operatorGroups() {
+            const parent = new Map();
+            const find = x => { if (!parent.has(x)) parent.set(x, x); while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+            const join = (a, b) => parent.set(find(a), find(b));
+            const senders = new Set(chartRows.map(r => r.sender));
+            for (const r of chartRows) { find(r.sender); if (r.via_contract) join(r.sender, r.to_address); }
+            for (const [a, info] of addressInfo) {
+                if (!info.is_contract || !info.deployer || !parent.has(a) || PUBLIC_FACTORIES.has(info.deployer)) continue;
+                join(a, 'deployer:' + info.deployer);
+                if (senders.has(info.deployer)) join(a, info.deployer);
+            }
+            return find;
+        }
+        const nameOf = a => addressInfo.get(a)?.ens || null;
+        const BUILDER_NOTE = 'How much of its gross profit the operator handed to block builders to get its transactions included first: '
+            + 'priority fees plus payments sent to the builder directly. 15% means that of every $100 made before costs, $15 went to builders. '
+            + 'A high share usually means competing hard for the top of the block. Hover over a value for the amounts.';
+        const SOURCE_LABELS = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues'], ['held', 'Already held']];
+        const SHORT = { 'Uniswap v3 flash swap': 'Uni v3 flash swap', 'Uniswap v4 flash swap': 'Uni v4 flash swap', 'Balancer v3 flash swap': 'Bal v3 flash swap',
+            'Uniswap v3 flash loan': 'Uni v3 flash loan', 'Uniswap v4': 'Uni v4', 'Uniswap v3': 'Uni v3', 'Other venues': 'Other', 'Already held': 'Held' };
+        // The largest entry of a breakdown as "label share%", with the whole breakdown as a tooltip
+        function topOf(map, total, title) {
+            const entries = [...map].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+            if (!entries.length || !total) return '<span style="color: var(--muted)">–</span>';
+            const [label, v] = entries[0];
+            const all = entries.map(([l, x]) => `${l}: ${fmt(x / total * 100, 0)}%`).join(' · ');
+            return `<span class="tip-target" data-tip-title="${esc(title)}" data-tip="${esc(all)}">${esc(SHORT[label] || label)} <span style="color: var(--muted)">${fmt(v / total * 100, 0)}%</span></span>`;
+        }
+        const addrLabel = a => nameOf(a) ? `${esc(nameOf(a))} <span style="color: var(--muted)">${esc(short(a))}</span>` : esc(short(a));
+
+        function renderOperators(rows, from, to) {
+            $('operatorCard').classList.toggle('hidden', !chartRows.length);
+            if (!chartRows.length) return;
+            const find = operatorGroups();
+            const ops = new Map();
+            for (const r of rows) {
+                const id = find(r.sender);
+                if (!ops.has(id)) ops.set(id, { id, members: new Map(), txs: 0, bold: 0, net: 0, first: Infinity, last: 0,
+                    tip: 0, gross: 0, financing: new Map(), sources: new Map(), sourced: 0, sourcedTxs: 0 });
+                const o = ops.get(id);
+                o.txs++; o.bold += r.amount; o.net += r.net_profit_usd || 0;
+                if (r.gross_profit_usd > 0) { o.gross += r.gross_profit_usd; o.tip += r.builder_tip_usd || 0; }
+                if (r.bold_src_held != null) {
+                    for (const v of (r.flash_venue || 'None detected').split(',')) o.financing.set(v, (o.financing.get(v) || 0) + 1);
+                    for (const [k, label] of SOURCE_LABELS) o.sources.set(label, (o.sources.get(label) || 0) + (r[`bold_src_${k}`] || 0));
+                    o.sourced += r.amount; o.sourcedTxs++;
+                }
+                o.first = Math.min(o.first, r.timestamp); o.last = Math.max(o.last, r.timestamp);
+                const addrs = r.via_contract && r.to_address !== r.sender ? [[r.sender, 'sender'], [r.to_address, 'contract']] : [[r.sender, r.via_contract ? 'account' : 'sender']];
+                for (const [a, role] of addrs) {
+                    const m = o.members.get(a) || { address: a, role, txs: 0, bold: 0, net: 0, first: Infinity, last: 0, callers: new Set() };
+                    m.txs++; m.bold += r.amount; m.net += r.net_profit_usd || 0;
+                    m.first = Math.min(m.first, r.timestamp); m.last = Math.max(m.last, r.timestamp); m.callers.add(r.sender);
+                    o.members.set(a, m);
+                }
+            }
+            const list = [...ops.values()].map(o => {
+                const members = [...o.members.values()].sort((a, b) => b.txs - a.txs);
+                const contracts = members.filter(m => m.role !== 'sender'), senderList = members.filter(m => m.role !== 'contract');
+                const main = contracts[0] || senderList[0];
+                const named = [main, ...contracts, ...senderList].find(m => nameOf(m.address));
+                return { ...o, members, contracts, senders: senderList, main, name: named ? nameOf(named.address) : null };
+            }).sort((a, b) => b.net - a.net);
+            const positive = list.reduce((s, o) => s + Math.max(o.net, 0), 0);
+            const effective = positive ? 1 / list.reduce((s, o) => s + (Math.max(o.net, 0) / positive) ** 2, 0) : null;
+            $('operatorScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
+            $('builderInfo').innerHTML = infoTip(BUILDER_NOTE, 'Builders').replace('class="info-tip"', 'class="info-tip below to-left"');
+            $('operatorInfo').innerHTML = infoTip(OPERATOR_NOTE, 'Operators').replace('class="info-tip"', 'class="info-tip below"');
+            $('operatorCount').innerText = `${fmt(list.length)} ${list.length === 1 ? 'operator' : 'operators'}${effective ? ` · ${fmt(effective, 1)} effective` : ''}`;
+            const month = t => new Date(t).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+            const range = o => month(o.first) === month(o.last) ? month(o.first) : `${month(o.first)} – ${month(o.last)}`;
+            $('operatorRows').innerHTML = list.map((o, i) => {
+                const open = openOperator === o.id;
+                const share = positive && o.net > 0 ? o.net / positive * 100 : null;
+                const label = o.name ? `${esc(o.name)} <span style="color: var(--muted)">${esc(short(o.main.address))}</span>` : esc(short(o.main.address));
+                const head = `
+                <tr class="op-row border-t border-white/5${open ? ' is-open' : ''}" data-op="${esc(o.id)}">
+                    <td class="px-2.5 py-2 whitespace-nowrap"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} the operator's addresses">›</button>${rankBadge(i)}</td>
+                    <td class="px-2.5 py-2 whitespace-nowrap">${label}</td>
+                    <td class="px-2.5 py-2 text-right">${fmt(o.contracts.filter(m => m.role === 'contract').length)}</td>
+                    <td class="px-2.5 py-2 text-right">${fmt(o.senders.length)}</td>
+                    <td class="px-2.5 py-2 text-right">${fmt(o.txs)}</td>
+                    <td class="px-2.5 py-2 text-right">${compact(o.bold)}</td>
+                    <td class="px-2.5 py-2 text-right font-medium ${signClass(o.net)}">${usd(o.net, 0)}</td>
+                    <td class="px-2.5 py-2 text-right">${share == null ? '–' : `${fmt(share, 1)}%`}</td>
+                    <td class="px-2.5 py-2 text-right ${signClass(o.net)}">${usd(o.net / o.txs, 0)}</td>
+                    <td class="px-2.5 py-2 text-right">${o.gross ? `<span class="tip-target" data-tip-title="Builders took ${fmt(o.tip / o.gross * 100, 0)}% of gross profit" data-tip="Paid to builders: ${usd(o.tip, 0)} · Gross profit: ${usd(o.gross, 0)}">${fmt(o.tip / o.gross * 100, 0)}%</span>` : '–'}</td>
+                    <td class="px-2.5 py-2 whitespace-nowrap">${topOf(o.financing, o.sourcedTxs, 'Financing')}</td>
+                    <td class="px-2.5 py-2 whitespace-nowrap">${topOf(o.sources, o.sourced, 'BOLD source')}</td>
+                    <td class="px-2.5 py-2 whitespace-nowrap" style="color: var(--ink-2)">${range(o)}</td>
+                </tr>`;
+                if (!open) return head;
+                // Role pills in the style of the feed's tags: contracts tinted like "bot", senders neutral like "batch"
+                const pill = (text, tinted) => `<span class="role-pill px-1.5 py-px rounded text-[10px] uppercase tracking-wide whitespace-nowrap" style="${
+                    tinted ? 'background: rgba(57,135,229,.15); color: #8bb8f0' : 'background: rgba(255,255,255,.06); color: var(--ink-2)'}">${text}</span>`;
+                // The operator's addresses as a small table: contracts in order of first use (upgrades read top to bottom),
+                // then senders by activity. A transaction counts under both its contract and its sender.
+                const cell = (v, right) => `<td class="px-2.5 py-1.5${right ? ' text-right' : ''}">${v}</td>`;
+                const dash = '<span style="color: var(--muted)">–</span>';
+                const memberRow = m => {
+                    const info = addressInfo.get(m.address);
+                    const role = m.role === 'contract' ? pill('contract', true) : m.role === 'account' ? pill('sender · own code') : pill('sender');
+                    const deployer = m.role !== 'contract' ? dash : info?.deployer
+                        ? etherscan('address', info.deployer, nameOf(info.deployer) || short(info.deployer)) : '<span style="color: var(--muted)">unknown</span>';
+                    return `<tr class="border-t border-white/5" data-addr="${esc(m.address)}">
+                        ${cell(role)}
+                        ${cell(`<a class="hover:underline decoration-dotted underline-offset-4" style="color: #8bb8f0" target="_blank" rel="noopener" href="https://etherscan.io/address/${esc(m.address)}">${addrLabel(m.address)} ↗</a>`)}
+                        ${cell(deployer)}
+                        ${cell(date(m.first))}${cell(date(m.last))}
+                        ${cell(m.role === 'sender' ? dash : `<span class="link-count" data-callers="${esc([...m.callers].join(','))}">${fmt(m.callers.size)}</span>`, true)}
+                        ${cell(fmt(m.txs), true)}${cell(compact(m.bold), true)}
+                        ${cell(`<span class="${signClass(m.net)}">${usd(m.net, 0)}</span>`, true)}
+                    </tr>`;
+                };
+                const sub = (label, right, tip) => `<th class="px-2.5 py-2 font-medium${right ? ' text-right' : ' text-left'}" style="position: static; background: transparent"${
+                    tip ? ` data-tip="${esc(tip)}"` : ''}>${label}</th>`;
+                const members = [...o.contracts.filter(m => m.role !== 'sender').sort((a, b) => a.first - b.first), ...o.senders.filter(m => m.role === 'sender')];
+                return head + `<tr class="op-detail"><td colspan="13" class="px-4 py-3" style="font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif">
+                    <div class="kicker mb-2">Addresses of this operator</div>
+                    <div class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                        <table class="w-full text-[12px] mono whitespace-nowrap">
+                            <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
+                                ${sub('Role')}${sub('Address')}${sub('Deployer', false, 'Account that created the contract (from Etherscan)')}
+                                ${sub('First active')}${sub('Last active')}
+                                ${sub('Senders', true, 'For a contract: how many sender addresses called it in the chart range. Hover over the number to highlight them below.')}
+                                ${sub('Txs', true)}${sub('BOLD', true)}${sub('Net profit', true)}
+                            </tr></thead>
+                            <tbody>${members.map(memberRow).join('')}</tbody>
+                        </table>
+                    </div>
+                    <p class="text-[11px] mt-2" style="color: var(--muted)">Contracts are listed in order of first use, so a newer contract taking over from an older one shows an upgrade.
+                        Each transaction counts under both its contract and its sender, so the rows do not add up to the operator's total.</p>
+                </td></tr>`;
+            }).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="13">No redemptions in this range.</td></tr>';
+        }
+        // Highlight the senders behind a contract's sender count while it is hovered
+        $('operatorRows').addEventListener('mouseover', e => {
+            const count = e.target.closest('[data-callers]');
+            if (!count) return;
+            const callers = new Set(count.dataset.callers.split(','));
+            const own = count.closest('tr');
+            count.closest('table').querySelectorAll('tr[data-addr]').forEach(tr => tr.classList.toggle('is-linked', tr !== own && callers.has(tr.dataset.addr)));
+        });
+        $('operatorRows').addEventListener('mouseout', e => {
+            const count = e.target.closest('[data-callers]');
+            if (!count || count.contains(e.relatedTarget)) return;
+            count.closest('table').querySelectorAll('tr.is-linked').forEach(tr => tr.classList.remove('is-linked'));
+        });
+        $('operatorRows').addEventListener('click', e => {
+            if (e.target.closest('a')) return;
+            const id = e.target.closest('[data-op]')?.dataset.op;
+            if (!id) return;
+            openOperator = openOperator === id ? null : id;
+            const [from, to] = rangeBounds();
+            renderOperators(chartRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
+        });
+
+        // Computed from every trove redemption in the chart range when the per-redemption rows are available,
+        // otherwise from the all-time totals in the stats
+        let batchData = null;
+        function batchFiguresFor(from, to) {
+            if (!batchData) {
+                const s = lastStats;
+                return s && s.trove_bold != null ? { all: true, troveBold: s.trove_bold, batchBold: s.batch_bold, troves: s.troves, batchTroves: s.batch_troves,
+                    hits: s.hits, batchHits: s.batch_hits,
+                    managers: s.batch_managers.map(m => ({ address: m.address, troves: m.troves, txs: m.txs, bold: m.bold })) } : null;
+            }
+            let troveBold = 0, batchBold = 0, hits = 0, batchHits = 0;
+            const troves = new Set(), batchTroves = new Set(), byManager = new Map();
+            for (const [t, tx, trove, mgr, bold] of batchData.rows) {
+                if (t < from || t > to) continue;
+                troveBold += bold; troves.add(trove); hits++;
+                if (mgr < 0) continue;
+                batchBold += bold; batchTroves.add(trove); batchHits++;
+                if (!byManager.has(mgr)) byManager.set(mgr, { address: batchData.managers[mgr], troves: new Set(), txs: new Set(), bold: 0 });
+                const m = byManager.get(mgr); m.troves.add(trove); m.txs.add(tx); m.bold += bold;
+            }
+            const managers = [...byManager.values()].map(m => ({ address: m.address, troves: m.troves.size, txs: m.txs.size, bold: m.bold }))
+                .sort((a, b) => b.bold - a.bold);
+            return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits, batchHits, managers };
+        }
+
+        function renderBatches() {
+            const [from, to] = rangeBounds();
+            const f = batchFiguresFor(from, to);
+            // Hidden until the data includes these fields (a site deployed before its first sync with them)
+            $('batchCard').classList.toggle('hidden', !f);
+            if (!f) return;
+            $('batchInfo').innerHTML = infoTip(BATCH_NOTE, 'Batch-managed troves').replace('class="info-tip"', 'class="info-tip below"');
+            $('batchScope').innerText = f.all ? 'All redemptions' : `Chart range: ${date(from)} – ${date(to)}`;
+            $('batchCount').innerText = `${f.managers.length} ${f.managers.length === 1 ? 'manager' : 'managers'}`;
+            const boldShare = f.troveBold ? f.batchBold / f.troveBold * 100 : null;
+            const troveShare = f.troves ? f.batchTroves / f.troves * 100 : null;
+            const figure = (value, label, detail) => `
+                <div class="rounded-xl p-4 flex flex-col" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                    <div class="text-2xl md:text-[28px] font-semibold tracking-tight">${value == null ? '–' : `${fmt(value, 1)}%`}</div>
+                    <div class="text-xs mt-1" style="color: var(--ink-2)">${label}</div>
+                    <div class="mt-auto pt-4">
+                        <div class="share-bar" role="presentation"><span style="width: ${Math.min(value || 0, 100)}%"></span></div>
+                        <div class="text-[11px] mono mt-2" style="color: var(--muted)">${detail}</div>
+                    </div>
+                </div>`;
+            $('batchFigures').innerHTML =
+                figure(boldShare, 'of redeemed BOLD came from batch-managed troves', `${compact(f.batchBold)} of ${compact(f.troveBold)} BOLD`) +
+                figure(troveShare, 'of the troves hit were batch-managed at the time',
+                    `${fmt(f.batchTroves)} of ${fmt(f.troves)} troves` + (f.hits == null ? '' : ` · ${fmt(f.batchHits)} of ${fmt(f.hits)} hits`));
+            $('batchManagers').innerHTML = f.managers.map((m, i) => {
+                const share = f.batchBold ? m.bold / f.batchBold * 100 : 0;
+                return `
+                <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[.04] transition" style="background: rgba(255,255,255,.025)">
+                    <span class="w-6 h-6 shrink-0 rounded-md grid place-items-center text-[11px] font-semibold mono" style="background: rgba(255,255,255,.06); color: var(--muted)">${i + 1}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="mono text-[13px] truncate">${etherscan('address', m.address, short(m.address))}</div>
+                        <div class="text-[11px] mono" style="color: var(--muted)">${fmt(m.troves)} ${m.troves === 1 ? 'trove' : 'troves'} · ${fmt(m.txs)} ${m.txs === 1 ? 'tx' : 'txs'}</div>
+                    </div>
+                    <div class="w-16 md:w-24 hidden sm:block share-bar" title="${fmt(share, 1)}% of BOLD redeemed from batch-managed troves"><span style="width: ${share}%"></span></div>
+                    <div class="text-right shrink-0 w-24">
+                        <div class="mono text-[13px]">${compact(m.bold)} BOLD</div>
+                        <div class="text-[11px] mono" style="color: var(--muted)">${fmt(share, 1)}%</div>
+                    </div>
+                </div>`;
+            }).join('') || `<p class="text-sm" style="color: var(--muted)">${f.troves ? 'No batch-managed troves redeemed in this range.' : 'No redemptions in this range.'}</p>`;
         }
 
         $('branchLegend').innerHTML = branchLegend();
@@ -928,12 +1413,19 @@
             $('feedScroll').scrollIntoView({ block: 'start', behavior: 'smooth' });
         });
 
-        function renderBots(bots) {
+        // Bot leaderboard for the chart range: senders flagged as bots (through a contract or 3+ redemptions overall),
+        // ranked by net profit in the range
+        function renderBots(rows, from, to) {
+            const bySender = new Map();
+            for (const r of rows) {
+                if (!r.is_bot) continue;
+                const b = bySender.get(r.sender) || { address: r.sender, frequency: 0, total_bold: 0, net_profit_usd: 0, via_contract: 0 };
+                b.frequency++; b.total_bold += r.amount; b.net_profit_usd += r.net_profit_usd || 0; b.via_contract ||= r.via_contract;
+                bySender.set(r.sender, b);
+            }
+            const bots = [...bySender.values()].sort((a, b) => b.net_profit_usd - a.net_profit_usd || b.frequency - a.frequency);
             $('botCount').innerText = `${bots.length} bots`;
-            const rankStyle = i => i === 0 ? 'background: linear-gradient(135deg,#f5c451,#c98500); color:#1a1405'
-                : i === 1 ? 'background: linear-gradient(135deg,#d9dde3,#8d96a3); color:#11161e'
-                : i === 2 ? 'background: linear-gradient(135deg,#e59a6b,#a8582c); color:#1a0e06'
-                : 'background: rgba(255,255,255,.06); color: var(--muted)';
+            $('botScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
             $('botLeaderboard').innerHTML = bots.map((b, i) => `
                 <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[.04] transition" style="background: rgba(255,255,255,.025)">
                     <span class="w-6 h-6 shrink-0 rounded-md grid place-items-center text-[11px] font-semibold mono" style="${rankStyle(i)}">${i + 1}</span>
@@ -945,7 +1437,7 @@
                         <div class="mono text-[13px] font-medium ${signClass(b.net_profit_usd)}">${usd(b.net_profit_usd, 0)}</div>
                         <div class="text-[11px] mono" style="color: var(--muted)">${b.frequency} ${b.frequency === 1 ? 'tx' : 'txs'}</div>
                     </div>
-                </div>`).join('') || '<p class="text-sm" style="color: var(--muted)">No bots detected yet.</p>';
+                </div>`).join('') || '<p class="text-sm" style="color: var(--muted)">No bot redemptions in this range.</p>';
         }
 
         const timeAxis = {
@@ -977,11 +1469,20 @@
                 type: 'line', label: '$1 peg', borderColor: css('--muted'), borderWidth: 1,
                 pointRadius: 0, pointHitRadius: 0, data: [{ x: from, y: 1 }, { x: to, y: 1 }]
             });
-            // Legend doubles as the pool toggles, with each pool's point count in the range
-            $('priceLegend').innerHTML = venues.map(([, label, color], i) => {
+            // Legend doubles as the pool toggles. Every redemption has a price from each pool, so the point counts are near
+            // identical: the hover shows them together with how often the pool supplied the redeemed BOLD
+            $('priceCount').innerText = `${fmt(rows.length)} txs`;
+            $('priceScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
+            const sourced = rows.filter(r => r.bold_src_held != null);
+            const srcKey = { price_curve: 'bold_src_curve', price_uni_v3: 'bold_src_uni_v3', price_uni_v4: 'bold_src_uni_v4' };
+            $('priceLegend').innerHTML = venues.map(([key, label, color], i) => {
                 const off = hiddenPools.has(label);
-                return `<button class="legend-btn ${off ? 'off' : ''}" data-pool="${label}" aria-pressed="${!off}" title="${off ? 'Show' : 'Hide'} ${label}">
-                    <span class="legend-swatch" style="background:${color}"></span>${label}<span class="mono" style="color: var(--muted)">${fmt(datasets[i].data.length)}</span></button>`;
+                const used = sourced.filter(r => r[srcKey[key]] > 0.01).length;
+                const tip = [`Price points: ${fmt(datasets[i].data.length)}`,
+                    ...(sourced.length ? [`Used as BOLD source: ${fmt(used)} of ${fmt(sourced.length)} txs`] : []),
+                    `Click to ${off ? 'show' : 'hide'}`].join(' · ');
+                return `<button class="legend-btn ${off ? 'off' : ''}" data-pool="${label}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}"
+                    data-tip-title="${label}" data-tip="${esc(tip)}"><span class="legend-swatch" style="background:${color}"></span>${label}</button>`;
             }).join('') + `<span class="flex items-center gap-1.5 px-2"><span style="width:12px;height:1px;background:${css('--muted')}"></span>$1 peg</span>`;
             upsertChart('priceChart', {
                 type: 'scatter',
@@ -1056,7 +1557,7 @@
             });
         }
 
-        // Chart time range: a preset or a custom from/to, applied to the three charts only
+        // Chart time range: a preset or a custom from/to, applied to the three charts and the batch-managed troves
         const DAY = 864e5;
         const RANGE_DAYS = { '1m': 30, '3m': 91, '6m': 182, '1y': 365 };
         const chartRange = { preset: '1y', from: null, to: null };
@@ -1077,6 +1578,15 @@
             renderPriceChart(rows, from, to);
             renderWeeklyChart('volumeChart', rows, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`, from, to);
             renderWeeklyChart('profitChart', rows, r => r.net_profit_usd, css('--series-3'), v => usd(v), from, to);
+            // Totals of exactly what the two charts plot (rows without a value are left out, as in the bars)
+            const sumOf = key => rows.reduce((t, r) => t + (r[key] ?? 0), 0);
+            $('volumeTotal').innerText = `${compact(sumOf('amount'))} BOLD`;
+            $('profitTotal').innerText = `${usd(sumOf('net_profit_usd'), 0)} total`;
+            $('volumeScope').innerText = $('profitScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
+            renderBots(rows, from, to);
+            renderAnatomy(rows, from, to);
+            renderBatches();
+            renderOperators(rows, from, to);
             for (const btn of $('rangePresets').querySelectorAll('[data-range]')) {
                 btn.classList.toggle('seg-active', btn.dataset.range === chartRange.preset);
                 btn.setAttribute('aria-pressed', btn.dataset.range === chartRange.preset);
@@ -1105,13 +1615,14 @@
         $('priceLegend').addEventListener('click', e => {
             const pool = e.target.closest('[data-pool]')?.dataset.pool;
             if (!pool) return;
+            hideTip(); // the legend is redrawn, so the tooltip of the clicked tag would go stale
             hiddenPools.has(pool) ? hiddenPools.delete(pool) : hiddenPools.add(pool);
             renderCharts();
         });
 
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
-        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status' };
+        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses' };
         let staticMode = false;
         let lastGenerated = null;
 
@@ -1129,10 +1640,14 @@
             const [redemptions, bots, stats] = await Promise.all(
                 [API.redemptions, API.bots, API.stats].map(u => fetch(u, { cache: 'no-cache' }).then(r => r.json()))
             );
+            // Optional: data published before this file existed falls back to all-time totals
+            batchData = await fetch(API.batches, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            addressInfo = new Map((await fetch(API.addresses, { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []))
+                .map(a => [a.address, a]));
             chartRows = redemptions;
             renderStats(stats);
             renderFeed(redemptions);
-            renderBots(bots);
+
             renderCharts();
         }
 

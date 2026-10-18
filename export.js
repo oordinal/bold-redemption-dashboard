@@ -19,6 +19,8 @@ async function main() {
     write('redemptions.json', queries.redemptions(50000));
     write('bots.json', queries.bots());
     write('stats.json', queries.stats());
+    write('batches.json', queries.batchRows());
+    write('addresses.json', queries.addresses());
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
     // One file per redemption transaction, loaded by the page when a feed row is expanded
     fs.mkdirSync(path.join(outDir, 'tx'), { recursive: true });
