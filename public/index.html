@@ -236,6 +236,25 @@
             </div>
         </div>
 
+        <div class="card p-5 md:p-6 mt-6">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <h2 class="font-semibold flex items-center">Weekly breakdown<span id="breakdownInfo" class="inline-flex items-center"></span></h2>
+                <span id="breakdownTotal" class="text-xs mono" style="color: var(--muted)"></span>
+            </div>
+            <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 mb-4">
+                <p class="text-xs" style="color: var(--muted)">USD per week: sources of profit above zero, costs below, and the net profit that remains<br><span id="breakdownScope"></span></p>
+                <div id="breakdownLegend" class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs" style="color: var(--ink-2)"></div>
+            </div>
+            <div class="relative h-72"><canvas id="breakdownChart"></canvas></div>
+            <div class="mt-12 pt-8" style="border-top: 1px solid rgba(255,255,255,.06)">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <span class="kicker">Net profit per BOLD redeemed</span>
+                    <span id="ratioTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <div class="relative h-28 mt-1"><canvas id="breakdownRatio"></canvas></div>
+            </div>
+        </div>
+
         <div id="anatomyRow" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 hidden">
             <section class="card card-fixed p-5 md:p-6" aria-labelledby="sourceTitle">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
@@ -760,6 +779,8 @@
 
         // BOLD sourcing and flash-loan venues, from the redemption rows in the chart range
         const SOURCE_NOTES = {
+            curve: 'BOLD bought from Curve\'s BOLD/USDC pool, the main BOLD market. BOLD from other Curve pools, such as BOLD/LUSD, '
+                + 'counts under other venues.',
             other: 'BOLD from addresses other than the three main pools: other Curve pools (such as BOLD/LUSD), other DEXs, '
                 + 'and lending markets where the redeemer borrowed BOLD (such as an Euler vault). Each address counts by the BOLD it '
                 + 'sent out minus what it received in the transaction, so routers and loans repaid within the transaction cancel out.',
@@ -795,7 +816,7 @@
 
             // Sources, weighted by BOLD; the venues sorted by size, BOLD already held last
             const total = sourced.reduce((s, r) => s + r.amount, 0);
-            const venues = [['curve', 'Curve BOLD/USDC'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues']]
+            const venues = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues']]
                 .map(([k, label]) => ({ k, label, bold: sourced.reduce((s, r) => s + (r[`bold_src_${k}`] || 0), 0),
                     txs: sourced.filter(r => r[`bold_src_${k}`] > 0.01).length }))
                 .sort((a, b) => b.bold - a.bold);
@@ -804,6 +825,8 @@
             $('sourceCount').innerText = `${compact(total)} BOLD`;
             $('sourceRows').innerHTML = total ? [...venues, held].map(v => shareRow(v.label, SOURCE_NOTES[v.k], v.bold / total * 100,
                 `${compact(v.bold)} BOLD`, `${fmt(v.txs)} ${v.txs === 1 ? 'tx' : 'txs'}`)).join('') : empty;
+            // the list scrolls, so a hint on its top row opens downwards instead of being cut off
+            $('sourceRows').firstElementChild?.querySelector('.info-tip')?.classList.add('below');
 
             // Flash loans and flash swaps, by share of transactions; a transaction counts once for each one it used
             const lenders = new Map();
@@ -1531,6 +1554,111 @@
             return { labels, data };
         }
 
+        // Weekly profit breakdown. Per redemption, gross profit = oracle-gap edge + BOLD-discount edge − redemption fee, exactly:
+        // the collateral at the redemption price equals the BOLD redeemed minus the fee, so the discount edge is BOLD × (1 − price)
+        // and the gap edge is the rest. Gas and builder tips then leave the net profit. Only priced redemptions are included.
+        // Five distinct hues, ordered so the segments that touch in the stack (discount on gap, gap against fee across zero,
+        // fee, tips, gas below) stay distinct for every viewer (validated against the card surface). Segments are plain
+        // rectangles, so every join between them is flat.
+        const BREAKDOWN = [
+            ['Oracle gap', '#00b4ff', r => r.gross_profit_usd + r.fee_usd - r.amount * (1 - r.market_price)],
+            ['BOLD discount', '#2ee59d', r => r.amount * (1 - r.market_price)],
+            ['Redemption fee', '#ff4f8b', r => -r.fee_usd],
+            ['Builder tips', '#8f6bff', r => -r.builder_tip_usd],
+            ['Gas', '#ff9f1c', r => -r.gas_fee_usd]
+        ];
+        // Both panels reserve the same width for their y axis, so their weeks line up exactly
+        const Y_AXIS_WIDTH = 72;
+        const hiddenParts = new Set();
+        const BREAKDOWN_NOTE = 'For every redemption, gross profit splits exactly into the oracle-gap edge (collateral worth more than the '
+            + 'redemption price says) plus the BOLD-discount edge (BOLD bought below $1) minus the redemption fee. Gas and builder tips are '
+            + 'then paid from it, and what remains is the net profit (white line). When BOLD traded above $1 the discount edge is negative. '
+            + 'Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
+            + 'week; weeks without redemptions are bridged.';
+        function renderBreakdown(rows, from, to) {
+            const priced = rows.filter(r => r.net_profit_usd != null);
+            const datasets = BREAKDOWN.map(([label, color, value]) => ({
+                type: 'bar', label, data: weekly(priced, value, from, to).data, backgroundColor: color, hidden: hiddenParts.has(label),
+                borderRadius: 0, categoryPercentage: 0.9, barPercentage: 0.9, stack: 'parts', order: 2
+            }));
+            const { labels, data: net } = weekly(priced, r => r.net_profit_usd, from, to);
+            const { data: bold } = weekly(priced, r => r.amount, from, to);
+            const ratio = net.map((v, i) => bold[i] ? v / bold[i] * 100 : null);
+            datasets.push({ type: 'line', label: 'Net profit', data: net, borderColor: css('--ink-1'), backgroundColor: css('--ink-1'), hidden: hiddenParts.has('Net profit'),
+                borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, tension: 0, order: 1 });
+            const total = k => priced.reduce((t, r) => t + k(r), 0);
+            $('breakdownTotal').innerText = `${usd(total(r => r.net_profit_usd), 0)} net`;
+            $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
+            $('breakdownInfo').innerHTML = infoTip(BREAKDOWN_NOTE, 'Weekly breakdown').replace('class="info-tip"', 'class="info-tip below"');
+            // Legend with each part's total in the range (they add up to the net total); each entry turns its series on and off
+            const toggle = (label, swatch, extra = '') => {
+                const off = hiddenParts.has(label);
+                return `<button class="legend-btn ${off ? 'off' : ''}" data-part="${label}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}">${swatch}${label}${extra}</button>`;
+            };
+            $('breakdownLegend').innerHTML = BREAKDOWN.map(([label, color, value]) =>
+                toggle(label, `<span class="legend-swatch" style="background:${color}"></span>`,
+                    ` <span class="mono" style="color: var(--muted)">${usd(total(value), 0)}</span>`)).join('')
+                + toggle('Net profit', `<span class="legend-swatch" style="width:14px;height:2px;border-radius:0;background:${css('--ink-1')}"></span>`);
+            upsertChart('breakdownChart', {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // legend order, net profit (the last dataset) at the bottom
+                            callbacks: {
+                                title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                                label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 10, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { stacked: true, ticks: { callback: v => usd(v, 0) }, border: { display: false }, afterFit: a => { a.width = Y_AXIS_WIDTH; },
+                            grid: { color: ctx => ctx.tick.value === 0 ? css('--muted') : css('--grid'), drawTicks: false } }
+                    }
+                }
+            });
+            // Panel below: net profit as a share of the BOLD redeemed each week, on the same weeks as the bars
+            const totalBold = total(r => r.amount);
+            $('ratioTotal').innerText = totalBold ? `Current chart range: ${fmt(total(r => r.net_profit_usd) / totalBold * 100, 2)}%` : '';
+            upsertChart('breakdownRatio', {
+                type: 'line',
+                data: { labels, datasets: [{ label: 'Net profit per BOLD', data: ratio, borderColor: css('--ink-1'), backgroundColor: css('--ink-1'),
+                    borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, spanGaps: true, tension: 0 }] },
+                options: {
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                            label: item => ` ${fmt(item.parsed.y, 2)}% of ${fmt(bold[item.dataIndex])} BOLD redeemed`
+                        } }
+                    },
+                    scales: {
+                        // offset: true leaves the same half-week margins as the bar chart above, so each point sits under its bar
+                        x: { offset: true, ticks: { display: false }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { ticks: { callback: v => `${fmt(v, 2)}%`, maxTicksLimit: 4 }, border: { display: false }, afterFit: a => { a.width = Y_AXIS_WIDTH; },
+                            grid: { color: ctx => ctx.tick.value === 0 ? css('--muted') : css('--grid'), drawTicks: false } }
+                    }
+                }
+            });
+        }
+
+        $('breakdownLegend').addEventListener('click', e => {
+            const part = e.target.closest('[data-part]')?.dataset.part;
+            if (!part) return;
+            hiddenParts.has(part) ? hiddenParts.delete(part) : hiddenParts.add(part);
+            const [from, to] = rangeBounds();
+            renderBreakdown(chartRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
+        });
+
         function renderWeeklyChart(id, rows, value, color, unitLabel, from, to) {
             const { labels, data } = weekly(rows, value, from, to);
             upsertChart(id, {
@@ -1578,6 +1706,7 @@
             renderPriceChart(rows, from, to);
             renderWeeklyChart('volumeChart', rows, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`, from, to);
             renderWeeklyChart('profitChart', rows, r => r.net_profit_usd, css('--series-3'), v => usd(v), from, to);
+            renderBreakdown(rows, from, to);
             // Totals of exactly what the two charts plot (rows without a value are left out, as in the bars)
             const sumOf = key => rows.reduce((t, r) => t + (r[key] ?? 0), 0);
             $('volumeTotal').innerText = `${compact(sumOf('amount'))} BOLD`;
