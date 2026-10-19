@@ -1181,6 +1181,9 @@
             + 'cannot be negative for a bot that uses a flash loan: it must repay the loan within the same transaction, so a trade that really lost '
             + 'money would revert and never appear here.';
 
+        const GAS_NOTE = 'Gas used × the block\'s base fee, which is burned by the protocol. It is small because Ethereum base fees have mostly '
+            + 'been below 1 gwei since 2025. What the block builder receives is shown separately: the priority fee and any direct ETH payment '
+            + 'from inside the transaction, which is how most bots pay.';
         // Expandable rows: one transaction open at a time; details fetched on first open and cached
         let openTx = null;
         const txDetails = new Map(); // tx hash -> detail, null while loading, or { error }
@@ -1333,6 +1336,43 @@
                     <div class="num text-sm text-white mt-0.5">${main}</div>
                     <div class="num text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div>
                 </div>`;
+            // Where this redemption's result came from: the five parts of the Weekly breakdown on one scale. The top bar is the
+            // trade's edge, the bottom bar its costs; the net result fills the shorter bar, so both end at the same point
+            const parts = r.net_profit_usd == null || r.market_price == null ? [] : BREAKDOWN.map(([label, color, value]) => ({ label, color, v: value(r) }));
+            const NEGATIVE_LABEL = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)' };
+            const earned = parts.filter(p => p.v > 0);
+            const paid = parts.filter(p => p.v < 0).map(p => ({ ...p, v: -p.v, label: NEGATIVE_LABEL[p.label] || p.label }));
+            const sumParts = list => list.reduce((t, p) => t + p.v, 0);
+            const net = r.net_profit_usd;
+            if (net > 0) paid.push({ label: 'Net profit', v: net, net: true });
+            if (net < 0) earned.push({ label: 'Net loss', v: -net, net: true });
+            const scale = Math.max(sumParts(earned), sumParts(paid)) || 1;
+            // Hover shows each part's share of its own bar (the dollar amounts are in the legend): edge parts of the total edge,
+            // cost parts of the total cost; a net profit as the share of the edge kept, a net loss as the share of the cost not covered
+            const edgeTotal = sumParts(earned.filter(p => !p.net)), costTotal = sumParts(paid.filter(p => !p.net));
+            const share = (v, total) => { const x = total ? v / total * 100 : 0; return x > 0 && x < 0.1 ? '<0.1%' : `${x.toFixed(1)}%`; };
+            const shareTip = (p, bar) => p.net
+                ? (net > 0 ? `${share(p.v, edgeTotal)} of the edge kept` : `${share(p.v, costTotal)} of the cost not covered by the edge`)
+                : bar === 'edge' ? `${share(p.v, edgeTotal)} of the edge` : `${share(p.v, costTotal)} of the cost`;
+            const segment = bar => p => `<div class="h-full" style="width:${p.v / scale * 100}%; border-right: 2px solid transparent; background-clip: padding-box;
+                ${p.net ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px)` : `background-color: ${p.color}`}"
+                data-tip-title="${p.label}" data-tip="${shareTip(p, bar)}"></div>`;
+            const barRow = (label, list) => `
+                <div class="flex items-center gap-3">
+                    <span class="w-14 shrink-0 text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</span>
+                    <div class="flex-1 flex h-4 rounded-sm overflow-hidden">${list.map(segment(label.toLowerCase())).join('')}</div>
+                </div>`;
+            const key = p => `<span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="legend-swatch" style="${p.net
+                ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}` : `background:${p.color}`}"></span>${p.label}
+                <span class="num" style="color: ${p.net ? (net > 0 ? 'var(--good)' : 'var(--bad)') : 'var(--ink-1)'}">${usd(p.v)}</span></span>`;
+            const profitBar = parts.length ? `
+                <div class="space-y-1.5 mb-4">
+                    ${barRow('Edge', earned)}
+                    ${barRow('Cost', paid)}
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1.5 text-[11px] sm:pl-[68px]" style="color: var(--ink-2)">
+                        ${[...earned.filter(p => !p.net), ...paid.filter(p => !p.net), ...earned.filter(p => p.net), ...paid.filter(p => p.net)].map(key).join('')}
+                    </div>
+                </div>` : '';
             const positive = r.net_profit_usd == null ? null : r.net_profit_usd >= 0;
             const netStyle = positive == null ? 'background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08)'
                 : positive ? 'background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.4)'
@@ -1343,9 +1383,10 @@
                         <div class="text-sm font-semibold text-white">Inclusion costs and result</div>
                         <div class="num text-[11px]" style="color: var(--muted)">${fmt(r.gas_used)} gas · ETH/USD ${price(r.eth_usd)} · total inclusion cost <span class="bad">${minus(totalCost)}</span></div>
                     </div>
+                    ${profitBar}
                     <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
                         ${tile('Gross profit', usd(r.gross_profit_usd), 'before inclusion costs', GROSS_NOTE)}
-                        ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth))}
+                        ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth), GAS_NOTE)}
                         ${tile('Priority fee', minus(inUsd(r.priority_fee_eth)), eth(r.priority_fee_eth))}
                         ${tile('Direct builder payment', minus(inUsd(r.coinbase_tip_eth)), eth(r.coinbase_tip_eth))}
                         <div class="rounded-lg px-3 py-2.5" style="${netStyle}">
