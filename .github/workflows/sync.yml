@@ -3,9 +3,11 @@ name: Sync redemptions
 # Syncs new BOLD redemptions and publishes the dashboard data as a single commit on the
 # `data` branch, which the Vercel site reads through the /data rewrite in vercel.json.
 on:
+  # Triggered every 30 minutes by an external scheduler (cron-job.org) through the workflow_dispatch API.
+  # GitHub's own schedule is only a backup, twice a day (00:07 and 12:07 UTC, off the top of the hour,
+  # where GitHub delays or drops fewer runs), in case the external scheduler stops.
   schedule:
-    # Off the top of the hour: GitHub delays or drops scheduled runs at :00/:30 under load
-    - cron: '7,37 * * * *'
+    - cron: '7 */12 * * *'
   workflow_dispatch:
 
 permissions:

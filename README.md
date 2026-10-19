@@ -24,7 +24,7 @@ deployed each bot contract, which the Operators card uses to group contracts. Wi
 
 Vercel only serves static files, so the data is produced elsewhere:
 
-1. `.github/workflows/sync.yml` runs every 30 minutes (and on demand from the Actions tab). It restores
+1. `.github/workflows/sync.yml` runs every 30 minutes, started by an external scheduler (and on demand from the Actions tab). It restores
    the SQLite database from the `data` branch, runs `node export.js out` to sync new redemptions,
    and force-pushes the JSON snapshot plus the database to `data` as a single commit.
 2. Vercel serves `public/` and proxies `/data/*` to that branch (see `vercel.json`).
@@ -32,8 +32,13 @@ Vercel only serves static files, so the data is produced elsewhere:
 
 Setup: add your Alchemy key as the repository secret `ALCHEMY_API_KEY` (and optionally your Etherscan key as
 `ETHERSCAN_API_KEY`), run the workflow once, then import the repository in Vercel with the default settings.
-GitHub can delay scheduled runs, so in practice the data may refresh a few hours apart; starting the workflow by hand
-from the Actions tab refreshes it at once.
+GitHub delays or drops scheduled runs (in practice they came hours apart), so the workflow's own schedule is only a
+backup that runs twice a day. The regular refresh comes from an external cron service (for example cron-job.org), which starts the
+workflow every 30 minutes with a `POST` to
+`https://api.github.com/repos/<owner>/<repo>/actions/workflows/sync.yml/dispatches` and the body `{"ref":"main"}`,
+authenticated by a fine-grained token limited to this repository with only the Actions (read and write) permission.
+Starting the workflow by hand from the Actions tab refreshes the data at once. If the external service stops, the
+backup still refreshes the data about every 12 hours (GitHub may delay those runs).
 
 ## Files
 
