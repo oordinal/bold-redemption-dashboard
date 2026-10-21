@@ -1259,6 +1259,29 @@
             const addrLink = addr => `<a class="num inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" target="_blank" rel="noopener" title="${esc(addr)} on Etherscan" href="https://etherscan.io/address/${esc(addr)}">${esc(short(addr))}<span aria-hidden="true">↗</span></a>`;
             // Pool prices with the same colour dots as the price chart
             const poolPrice = (label, color, v) => `<span class="inline-flex items-center gap-1.5"><span class="legend-swatch" style="background:${color}"></span>${label} <span class="num text-white">${v == null ? '–' : '$' + v.toFixed(4)}</span></span>`;
+            // How this redemption was financed and where its BOLD came from, with the labels of the sourcing cards.
+            // The hint opens downwards: the panel can sit at the top of the scrolling feed.
+            const hint = (note, label) => infoTip(note, label).replace('class="info-tip"', 'class="info-tip below"');
+            const flashText = !r.flash_venue ? `<span class="inline-flex items-center">None detected${hint(FLASH_NOTES.none, 'Flash financing')}</span>`
+                : r.flash_venue.split(',').map(v => `<span class="text-white">${esc(/flash/.test(v) ? v : `${v} flash loan`)}</span>`).join(' + ');
+            const sources = r.bold_src_held == null || !r.amount ? []
+                : SOURCE_LABELS.map(([k, label]) => ({ k, label, share: (r[`bold_src_${k}`] || 0) / r.amount * 100 }))
+                    .filter(s => s.share >= 0.05).sort((a, b) => b.share - a.share);
+            // One bar split by source, in the pools' colours of the price chart (the "BOLD before the block" dots below); hover names the
+            // pool and its share. Other venues are grey, BOLD already held is hatched because it is not a market.
+            const POOL_NAMES = { curve: 'Curve BOLD/USDC', uni_v3: 'Uniswap v3 BOLD/USDC', uni_v4: 'Uniswap v4 BOLD/USDC', other: 'Other venues', held: 'Already held' };
+            const POOL_COLORS = { curve: css('--series-1'), uni_v3: css('--series-2'), uni_v4: css('--series-3'), other: css('--muted') };
+            const sourceShare = s => `${s.share >= 99.95 ? '100' : fmt(s.share, 1)}%`;
+            const sourceText = sources.length ? `<span class="inline-flex w-40 h-2.5 rounded-sm overflow-hidden" role="img"
+                    aria-label="${sources.map(s => `${POOL_NAMES[s.k]} ${sourceShare(s)}`).join(', ')}">${sources.map((s, i) => `<span class="h-full"
+                    style="width:${s.share}%; ${i < sources.length - 1 ? 'border-right: 2px solid transparent; ' : ''}background-clip: padding-box; ${s.k === 'held'
+                        ? 'box-shadow: inset 0 0 0 1px var(--ink-2); background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.18) 0 3px, transparent 3px 6px)'
+                        : `background-color: ${POOL_COLORS[s.k]}`}" data-tip-title="${POOL_NAMES[s.k]}" data-tip="${sourceShare(s)} of the BOLD redeemed"></span>`).join('')}</span>` : '–';
+            const financing = `
+                    <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                        <span class="inline-flex flex-wrap items-center gap-x-1.5"><span style="color: var(--muted)">Financing</span> ${flashText}</span>
+                        <span class="inline-flex flex-wrap items-center gap-x-2"><span style="color: var(--muted)">BOLD sources</span> ${sourceText}</span>
+                    </p>`;
             const summary = `
                 <div class="text-sm leading-relaxed space-y-1.5" style="color: var(--ink-2)">
                     <p>
@@ -1267,6 +1290,7 @@
                         Sent by ${addrLink(r.sender)}
                         ${r.via_contract ? `through contract ${addrLink(r.to_address)}` : 'directly to the CollateralRegistry'}.
                     </p>
+                    ${financing}
                     <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                         <span style="color: var(--muted)">BOLD before the block</span>
                         ${poolPrice('Curve', css('--series-1'), r.price_curve)}
@@ -1354,7 +1378,7 @@
             const shareTip = (p, bar) => p.net
                 ? (net > 0 ? `${share(p.v, edgeTotal)} of the edge kept` : `${share(p.v, costTotal)} of the cost not covered by the edge`)
                 : bar === 'edge' ? `${share(p.v, edgeTotal)} of the edge` : `${share(p.v, costTotal)} of the cost`;
-            const segment = bar => p => `<div class="h-full" style="width:${p.v / scale * 100}%; border-right: 2px solid transparent; background-clip: padding-box;
+            const segment = bar => (p, i, list) => `<div class="h-full" style="width:${p.v / scale * 100}%; ${i < list.length - 1 ? 'border-right: 2px solid transparent; ' : ''}background-clip: padding-box;
                 ${p.net ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px)` : `background-color: ${p.color}`}"
                 data-tip-title="${p.label}" data-tip="${shareTip(p, bar)}"></div>`;
             const barRow = (label, list) => `
