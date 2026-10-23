@@ -380,8 +380,11 @@
         </main>
 
         <main id="view-troves" class="hidden space-y-6">
-            <section id="tvCounts" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
-            <section id="tvMarket" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+            <!-- the two rows of tiles 16 px apart, as the tiles on the Redemptions tab -->
+            <div class="space-y-4">
+                <section id="tvCounts" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+                <section id="tvMarket" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+            </div>
             <section id="tvBranches" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
             <section class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
@@ -2525,12 +2528,12 @@
             $('tvInfo').innerHTML = infoTip(TV_INFO, 'Trove overview').replace('class="info-tip"', 'class="info-tip below"');
             $('tvAsOf').innerText = `snapshot ${ago(s.ts * 1000)} · block ${fmt(s.block)}`;
             // Market context
-            const regime = s.boldUsd == null ? '' : s.boldUsd < 0.998 ? 'below $0.998: redemptions are usually more frequent' : 'near or above $1';
+            const regime = s.boldUsd == null ? '' : s.boldUsd < 0.998 ? 'below $0.998: more redemptions' : 'near or above $1';
             const tiles = [
                 ['ETH price', usd(s.ethUsd, 0), 'Uniswap ETH/USDC'],
                 ['BOLD price', s.boldUsd == null ? '–' : `$${s.boldUsd.toFixed(4)}`, regime],
                 ['Redemption fee now', `${fmt(s.redemptionRate, 3)}%`, 'rises with each redemption'],
-                ['Redeemed, last 7 days', tv.last7 != null ? `${compact(tv.last7)} BOLD` : '–', tv.weekVol != null ? `typical week ${compact(tv.weekVol)} BOLD (last 180 days)` : '']
+                ['Redeemed, last 7 days', tv.last7 != null ? `${compact(tv.last7)} BOLD` : '–', tv.weekVol != null ? `typical week ${compact(tv.weekVol)} (180 days)` : '']
             ];
             // Trove counts: active (in the sorted lists), zombie, the change in active troves over about 30 days, median size
             const active = tv.troves.filter(t => t.status === 1), zombies = tv.troves.filter(t => t.status === 4);
