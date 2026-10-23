@@ -5,6 +5,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
+const { snapshotTroves } = require('./troves');
 
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES || 5);
 
@@ -54,6 +55,24 @@ app.get('/api/batches', (req, res) => {
     }
 });
 
+app.get('/api/troves', (req, res) => {
+    try {
+        const snapshot = queries.troves();
+        if (!snapshot) return res.status(404).json({ error: 'no trove snapshot yet' });
+        res.json(snapshot);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/trovehits', (req, res) => {
+    try {
+        res.json(queries.troveHits());
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/tx/:hash', (req, res) => {
     const hash = req.params.hash.toLowerCase();
     if (!/^0x[0-9a-f]{64}$/.test(hash)) return res.status(400).json({ error: 'invalid transaction hash' });
@@ -72,7 +91,11 @@ app.get('/api/status', (req, res) => {
 
 function startSync() {
     if (getStatus().running) return false;
-    syncData().catch(() => { /* logged and exposed via /api/status */ });
+    syncData()
+        .catch(() => { /* logged and exposed via /api/status */ })
+        // Troves tab: refreshed after every sync attempt; a failure keeps the previous snapshot
+        .then(() => snapshotTroves())
+        .catch(e => console.warn(`Trove snapshot not updated: ${e.shortMessage || e.message}`));
     return true;
 }
 

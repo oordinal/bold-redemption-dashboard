@@ -78,11 +78,36 @@
         @keyframes pulse { from { transform: scale(0.6); opacity: 0.5; } to { transform: scale(1.8); opacity: 0; } }
         thead th { position: sticky; top: 0; background: #11161e; z-index: 1; }
         .legend-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        [data-tvgo] { cursor: pointer; transition: filter .12s; }
+        [data-bar-area] [data-seg] { transition: left .6s ease, width .6s ease, background-color .6s ease, filter .12s, opacity .15s ease; }
+        [data-bar-area].tv-hl-on [data-seg] { opacity: .35; }
+        [data-bar-area].tv-hl-on [data-seg].tv-hl { opacity: 1; outline: 2px solid #fff; outline-offset: -2px; z-index: 2; }
+        [data-bar-area].tv-hl-on [data-seg][style*="z-index: 1"] { opacity: 1; }   /* this trove stays in full colour */
+        [data-bar-area] [data-mark], [data-bar-area] [data-mark-text] { transition: left .6s ease, right .6s ease, top .6s ease, height .6s ease, color .6s ease; }
+        [data-bar-area] [data-line] { transition: height .6s ease; }
+        [data-bar-area] { transition: height .6s ease; }
+        [data-bar-area] [data-mark-text] { transition: left .6s ease, right .6s ease, top .6s ease, color .6s ease, opacity .15s ease; }
+        [data-bar-area] .tv-fading { opacity: 0; }
+        /* scenario toggles: the same switch as "Zombie troves" above the list */
+        .tv-sim { position: relative; display: inline-block; vertical-align: middle; width: 28px; height: 16px; border-radius: 999px; cursor: pointer;
+            background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); transition: background .15s, box-shadow .15s; }
+        .tv-sim::after { content: ''; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+        .tv-sim:hover::after { background: var(--ink-2); }
+        .tv-sim[aria-pressed="true"] { background: rgba(57, 135, 229, 0.3); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.6); }
+        .tv-sim[aria-pressed="true"]::after { transform: translateX(12px); background: var(--ink-1); }
+        [data-tvgo]:hover { filter: brightness(1.4); }
         .tab { padding: 7px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
         .tab:hover { color: var(--ink-1); }
         .tab-active { color: var(--ink-1); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
         .seg { padding: 4px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
         .seg:hover { color: var(--ink-1); }
+        .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--muted); transition: color .15s; }
+        .switch:hover, .switch[aria-checked="true"] { color: var(--ink-1); }
+        .switch-track { position: relative; width: 28px; height: 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); transition: background .15s, box-shadow .15s; }
+        .switch-knob { position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+        .switch[aria-checked="true"] .switch-track { background: rgba(57, 135, 229, 0.3); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.6); }
+        .switch[aria-checked="true"] .switch-knob { transform: translateX(12px); background: var(--ink-1); }
         .seg-active { color: var(--ink-1); background: rgba(57, 135, 229, 0.18); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.45); }
         .date-in { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 4px 8px; color: var(--ink-1); color-scheme: dark; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
         .legend-btn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.08); transition: opacity .15s, background .15s; }
@@ -102,13 +127,14 @@
         .info-tip { position: relative; display: inline-grid; place-items: center; flex: none; width: 13px; height: 13px; margin-left: 5px; border-radius: 50%;
             border: 1px solid currentColor; color: var(--muted); font: 600 9px/1 Inter, system-ui, sans-serif; text-transform: none; letter-spacing: 0; cursor: help; transition: color .15s; }
         .info-tip:hover, .info-tip:focus-visible { color: var(--ink-1); outline: none; }
-        .info-pop { position: absolute; bottom: calc(100% + 8px); left: -12px; z-index: 20; width: 270px; padding: 8px 10px; border-radius: 8px;
+        /* A hint's text stays in its button (.info-pop) and is shown in one floating box (#infoBox) fixed to the window, so no
+           scrolling list, table or card can clip or cover it; script places it on the side of the icon with room */
+        .info-pop { display: none; }
+        #infoBox { position: fixed; z-index: 70; width: 280px; max-width: calc(100vw - 16px); padding: 8px 10px; border-radius: 8px;
             background: #1a2130; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
-            color: var(--ink-2); font: 400 12px/1.45 Inter, system-ui, sans-serif; text-align: left; white-space: normal;
-            opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s, visibility .12s; }
-        .info-tip:hover .info-pop, .info-tip:focus .info-pop { opacity: 1; visibility: visible; }
-        .info-tip.below .info-pop { bottom: auto; top: calc(100% + 8px); }
-        .info-tip.to-left .info-pop { left: auto; right: -12px; }
+            color: var(--ink-2); font: 400 12px/1.45 Inter, system-ui, sans-serif; text-align: left; text-transform: none; letter-spacing: normal;
+            white-space: normal; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
+        #infoBox.show { opacity: 1; visibility: visible; }
         /* Instant tooltip for values marked with data-tip (one shared box, positioned next to the value) */
         .tip-target { cursor: help; text-decoration: underline dotted rgba(255, 255, 255, 0.28); text-underline-offset: 4px; }
         th[data-tip] { cursor: help; }
@@ -157,7 +183,8 @@
                 <p class="text-sm mt-1.5" style="color: var(--muted)">Liquity V2 · BOLD redemptions on Ethereum mainnet</p>
             </div>
             <nav class="card flex gap-1 p-1 rounded-xl order-last lg:order-none" role="tablist" aria-label="View">
-                <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Dashboard</button>
+                <button id="tab-dashboard" class="tab tab-active" role="tab" aria-selected="true">Redemptions</button>
+                <button id="tab-troves" class="tab" role="tab" aria-selected="false">Troves</button>
                 <button id="tab-how" class="tab" role="tab" aria-selected="false">Methodology</button>
             </nav>
             <div class="flex items-center gap-3">
@@ -350,6 +377,50 @@
             </div>
         </div>
 
+        </main>
+
+        <main id="view-troves" class="hidden space-y-6">
+            <section id="tvCounts" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+            <section id="tvMarket" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+            <section id="tvBranches" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
+            <section class="card p-5 md:p-6">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 class="font-semibold flex items-center">Trove overview<span id="tvInfo" class="inline-flex items-center"></span></h2>
+                    <span id="tvAsOf" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs max-w-4xl" style="color: var(--muted)">Every open trove in Liquity V2: its health, its place in the redemption queue, what a safer
+                    interest rate would cost, its redemption record, its batch manager and who may act on it. Find a trove by owner address or trove ID,
+                    or select a row in the list below.</p>
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <input id="tvSearch" type="search" placeholder="Owner address or trove ID (0x…)" aria-label="Find a trove by owner address or trove ID"
+                           class="date-in w-full sm:w-[34rem] !py-2 !text-[13px]" spellcheck="false" autocomplete="off">
+                    <div id="tvBranchFilter" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Branch"></div>
+                    <button id="tvZombies" type="button" class="switch" role="switch" aria-checked="false"><span class="switch-track"><span class="switch-knob"></span></span>Zombie troves</button>
+                </div>
+                <div id="tvPortfolio"></div>
+            </section>
+            <section class="card p-5 md:p-6">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 class="font-semibold">Troves</h2>
+                    <span id="tvCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs mb-4 max-w-4xl" style="color: var(--muted)">
+                    <b style="color: var(--ink-2)">Debt in front</b> BOLD the branch's redemptions must clear before reaching the trove ·
+                    <b style="color: var(--ink-2)">System-wide</b> the same distance in BOLD redeemed across all branches, given the branch's current share ·
+                    <b style="color: var(--ink-2)">CR</b> collateral ratio at Liquity's price ·
+                    <b style="color: var(--ink-2)">Management</b> delegated if a batch manager or an interest delegate sets the rate, self-managed if the owner does.
+                </p>
+                <div id="tvScroll" class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                    <table class="w-full text-left text-[13px] mono whitespace-nowrap">
+                        <thead style="color: var(--muted)"><tr id="tvHead" class="text-[11px] uppercase tracking-wider"></tr></thead>
+                        <tbody id="tvRows"></tbody>
+                    </table>
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-3 mt-4">
+                    <span id="tvRange" class="text-xs mono" style="color: var(--muted)"></span>
+                    <nav id="tvPager" class="flex flex-wrap items-center gap-1" aria-label="Trove pages"></nav>
+                </div>
+            </section>
         </main>
 
         <main id="view-how" class="hidden space-y-6">
@@ -581,7 +652,35 @@
             </section>
 
             <section class="card p-5 md:p-8">
-                <div class="kicker">7 · Methodology</div>
+                <div class="kicker">7 · Troves</div>
+                <h3 class="text-xl font-semibold mt-1">How the trove figures are computed</h3>
+                <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">After every data update, every open trove and every zombie trove is read from Liquity V2's contracts at a single block, together with each branch's debt, Stability Pool deposits, prices and collateral thresholds, and every batch manager's settings. The change in active troves compares that count with the redemption queues read at the block about 30 days earlier; the median trove size is the median debt of the active troves. Redemption records come from this dashboard's redemption history.</p>
+                <div class="grid md:grid-cols-2 gap-3 mt-6">
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">REDEMPTION QUEUE</div>
+                        <div class="font-semibold mt-1">Debt in front and system-wide distance</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A branch is redeemed in a fixed order: its most recent zombie trove first, then troves from the lowest interest rate up, as read from Liquity's MultiTroveGetter. Debt in front is the debt of every trove ahead in that order.</p><p>Each redemption is split across branches in proportion to their unbacked debt (debt minus Stability Pool deposits), or by total debt if every branch is fully covered. The system-wide distance divides debt in front by the branch's current share: the BOLD that would have to be redeemed across all branches first, if nothing changed. A typical week is the average 7-day redemption volume of the last 180 days.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">SAFER RATE AND BATCHES AHEAD</div>
+                        <div class="font-semibold mt-1">Rate ladder and leapfrog exposure</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The rate ladder gives, for 0.5M to 10M BOLD of debt in front, the lowest rate just above the trove that would leave that much of the branch's debt ahead with the queue as it is now, and the extra interest per year. Liquity charges an upfront fee of about 7 days of average interest when a rate is changed within 7 days of the last change.</p><p>Batches ahead lists the largest batches in front of the trove and the debt that would remain in front if one of them moved its rate above the trove's. In our research this was the most common reason why troves deep in the queue were redeemed: for the troves hit unexpectedly, 89% of the debt that had been in front of them had raised its rate above theirs.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">HEALTH AND RECORD</div>
+                        <div class="font-semibold mt-1">Liquidation context and past redemptions</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The collateral ratio and liquidation price use Liquity's own price for the branch, as liquidations do; collateral values use the market price (ETH on Uniswap times the LST's exchange rate). The historical liquidation chance is how often ETH fell as far as the liquidation price requires, counted from Coinbase 1-minute prices since May 2025 for every hourly start and the following 7 or 30 days; it is a record of the past, not a forecast; for wstETH and rETH it assumes the token follows ETH.</p><p>A redemption's net cost to the borrower is the collateral removed, at its market price at the time, minus the debt it repaid; the fee stays in the trove. The value change since compares that collateral with today's price.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">MANAGERS AND PERMISSIONS</div>
+                        <div class="font-semibold mt-1">Batch managers and who may act on a trove</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>For a batched trove, the manager's rate, annual fee, allowed range, last change and current batch size come from the contracts; its record counts every redemption that hit one of its troves while in the batch.</p><p>Permissions are the trove's add manager, remove manager and receiver, and interest delegate. Liquity's zapper contracts, verified on Etherscan, are named: troves opened through the Liquity app have one as manager and receiver, and it only acts for the owner. Any other address that may withdraw collateral is flagged.</p></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5 md:p-8">
+                <div class="kicker">8 · Methodology</div>
                 <h3 class="text-xl font-semibold mt-1">From on-chain data to the dashboard</h3>
                 <div class="grid md:grid-cols-4 gap-3 mt-6">
                     <div class="rounded-xl p-4 relative" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
@@ -635,7 +734,7 @@
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
             <p>Data sources: Curve and Uniswap BOLD/USDC prices from the block preceding each redemption; Uniswap v3 ETH/USDC price at the moment of the redemption (the pool's last trade earlier in the same block).</p>
-            <p class="mt-1">Builder payments from Alchemy internal-transfer data; flash financing and BOLD sources from each transaction's own records; contract deployers from Etherscan; names from ENS. The full methodology is described under “Methodology”.</p>
+            <p class="mt-1">Builder payments from Alchemy internal-transfer data; flash financing and BOLD sources from each transaction's own records; contract deployers from Etherscan; names from ENS; trove state from Liquity's contracts after every update; ETH drawdowns from Coinbase. The full methodology is described under “Methodology”.</p>
             <div class="mt-6 pt-5 mx-auto max-w-4xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
                 <span class="kicker">Disclaimer</span><br>
                 This dashboard is an independent project. It is not affiliated with, endorsed by, sponsored by or otherwise associated with
@@ -705,6 +804,35 @@
             tipBox.classList.add('show');
         }
         const hideTip = () => tipBox.classList.remove('show');
+        // Info hints (ⓘ): one floating box for all of them, above the icon when there is room (below for hints marked .below,
+        // when there is room there), kept inside the window
+        const infoBox = document.createElement('div');
+        infoBox.id = 'infoBox';
+        infoBox.setAttribute('role', 'tooltip');
+        document.body.appendChild(infoBox);
+        let infoFor = null;
+        function showInfo(btn) {
+            const pop = btn.querySelector('.info-pop');
+            if (!pop) return;
+            infoFor = btn;
+            infoBox.innerHTML = pop.innerHTML;
+            const r = btn.getBoundingClientRect(), w = infoBox.offsetWidth, h = infoBox.offsetHeight, gap = 8, edge = 8;
+            const above = r.top - gap - edge, below = innerHeight - r.bottom - gap - edge;
+            const putBelow = btn.classList.contains('below') ? below >= h || below >= above : !(above >= h || above >= below);
+            const top = Math.min(Math.max(putBelow ? r.bottom + gap : r.top - gap - h, edge), innerHeight - h - edge);
+            const left = Math.min(Math.max(r.left + r.width / 2 - w / 2, edge), innerWidth - w - edge);
+            Object.assign(infoBox.style, { top: `${top}px`, left: `${left}px` });
+            infoBox.classList.add('show');
+        }
+        const hideInfo = () => { infoFor = null; infoBox.classList.remove('show'); };
+        document.addEventListener('pointerover', e => { const b = e.target.closest('.info-tip'); if (b) showInfo(b); });
+        document.addEventListener('pointerout', e => { const b = e.target.closest('.info-tip'); if (b && !b.contains(e.relatedTarget)) hideInfo(); });
+        document.addEventListener('focusin', e => { const b = e.target.closest('.info-tip'); if (b) showInfo(b); });
+        document.addEventListener('focusout', e => { if (e.target.closest('.info-tip')) hideInfo(); });
+        // touch screens: a tap shows the hint, a tap elsewhere hides it
+        document.addEventListener('click', e => { const b = e.target.closest('.info-tip'); if (b) showInfo(b); else if (infoFor) hideInfo(); });
+        window.addEventListener('scroll', hideInfo, true);
+        window.addEventListener('resize', hideInfo);
         document.addEventListener('pointerover', e => { const el = e.target.closest('[data-tip]'); if (el) showTip(el); });
         document.addEventListener('pointerout', e => {
             const el = e.target.closest('[data-tip]');
@@ -1027,19 +1155,20 @@
                     hits: s.hits, batchHits: s.batch_hits,
                     managers: s.batch_managers.map(m => ({ address: m.address, troves: m.troves, txs: m.txs, bold: m.bold })) } : null;
             }
-            let troveBold = 0, batchBold = 0, hits = 0, batchHits = 0;
-            const troves = new Set(), batchTroves = new Set(), byManager = new Map();
+            // a hit is a trove reached by a transaction; a transaction with several redemption calls can reach it more than once
+            let troveBold = 0, batchBold = 0;
+            const troves = new Set(), batchTroves = new Set(), byManager = new Map(), hits = new Set(), batchHits = new Set();
             for (const [t, tx, trove, mgr, bold] of batchData.rows) {
                 if (t < from || t > to) continue;
-                troveBold += bold; troves.add(trove); hits++;
+                troveBold += bold; troves.add(trove); hits.add(`${tx}:${trove}`);
                 if (mgr < 0) continue;
-                batchBold += bold; batchTroves.add(trove); batchHits++;
+                batchBold += bold; batchTroves.add(trove); batchHits.add(`${tx}:${trove}`);
                 if (!byManager.has(mgr)) byManager.set(mgr, { address: batchData.managers[mgr], troves: new Set(), txs: new Set(), bold: 0 });
                 const m = byManager.get(mgr); m.troves.add(trove); m.txs.add(tx); m.bold += bold;
             }
             const managers = [...byManager.values()].map(m => ({ address: m.address, troves: m.troves.size, txs: m.txs.size, bold: m.bold }))
                 .sort((a, b) => b.bold - a.bold);
-            return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits, batchHits, managers };
+            return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits: hits.size, batchHits: batchHits.size, managers };
         }
 
         function renderBatches() {
@@ -1816,7 +1945,8 @@
 
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
-        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses' };
+        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses',
+            troves: '/api/troves', trovehits: '/api/trovehits' };
         let staticMode = false;
         let lastGenerated = null;
 
@@ -1843,6 +1973,10 @@
             renderFeed(redemptions);
 
             renderCharts();
+            if (tv) {
+                tv.loadedAt = 0;                   // a new data update may carry a new trove snapshot
+                if (!$('view-troves').classList.contains('hidden')) loadTroves();
+            }
         }
 
         function setPill(color, text, pulse) {
@@ -2165,15 +2299,809 @@
             }
         }
 
+        // ================================================================ Troves tab
+        // Every open trove from the latest snapshot (troves.js) with what a borrower needs: health and liquidation context,
+        // place in the redemption queue, the cost of a safer rate, the trove's redemption record, its batch manager and who may
+        // act on it. Everything derived here comes from the snapshot, the redemption history and Liquity's rules (see Methodology).
+        const TV_INFO = 'Read from Liquity V2\'s contracts after every data update, all at one block: every open trove and zombie trove, the branches\' '
+            + 'debt, Stability Pool deposits and prices, and the batch managers. Debt in front follows Liquity\'s redemption order: the branch\'s most '
+            + 'recent zombie trove first, then troves from the lowest interest rate up. A branch receives a share of each redemption in proportion to '
+            + 'its debt not covered by its Stability Pool.';
+        // Liquity's own zapper contracts (verified on Etherscan, created by Liquity's deployer). Troves opened through the Liquity app have one as
+        // add manager, remove manager and receiver; the zapper only acts for the trove's owner and forwards withdrawals to them.
+        const KNOWN_MANAGERS = {
+            '0xdccbd7a365aee086aa3b4ede8afe895b20770ae3': 'Liquity LeverageWETHZapper',
+            '0xe85230de04147c4ea363b21cdb801c1c19df0a56': 'Liquity LeverageLSTZapper (wstETH)',
+            '0x75036b1d6de5665c60f5c33bb4a64e8e123211a2': 'Liquity LeverageLSTZapper (rETH)',
+            '0x7022a4f4a2b9f0c30a5eb0b0073a8bb4c8e70c1f': 'Liquity WETHZapper'
+        };
+        const RATE_COOLDOWN = 7 * 86400;           // Liquity: a rate change within 7 days of the last one pays an upfront fee
+        const LADDER_TARGETS = [500e3, 1e6, 2e6, 5e6, 10e6];
+        let tv = null;                             // trove model, built on first opening of the tab
+        let tvOpen = null;                         // key of the expanded trove
+        // tvBranchSel: the selected branches by name; empty means all
+        let tvBranchSel = new Set(), tvShowZombies = false, tvSort = { key: 'front', dir: 1 }, tvPage = 1;
+        const TV_PAGE_SIZE = 30;
+
+        async function loadTroves(force) {
+            if (tv && !force && Date.now() - tv.loadedAt < 5 * 60 * 1000) return renderTroves();
+            if (!tv) $('tvRows').innerHTML = '<tr><td class="px-3 py-6 text-xs" style="color: var(--muted)">Loading troves…</td></tr>';
+            try {
+                const [snap, hits, drawdowns] = await Promise.all([
+                    fetch(API.troves, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(r.status === 404 ? 'no trove snapshot published yet' : `HTTP ${r.status}`); return r.json(); }),
+                    fetch(API.trovehits, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null),
+                    fetch('eth_drawdowns.json').then(r => r.ok ? r.json() : null).catch(() => null)]);
+                tv = buildTroveModel(snap, hits, drawdowns);
+                tv.loadedAt = Date.now();
+            } catch (e) {
+                $('tvRows').innerHTML = `<tr><td class="px-3 py-6 text-xs" style="color: var(--bad)">Trove data could not be loaded (${esc(e.message)}).</td></tr>`;
+                return;
+            }
+            renderTroves();
+        }
+
+        function buildTroveModel(snap, hits, drawdowns) {
+            const branches = snap.branches.map(b => ({ ...b, unbacked: Math.max(b.debt - b.spDeposits, 0), tcr: b.debt ? b.coll * b.oraclePrice / b.debt : null }));
+            const totalUnbacked = branches.reduce((a, b) => a + b.unbacked, 0), totalDebt = branches.reduce((a, b) => a + b.debt, 0);
+            // Liquity splits a redemption by unbacked debt; by total debt if every branch is fully covered
+            branches.forEach(b => { b.share = totalUnbacked ? b.unbacked / totalUnbacked : totalDebt ? b.debt / totalDebt : 0; });
+            const managers = new Map(snap.managers.map(m => [`${m.branch}:${m.address}`, m]));
+            const troves = snap.troves.map(t => ({ ...t, key: `${t.branch}:${t.id}`, b: branches[t.branch],
+                mgr: t.batchManager ? managers.get(`${t.branch}:${t.batchManager}`) || null : null }));
+            for (const b of branches) {
+                // Redemption order: the branch's most recent zombie trove first, then the sorted list from the lowest rate up
+                const zombie = b.lastZombie ? troves.find(t => t.branch === b.index && t.id === b.lastZombie) : null;
+                const sorted = troves.filter(t => t.branch === b.index && t.queue != null).sort((x, y) => x.queue - y.queue);
+                b.queue = zombie ? [zombie, ...sorted] : sorted;
+                let front = 0;
+                b.queue.forEach((t, i) => { t.position = i + 1; t.front = front; front += t.debt; });
+                b.queueDebt = front;
+                b.active = sorted.length;
+                b.zombies = troves.filter(t => t.branch === b.index && t.status === 4).length;
+                b.avgRate = sorted.length ? sorted.reduce((a, t) => a + t.debt * t.rate, 0) / sorted.reduce((a, t) => a + t.debt, 0) : null;
+                b.lowestRate = sorted.length ? sorted[0].rate : null;
+            }
+            for (const t of troves) {
+                if (t.front == null) t.front = null;
+                t.system = t.front == null ? null : t.b.share > 0 ? t.front / t.b.share : Infinity;
+                t.cr = t.debt > 0 ? t.coll * t.b.oraclePrice / t.debt : null;
+                t.collUsd = t.coll * (t.b.marketPrice ?? t.b.oraclePrice);
+                t.liqPrice = t.coll > 0 && t.debt > 0 ? t.debt * t.b.mcr / t.coll : null;
+                t.liqDrop = t.liqPrice != null && t.b.oraclePrice ? 1 - t.liqPrice / t.b.oraclePrice : null;
+                t.fee = t.mgr ? t.mgr.fee : 0;
+                // who sets the rate: a batch manager or an individual delegate (delegated), or the owner (self-managed)
+                t.mgmt = t.mgr || t.delegate ? 'delegated' : 'self-managed';
+                t.lastChange = t.mgr ? t.mgr.lastRateChange : t.lastRateChange;
+            }
+            // Redemption record: every hit, by trove and by batch manager (at the time of the hit). One hit is one
+            // transaction: a transaction that makes several redemption calls can reach the same trove in each of them,
+            // and those calls are merged (the rows come in transaction order)
+            const byTrove = new Map(), byManager = new Map();
+            if (hits) {
+                for (const [ts, txI, branch, troveI, debt, coll, fee, mgrI, rate, price] of hits.rows) {
+                    const k = `${branch}:${hits.troves[troveI]}`, tx = hits.txs[txI];
+                    if (!byTrove.has(k)) byTrove.set(k, []);
+                    const list = byTrove.get(k), last = list[list.length - 1];
+                    if (last && last.tx === tx) { last.debt += debt; last.coll += coll; last.fee += fee || 0; last.calls++; continue; }
+                    list.push({ ts, tx, branch, debt, coll, fee: fee || 0, rate, price, manager: mgrI >= 0 ? hits.managers[mgrI] : null, trove: k, calls: 1 });
+                }
+                for (const list of byTrove.values()) for (const h of list) if (h.manager) {
+                    if (!byManager.has(h.manager)) byManager.set(h.manager, []);
+                    byManager.get(h.manager).push(h);
+                }
+                for (const list of byManager.values()) list.sort((a, b) => a.ts - b.ts);
+            }
+            return { snap, branches, troves, managers, byTrove, byManager, drawdowns, weekVol: null, maxWeek: null, last7: null };
+        }
+
+        // Typical 7-day system-wide redemption volume over the 180 days before the snapshot, from the dashboard's redemption data
+        // (loaded separately, so computed when the tab renders)
+        function tvWeekVolumes() {
+            if (tv.weekVol != null || !chartRows.length) return;
+            const end = tv.snap.ts * 1000, start = end - 180 * 86400e3, daily = new Array(180).fill(0);
+            for (const r of chartRows) if (r.timestamp > start && r.timestamp <= end) daily[Math.min(179, Math.floor((r.timestamp - start) / 86400e3))] += r.amount;
+            const sums = [];
+            for (let i = 0; i + 7 <= 180; i++) sums.push(daily.slice(i, i + 7).reduce((a, v) => a + v, 0));
+            tv.weekVol = sums.reduce((a, v) => a + v, 0) / sums.length;
+            tv.maxWeek = Math.max(...sums);          // the busiest 7 days of the last 180
+            tv.last7 = daily.slice(-7).reduce((a, v) => a + v, 0);
+        }
+
+        const tvTroveHits = t => (tv.byTrove.get(`${t.b.name}:${t.id}`) || []);
+        // A small copy button; the click handler on the list copies its value and shows a check mark for a moment
+        const tvCopy = (value, what) => `<button type="button" class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-white/5 transition align-middle" style="color: var(--muted)"
+            data-copy="${esc(value)}" data-copy-what="${esc(what)}" data-tip="Copy ${esc(what)}" aria-label="Copy ${esc(what)}">${COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5')}</button>`;
+        // Where a marker's text goes: right of its triangle if it fits in the bar's width, else left, trying each text in turn
+        // (a shorter form last); as a last resort shifted by its own position, under the triangle, so it stays inside the bar
+        function tvPlace(barW, p, texts) {
+            const at = p / 100 * barW;
+            for (const txt of texts) { const w = txt.length * 6.1 + 2;
+                if (at + 10 + w <= barW) return { txt, side: 'right', lo: at - 6, hi: at + 10 + w };
+                if (at - 10 - w >= 0) return { txt, side: 'left', lo: at - 10 - w, hi: at + 6 }; }
+            const txt = texts[texts.length - 1], w = txt.length * 6.1 + 2;
+            return { txt, side: null, lo: at - p / 100 * w, hi: at - p / 100 * w + w };
+        }
+        // The TW and BW lines on whole screen pixels: at a fractional position the screen splits each 1 px dark border
+        // unevenly, so one side looks like a gap
+        function tvSnapLines() {
+            const dpr = devicePixelRatio || 1;
+            for (const area of document.querySelectorAll('#tvRows [data-bar-area]')) {
+                const a = area.getBoundingClientRect();
+                if (!a.width) continue;
+                for (const l of area.querySelectorAll('[data-line]')) {
+                    const x = a.left + Number(l.dataset.p) / 100 * a.width - 1;
+                    l.style.left = `${Math.round(x * dpr) / dpr - a.left}px`;
+                }
+            }
+        }
+        addEventListener('resize', () => requestAnimationFrame(tvSnapLines));
+        // Queue-bar model of each rendered trove detail, for the batch scenarios
+        const tvBars = new Map();
+        // Batch scenario: the ticked batches ahead move their rate just above this trove's, so their blocks go right behind it
+        // and everything in between moves forward. Elements are updated in place, so the browser animates the change; today's
+        // state is remembered on the first change and restored exactly when nothing is ticked
+        function tvSimulate(detail) {
+            const area = detail.querySelector('[data-bar-area]');
+            const m = area && tvBars.get(area.dataset.barArea);
+            if (!m) return;
+            const boxes = [...detail.querySelectorAll('[data-tvsim]')];
+            const moved = new Set(boxes.filter(x => x.getAttribute('aria-pressed') === 'true').map(x => x.dataset.tvsim));
+            detail.querySelector('[data-tvsim-all]')?.setAttribute('aria-pressed', String(boxes.length > 0 && moved.size === boxes.length));
+            const els = [...area.querySelectorAll('[data-seg], [data-mark], [data-mark-text], [data-line]')];
+            const legend = detail.querySelector('[data-legend-self]'), tag = detail.querySelector('[data-sim-tag]');
+            const texts = [...area.querySelectorAll('[data-mark-text="self"], [data-mark-text="busy"]')];
+            texts.forEach(el => el.classList.add('tv-fading'));
+            clearTimeout(area._fade); area._fade = setTimeout(() => texts.forEach(el => el.classList.remove('tv-fading')), 600);
+            if (!area._today) area._today = { style: area.getAttribute('style'), legend: legend?.innerHTML,
+                els: els.map(el => ({ el, style: el.getAttribute('style'), text: el.dataset.markText ? el.textContent : null, tip: el.dataset.tip })) };
+            if (!moved.size) {
+                for (const o of area._today.els) { o.el.setAttribute('style', o.style); if (o.text != null) o.el.textContent = o.text; if (o.tip != null) o.el.dataset.tip = o.tip; }
+                area.setAttribute('style', area._today.style);
+                if (legend) legend.innerHTML = area._today.legend;
+                tag.classList.add('invisible');
+                return;
+            }
+            const X = v => Math.min(Math.max(v / m.D * 100, 0), 100);
+            const selfI = m.segs.findIndex(g => g.kind === 'self');
+            const isMoved = (g, i) => i < selfI && g.kind === 'batch' && moved.has(g.manager);
+            const pos = []; let acc = 0;
+            m.segs.forEach((g, i) => { if (i < selfI && !isMoved(g, i)) { pos[i] = acc; acc += g.debt; } });
+            const front = acc; pos[selfI] = acc; acc += m.debt;
+            m.segs.forEach((g, i) => { if (isMoved(g, i)) { pos[i] = acc; acc += g.debt; } });
+            m.segs.forEach((g, i) => { if (i > selfI) pos[i] = g.x0; });
+            const ink = TV_BANDS[exposureBand(m.share > 0 ? front / m.share : Infinity) || 'green'].ink;
+            const today = new Map(area._today.els.map(o => [o.el, o]));
+            for (const el of area.querySelectorAll('[data-seg]')) {
+                const i = Number(el.dataset.seg), g = m.segs[i], self = g.kind === 'self', behind = g.behind || isMoved(g, i);
+                const w = Math.max(X(pos[i] + g.debt) - X(pos[i]), self ? 0.8 : 0);
+                el.style.left = `${Math.min(X(pos[i]), 100 - w)}%`;
+                el.style.width = `${w}%`;
+                el.style.background = self ? ink : g.kind === 'batch' ? (behind ? 'rgba(57,135,229,.22)' : 'rgba(57,135,229,.6)') : (behind ? 'rgba(158,166,174,.33)' : '#9ea6ae');
+                const tip = today.get(el).tip;
+                el.dataset.tip = self ? `${tip} · in this scenario ${compact(front)} BOLD in front` : isMoved(g, i) ? `${tip} · in this scenario moved above this trove` : tip;
+            }
+            // markers: this trove's follows its block; the busiest week's may change row
+            const barW = area.clientWidth;
+            const selfW = Math.max(X(front + m.debt) - X(front), 0.8), selfMid = Math.min(X(front), 100 - selfW) + selfW / 2;
+            const now = front === 0 ? 'first in line' : `${compact(front)} in front`;
+            const mSelf = tvPlace(barW, selfMid, [`this trove · ${compact(m.front)} → ${now}`, `${compact(m.front)} → ${now}`, now]), mBusy = tvPlace(barW, m.pB, m.busyTexts);
+            const R1 = 50, selfRows = mSelf.side ? 1 : 2, clash = mBusy.lo < mSelf.hi + 8 && mSelf.lo < mBusy.hi + 8;
+            const busyTop = clash ? R1 + 16 * selfRows : R1;
+            const setText = (el, p, top, mk) => { el.textContent = mk.txt; el.style.top = `${mk.side ? top + 2 : top + 15}px`;
+                el.style.left = mk.side === 'right' ? `calc(${p}% + 10px)` : mk.side === 'left' ? '' : `${p}%`;
+                el.style.right = mk.side === 'left' ? `calc(${100 - p}% + 10px)` : '';
+                el.style.transform = mk.side ? '' : `translateX(-${p}%)`; };
+            const q = sel => area.querySelector(sel);
+            Object.assign(q('[data-mark="self"]').style, { left: `clamp(6px, ${selfMid}%, calc(100% - 6px))`, color: ink });
+            setText(q('[data-mark-text="self"]'), selfMid, R1, mSelf); q('[data-mark-text="self"]').style.color = ink;
+            q('[data-mark="busy"]').style.top = `${busyTop}px`;
+            setText(q('[data-mark-text="busy"]'), m.pB, busyTop, mBusy);
+            q('[data-line="busy"]').style.height = `${(clash ? 48 : busyTop) - 16}px`;
+            area.style.height = `${Math.max(R1 + 16 * selfRows, busyTop + (mBusy.side ? 16 : 30))}px`;
+            if (legend) legend.querySelector('.legend-swatch').style.background = ink;
+            tag.innerHTML = `<span class="font-semibold text-white">Scenario</span><span>${moved.size} batch${moved.size === 1 ? '' : 'es'} moved above this trove · <b class="mono text-white">${compact(m.front)} → ${now}</b></span>
+                <button class="px-2 py-0.5 rounded text-[11px] font-medium hover:brightness-125 transition" style="background: rgba(57,135,229,.35); color: #fff" data-tvsim-reset>Reset</button>`;
+            tag.classList.remove('invisible');
+        }
+        // How exposed a trove is, from its system-wide distance: reached by a typical week of redemptions (red), only by a week as
+        // busy as the busiest of the last 180 days (amber), or by neither (green)
+        const TV_BANDS = {
+            red: { label: 'within a typical week', bg: 'rgba(251,113,133,.08)', border: 'rgba(251,113,133,.45)', ink: 'var(--bad)' },
+            amber: { label: 'within a busy week', bg: 'rgba(250,178,25,.07)', border: 'rgba(250,178,25,.45)', ink: 'var(--warn)' },
+            green: { label: 'beyond the busiest week', bg: 'rgba(52,211,153,.07)', border: 'rgba(52,211,153,.4)', ink: 'var(--good)' }
+        };
+        const exposureBand = dist => dist == null || !tv.weekVol ? null : !isFinite(dist) || dist > tv.maxWeek ? 'green' : dist > tv.weekVol ? 'amber' : 'red';
+        const crClass = t => t.cr == null ? '' : t.cr < t.b.mcr + 0.1 ? 'bad' : t.cr < t.b.mcr + 0.3 ? 'text-[color:var(--warn)]' : '';
+        const tvDist = v => v == null ? '–' : !isFinite(v) ? '∞' : compact(v);
+        const weeksOf = v => v == null || !tv.weekVol ? '' : !isFinite(v) ? 'not reachable now' : `${fmt(v / tv.weekVol, 1)}× a typical week`;
+        const pctOf = (v, d = 1) => v == null ? '–' : `${fmt(v * 100, d)}%`;
+        const tvAddr = (a, label) => a ? `<a class="hover:underline decoration-dotted underline-offset-4" style="color: #8bb8f0" target="_blank" rel="noopener" href="https://etherscan.io/address/${esc(a)}" title="${esc(a)}">${esc(label || short(a))}</a>` : '–';
+        const daysAgo = ts => ts ? `${dateTime(ts * 1000)} · ${ago(ts * 1000)}` : '–';
+
+        function renderTroves() {
+            if (!tv) return;
+            tvWeekVolumes();
+            const s = tv.snap;
+            $('tvInfo').innerHTML = infoTip(TV_INFO, 'Trove overview').replace('class="info-tip"', 'class="info-tip below"');
+            $('tvAsOf').innerText = `snapshot ${ago(s.ts * 1000)} · block ${fmt(s.block)}`;
+            // Market context
+            const regime = s.boldUsd == null ? '' : s.boldUsd < 0.998 ? 'below $0.998: redemptions are usually more frequent' : 'near or above $1';
+            const tiles = [
+                ['ETH price', usd(s.ethUsd, 0), 'Uniswap ETH/USDC'],
+                ['BOLD price', s.boldUsd == null ? '–' : `$${s.boldUsd.toFixed(4)}`, regime],
+                ['Redemption fee now', `${fmt(s.redemptionRate, 3)}%`, 'rises with each redemption'],
+                ['Redeemed, last 7 days', tv.last7 != null ? `${compact(tv.last7)} BOLD` : '–', tv.weekVol != null ? `typical week ${compact(tv.weekVol)} BOLD (last 180 days)` : '']
+            ];
+            // Trove counts: active (in the sorted lists), zombie, the change in active troves over about 30 days, median size
+            const active = tv.troves.filter(t => t.status === 1), zombies = tv.troves.filter(t => t.status === 4);
+            const debts = active.map(t => t.debt).sort((x, y) => x - y), mid = debts.length >> 1;
+            const median = !debts.length ? null : debts.length % 2 ? debts[mid] : (debts[mid - 1] + debts[mid]) / 2;
+            const past = s.past, change = past ? active.length - past.active : null;
+            const counts = [
+                ['Active troves', fmt(active.length), tv.branches.map(b => `${b.name} ${fmt(b.active)}`).join(' · '),
+                    'Open troves in the redemption queue of each branch. Zombie troves are not included.'],
+                ['Zombie troves', fmt(zombies.length), (zd => `$${compact(zombies.reduce((a, t) => a + t.collUsd, 0))} collateral left · ${zd > 0 ? `${compact(zd)} BOLD debt` : 'no debt'}`)(zombies.reduce((a, t) => a + t.debt, 0)),
+                    'Troves a redemption left below the 2,000 BOLD minimum debt, often fully repaid, with the rest of their collateral still in them. They are out of the redemption queue until the owner adds debt or closes the trove and takes the collateral back; the most recent one per branch is redeemed first.'],
+                ['Change in 30 days', change == null ? '–' : `${change > 0 ? '+' : ''}${fmt(change / past.active * 100, 1)}%`,
+                    past ? `${change > 0 ? '+' : ''}${fmt(change)} from ${fmt(past.active)} active on ${date(past.ts * 1000)}` : 'not available in this snapshot',
+                    'Active troves now against the number in the redemption queues at the block about 30 days earlier. Troves opened and closed in between are not counted separately: this is the net change.'],
+                ['Median trove size', median == null ? '–' : `${compact(median)} BOLD`, 'debt of the middle active trove',
+                    'Half of the active troves owe more than this and half owe less. The median is used rather than the average, which a few very large troves would pull up.']
+            ];
+            $('tvCounts').innerHTML = counts.map(([label, value, sub, hint]) => `
+                <div class="card p-4 md:p-5">
+                    <div class="kicker flex items-center">${label}${infoTip(hint, label)}</div>
+                    <div class="text-2xl md:text-[26px] font-semibold tracking-tight mt-2">${value}</div>
+                    <div class="text-xs mt-1 mono" style="color: var(--muted)">${sub}</div>
+                </div>`).join('');
+            $('tvMarket').innerHTML = tiles.map(([label, value, sub]) => `
+                <div class="card p-4 md:p-5">
+                    <div class="kicker">${label}</div>
+                    <div class="text-2xl md:text-[26px] font-semibold tracking-tight mt-2">${value}</div>
+                    <div class="text-xs mt-1 mono" style="color: var(--muted)">${sub}</div>
+                </div>`).join('');
+            // Branch cards
+            $('tvBranches').innerHTML = tv.branches.map(b => {
+                const state = b.tcr == null ? '' : b.tcr < b.scr ? '<span class="bad">below the shutdown ratio</span>'
+                    : b.tcr < b.ccr ? '<span style="color: var(--warn)">critical: borrowing restricted</span>' : '<span class="good">normal</span>';
+                const line = (label, value) => `<div class="flex justify-between gap-3"><span style="color: var(--muted)">${label}</span><span class="mono text-right">${value}</span></div>`;
+                return `<div class="card p-4 md:p-5 text-xs space-y-1.5">
+                    <div class="flex items-center justify-between mb-2"><span class="inline-flex items-center gap-2 text-sm font-semibold text-white">${branchIcon(b.name, 'w-5 h-5')}${esc(b.name)} branch</span>
+                        <span style="color: var(--muted)">${fmt(b.active)} troves${b.zombies ? ` · ${fmt(b.zombies)} zombie` : ''}</span></div>
+                    ${line('Debt', `${compact(b.debt)} BOLD`)}
+                    ${line('Stability Pool', `${compact(b.spDeposits)} BOLD · covers ${pctOf(b.debt ? Math.min(b.spDeposits / b.debt, 1) : null, 0)}`)}
+                    ${line('<span class="inline-flex items-center">Share of each redemption now' + infoTip('The share of every new redemption that this branch takes: its debt not covered by its Stability Pool, over the same for all branches. A branch whose pool covers its whole debt takes none, as long as another branch is not fully covered.', 'Share of each redemption') + '</span>', `<b class="text-white">${pctOf(b.share, 0)}</b>`)}
+                    ${line('<span class="inline-flex items-center">Collateral ratio of the branch' + infoTip(`Liquity's thresholds for ${esc(b.name)}: every trove must stay above ${pctOf(b.mcr, 0)} (minimum ratio), below which it can be liquidated. If the branch as a whole falls below ${pctOf(b.ccr, 0)} (critical ratio), operations that would lower it further are restricted; below ${pctOf(b.scr, 0)} (shutdown ratio), the branch can be shut down.`, 'Collateral ratio of the branch') + '</span>', `${pctOf(b.tcr, 0)} · ${state}`)}
+                    ${line('Interest rate: average / lowest', `${fmt(b.avgRate, 2)}% / ${fmt(b.lowestRate, 2)}%`)}
+                </div>`;
+            }).join('');
+            // Filters
+            $('tvBranchFilter').innerHTML = ['all', ...tv.branches.map(b => b.name)].map(n => {
+                const on = n === 'all' ? !tvBranchSel.size : tvBranchSel.has(n);
+                return `<button class="seg ${on ? 'seg-active' : ''}" data-tvbranch="${n}" aria-pressed="${on}">${n === 'all' ? 'All' : n}</button>`;
+            }).join('');
+            renderTroveTable();
+        }
+
+        const TV_COLS = [['branch', 'Trove'], ['owner', 'Owner'], ['debt', 'Debt', true], ['collUsd', 'Collateral', true], ['cr', 'CR', true],
+            ['rate', 'Rate', true], ['front', 'Debt in front', true], ['system', 'System-wide', true], ['mgmt', 'Management']];
+
+        function tvFiltered() {
+            const q = $('tvSearch').value.trim().toLowerCase();
+            return tv.troves.filter(t => (tvShowZombies || t.status === 1 || q) && (!tvBranchSel.size || tvBranchSel.has(t.b.name))
+                && (!q || (t.owner || '').includes(q) || t.id.includes(q)));
+        }
+
+        function renderTroveTable() {
+            const q = $('tvSearch').value.trim().toLowerCase();
+            const rows = tvFiltered();
+            const val = (t, k) => k === 'owner' ? t.owner || '' : k === 'branch' ? t.b.name : k === 'mgmt' ? t.mgmt : t[k] ?? (k === 'front' || k === 'system' ? Infinity : -Infinity);
+            rows.sort((a, b) => { const x = val(a, tvSort.key), y = val(b, tvSort.key); return (x < y ? -1 : x > y ? 1 : 0) * tvSort.dir; });
+            const colHint = { system: 'BOLD that would have to be redeemed across all three branches before this trove is reached: its debt in front divided by its branch\'s current share of each redemption (the branch cards above). It makes troves on different branches comparable. Shown as ∞ when the branch takes no part of redemptions now.' };
+            $('tvHead').innerHTML = TV_COLS.map(([k, label, right]) => `<th class="px-3 py-2.5 font-medium ${right ? 'text-right' : ''}"><span class="inline-flex items-center ${right ? 'justify-end' : ''}">
+                <button class="sort-btn ${tvSort.key === k ? 'active' : ''}" data-tvsort="${k}">${label}${tvSort.key === k ? (tvSort.dir > 0 ? ' ▲' : ' ▼') : ''}</button>${colHint[k] ? infoTip(colHint[k], label) : ''}</span></th>`).join('');
+            $('tvCount').innerText = `${fmt(rows.length)} of ${fmt(tv.troves.length)} troves`;
+            // the open trove stays on its page
+            if (tvOpen) { const i = rows.findIndex(t => t.key === tvOpen); if (i >= 0) tvPage = Math.floor(i / TV_PAGE_SIZE) + 1; }
+            const pages = Math.max(1, Math.ceil(rows.length / TV_PAGE_SIZE));
+            tvPage = Math.min(Math.max(tvPage, 1), pages);
+            const first = (tvPage - 1) * TV_PAGE_SIZE;
+            const pageRows = rows.slice(first, first + TV_PAGE_SIZE);
+            $('tvRange').innerText = rows.length ? `Showing ${fmt(first + 1)}–${fmt(first + pageRows.length)} of ${fmt(rows.length)}` : '';
+            $('tvPager').innerHTML = rows.length > TV_PAGE_SIZE ? pageButtons(tvPage, pages) : '';
+            // Portfolio view: the search matches one owner address exactly
+            const owner = /^0x[0-9a-f]{40}$/.test(q) ? q : null;
+            const mine = owner ? tv.troves.filter(t => t.owner === owner) : [];
+            $('tvPortfolio').innerHTML = mine.length ? `<section class="mt-4 pt-4 text-xs flex flex-wrap gap-x-8 gap-y-2 items-baseline" style="border-top: 1px solid rgba(255,255,255,.06)">
+                <span class="kicker">Address ${tvAddr(owner)}</span>
+                <span>${fmt(mine.length)} trove${mine.length === 1 ? '' : 's'}</span>
+                <span>Debt <b class="mono text-white">${fmt(mine.reduce((a, t) => a + t.debt, 0), 0)} BOLD</b></span>
+                <span>Collateral <b class="mono text-white">${usd(mine.reduce((a, t) => a + t.collUsd, 0), 0)}</b></span>
+                <span>Redeemed against <b class="mono text-white">${fmt(mine.reduce((a, t) => a + tvTroveHits(t).length, 0))} times</b></span>
+            </section>` : (owner ? `<p class="text-xs mt-3" style="color: var(--muted)">No open trove is owned by this address.</p>` : '');
+            const tbody = pageRows.map(t => {
+                const open = tvOpen === t.key;
+                const flags = t.status === 4 ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)">zombie</span>' : '';
+                const mgmt = t.mgmt === 'delegated'
+                    ? `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.14); color: #8bb8f0" data-tip="${t.mgr ? `Rate set by batch manager ${esc(t.mgr.address)}` : `Rate set by interest delegate ${esc(t.delegate.account)}`}">delegated</span>`
+                    : '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(255,255,255,.06); color: var(--ink-2)" data-tip="Rate set by the owner">self-managed</span>';
+                return `<tr class="feed-row border-t border-white/5 ${open ? 'is-open' : ''}" data-tvkey="${esc(t.key)}">
+                    <td class="px-3 py-2"><span class="inline-flex items-center gap-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} trove details">›</button>${branchIcon(t.b.name, 'w-4 h-4')}<span title="${esc(t.id)}">${esc(short(t.id))}</span>${flags}</span></td>
+                    <td class="px-3 py-2">${t.owner ? `<span title="${esc(t.owner)}">${esc(short(t.owner))}</span>` : '–'}</td>
+                    <td class="px-3 py-2 text-right">${fmt(t.debt, 0)}</td>
+                    <td class="px-3 py-2 text-right">${usd(t.collUsd, 0)}</td>
+                    <td class="px-3 py-2 text-right ${crClass(t)}">${pctOf(t.cr, 0)}</td>
+                    <td class="px-3 py-2 text-right">${fmt(t.rate, 2)}%</td>
+                    <td class="px-3 py-2 text-right">${t.front == null ? '<span style="color: var(--muted)">not queued</span>' : `${tvDist(t.front)}`}</td>
+                    <td class="px-3 py-2 text-right">${t.system == null ? '–' : tvDist(t.system)}</td>
+                    <td class="px-3 py-2">${mgmt}</td>
+                </tr>${open ? `<tr class="detail-row"><td colspan="${TV_COLS.length}" class="p-0">${troveDetailHtml(t)}</td></tr>` : ''}`;
+            }).join('');
+            $('tvRows').innerHTML = tbody || `<tr><td colspan="${TV_COLS.length}" class="px-3 py-6 text-xs" style="color: var(--muted)">No trove matches.</td></tr>`;
+            requestAnimationFrame(tvSnapLines);
+        }
+
+        // Rate needed to have a given amount of the branch's debt in front, and what it would cost per year
+        function rateLadder(t, targets = LADDER_TARGETS) {
+            const others = t.b.queue.filter(x => x !== t);
+            const total = others.reduce((a, x) => a + x.debt, 0);
+            const rows = [];
+            for (const target of targets.filter(v => v < total)) {
+                let cum = 0, k = 0;
+                while (k < others.length && cum + others[k].debt < target) cum += others[k++].debt;
+                const pivot = others[k];
+                const needed = Math.max(pivot.rate + 0.01, 0.5);
+                rows.push({ target, needed, already: t.front != null && t.front >= target, extra: Math.max(needed - t.rate, 0) * t.debt / 100 });
+            }
+            const top = others.length ? Math.max(...others.map(x => x.rate)) + 0.01 : null;
+            if (top != null) rows.push({ target: total, needed: top, last: true, already: t.front != null && t.front >= total - 1e-6, extra: Math.max(top - t.rate, 0) * t.debt / 100 });
+            return rows;
+        }
+
+        function troveDetailHtml(t) {
+            const box = (title, inner, info) => `<div class="rounded-xl p-4 text-xs min-w-0" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07)">
+                <div class="flex items-center text-sm font-semibold text-white mb-2">${title}${info ? infoTip(info, title) : ''}</div>${inner}</div>`;
+            const line = (label, value) => `<div class="flex justify-between gap-3 py-1.5 border-b border-white/5 last:border-0"><span style="color: var(--muted)">${label}</span><span class="mono text-right min-w-0">${value}</span></div>`;
+            // Compact table: header cells [label, right-aligned, hint], rows of cells
+            const mini = (head, rows) => `<div class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)"><table class="w-full text-left text-xs whitespace-nowrap">
+                <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">${head.map(([h, right, hint]) =>
+                    `<th class="px-2.5 py-1.5 font-medium ${right ? 'text-right' : ''}"><span class="inline-flex items-center">${h}${hint ? infoTip(hint, h) : ''}</span></th>`).join('')}</tr></thead>
+                <tbody>${rows.map(r => `<tr class="border-t border-white/5">${r.map((c, i) => `<td class="px-2.5 py-1.5 ${head[i][1] ? 'mono text-right' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+            const now = tv.snap.ts;
+            const b = t.b;
+            // Warnings first
+            const warn = [];
+            if (t.status === 4) warn.push(b.lastZombie === t.id
+                ? 'Zombie trove: its debt fell below 2,000 BOLD in a redemption. It is the branch\'s most recent zombie, so the next redemption on this branch starts with it.'
+                : 'Zombie trove: its debt fell below 2,000 BOLD in a redemption. It is out of the redemption queue, but it still pays interest and can be liquidated. Bringing the debt back to at least 2,000 BOLD returns it to the queue; it can also be closed.');
+            if (t.cr != null && t.cr < b.mcr + 0.1) warn.push(`Collateral ratio ${pctOf(t.cr, 0)}, close to the ${pctOf(b.mcr, 0)} minimum: a ${fmt(t.liqDrop * 100, 1)}% fall in the collateral's price would make it liquidatable.`);
+            if (b.tcr != null && b.tcr < b.ccr) warn.push(`The ${esc(b.name)} branch is below its critical collateral ratio (${pctOf(b.tcr, 0)} against ${pctOf(b.ccr, 0)}): operations that lower the branch's ratio are restricted.`);
+            if (t.removeManager && !KNOWN_MANAGERS[t.removeManager] && t.removeManager !== t.owner) warn.push(`An address other than the owner, not one of Liquity's zappers, may withdraw collateral and borrow from this trove (${short(t.removeManager)}). Check that it is expected.`);
+            if (t.redistDebt > 0.5) warn.push(`${fmt(t.redistDebt, 2)} BOLD of debt and ${fmt(t.redistColl, 4)} ${esc(b.name)} from liquidations have been assigned to this trove and are included above.`);
+            const warnings = warn.length ? `<div class="rounded-xl p-3 text-xs space-y-1" style="background: rgba(250,178,25,.06); border: 1px solid rgba(250,178,25,.3); color: var(--ink-2)">
+                ${warn.map(w => `<div class="flex gap-2"><span style="color: var(--warn)">!</span><span>${w}</span></div>`).join('')}</div>` : '';
+
+            // 1. The trove's place in the redemption queue, coloured by how exposed it is
+            let queue;
+            if (t.front == null) {
+                queue = `<div class="rounded-xl p-4 md:p-5 text-sm" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); color: var(--ink-2)">
+                    Not in the redemption queue: zombie troves are skipped by redemptions until their debt is brought back to at least 2,000 BOLD.</div>`;
+            } else {
+                const band = exposureBand(t.system), B = band ? TV_BANDS[band] : null;
+                const weeks = tv.weekVol && isFinite(t.system) ? t.system / tv.weekVol : null;
+                const hl = v => `<span class="num inline-flex items-center whitespace-nowrap px-1.5 py-0.5 rounded" style="background: rgba(57,135,229,.14); color: #8bb8f0">${v}</span>`;
+                const tile = (label, value, sub, hint) => `<div class="rounded-lg px-3 py-2.5 min-w-0" style="background: ${B ? B.bg : 'rgba(255,255,255,.035)'}; border: 1px solid ${B ? B.border : 'rgba(255,255,255,.06)'}">
+                    <div class="flex items-center text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}${hint ? infoTip(hint, label) : ''}</div>
+                    <div class="mono text-lg font-semibold text-white mt-0.5">${value}</div>
+                    <div class="mono text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div></div>`;
+                const bandHint = 'The colour shows whether a week of redemptions could reach this trove, with the queue and the branch split as they are now: red if a typical week would (the average 7-day redemption volume of the last 180 days, '
+                    + `${tv.weekVol ? compact(tv.weekVol) + ' BOLD' : '–'}), amber if only a week as busy as the busiest of the last 180 days would (${tv.maxWeek ? compact(tv.maxWeek) + ' BOLD' : '–'}), green if neither would. `
+                    + 'The queue changes over time, above all when batch managers reprice, so this is a picture of today, not a forecast.';
+                const verdict = !B ? '' : !isFinite(t.system)
+                    ? `The ${esc(b.name)} branch's Stability Pool covers its whole debt, so the branch takes no part of redemptions now: this trove cannot be reached until that changes.`
+                    : t.front === 0 ? `<b style="color: ${B.ink}">This trove is first in line: the next redemption that reaches the ${esc(b.name)} branch starts with it.</b>
+                       The ${hl(esc(b.name))} branch takes ${hl(pctOf(b.share, 0))} of every redemption now.`
+                    : `Liquity splits every redemption across its three branches, and the ${hl(esc(b.name))} branch takes ${hl(pctOf(b.share, 0))} of each one now. About ${hl(`${compact(t.system)} BOLD`)}
+                       would have to be redeemed in total before this trove is reached${weeks != null ? `, ${hl(`${fmt(weeks, 1)}×`)} a typical week` : ''}: `
+                       + (band === 'red' ? `<b style="color: ${B.ink}">a typical week of redemptions would reach it.</b>`
+                       : band === 'amber' ? `<b style="color: ${B.ink}">a typical week would not reach it, but a week as busy as the busiest of the last 180 days would.</b>`
+                       : `<b style="color: ${B.ink}">even the busiest week of the last 180 days would not have reached it.</b>`);
+                // Queue bar: the branch's debt in redemption order, with this trove and how far a typical and the busiest week of
+                // redemptions would reach on this branch (the system-wide weeks times the branch's share). Scaled to the farther of
+                // the trove's end and the busiest week, so both are always in view; batches' consecutive troves are one block
+                let bar = '';
+                if (B && isFinite(t.system) && tv.weekVol) {
+                    const typ = tv.weekVol * b.share, busy = tv.maxWeek * b.share;
+                    const D = Math.min(b.queueDebt, Math.max(t.front + t.debt, busy) * 1.12) || 1;
+                    const X = v => Math.min(Math.max(v / D * 100, 0), 100);
+                    const segs = []; let acc = 0, drawn = 0;
+                    for (const x of b.queue) {
+                        if (acc >= D) break;
+                        const kind = x === t ? 'self' : x.batchManager ? 'batch' : 'single', last = segs[segs.length - 1];
+                        if (last && kind === 'batch' && last.kind === 'batch' && last.manager === x.batchManager) { last.debt += x.debt; last.n++; last.keys.push(x.key); }
+                        else segs.push({ kind, manager: x.batchManager, x0: acc, debt: x.debt, n: 1, rate: x.rate, id: x.id, behind: acc > t.front, keys: [x.key] });
+                        acc += x.debt; drawn++;
+                    }
+                    // Small single troves next to each other (each under 1.5% of the bar) form one block, on either side of this
+                    // trove but never across it; this trove always stays its own block
+                    const SMALL = D * 0.015, merged = [];
+                    for (const g of segs) {
+                        const last = merged[merged.length - 1], small = g.kind === 'single' && g.debt < SMALL;
+                        if (small && last && last.kind === 'single' && last.small && last.behind === g.behind) { last.debt += g.debt; last.n++; last.rateHi = g.rate; last.keys.push(...g.keys); }
+                        else merged.push({ ...g, keys: [...g.keys], small, rateLo: g.rate, rateHi: g.rate });
+                    }
+                    segs.splice(0, segs.length, ...merged);
+                    const fill = g => g.kind === 'self' ? B.ink : g.kind === 'batch' ? (g.behind ? 'rgba(57,135,229,.22)' : 'rgba(57,135,229,.6)') : (g.behind ? 'rgba(158,166,174,.33)' : '#9ea6ae');
+                    const tip = g => g.kind === 'self' ? `This trove: ${compact(g.debt)} BOLD at ${fmt(g.rate, 2)}%, ${compact(t.front)} BOLD in front`
+                        : g.kind === 'batch' ? `Batch ${short(g.manager)}: ${fmt(g.n)} trove${g.n === 1 ? '' : 's'}, ${compact(g.debt)} BOLD at ${fmt(g.rate, 2)}%${g.behind ? ', behind this trove' : ''}`
+                        : g.n > 1 ? `${fmt(g.n)} small troves: ${compact(g.debt)} BOLD at ${g.rateLo === g.rateHi ? `${fmt(g.rateLo, 2)}%` : `${fmt(g.rateLo, 2)}–${fmt(g.rateHi, 2)}%`}${g.behind ? ', behind this trove' : ''}`
+                        : `Trove ${short(g.id)}: ${compact(g.debt)} BOLD at ${fmt(g.rate, 2)}%${g.behind ? ', behind this trove' : ''}`;
+                    // The bar's width in the open row (about: the row's width less its padding), for sizes in pixels
+                    const barW = Math.max($('tvScroll').clientWidth - (innerWidth < 768 ? 66 : 86), 200);
+                    // Each block has a 1 px divider on its right edge; a block under 3 px gets none, as the divider would be all
+                    // that shows of it (a dark line between two blocks)
+                    const segHtml = segs.map((g, i) => {
+                        const w = Math.max(X(g.x0 + g.debt) - X(g.x0), g.kind === 'self' ? 0.8 : 0);
+                        const go = g.kind === 'self' ? '' : ` data-tvgo="${esc(g.keys.join(','))}" data-tvgo-title="${esc(g.kind === 'batch' ? `Batch ${short(g.manager)} · ${fmt(g.n)} trove${g.n === 1 ? '' : 's'}` : `${fmt(g.n)} small troves`)}"`;
+                        const hint = g.kind === 'self' ? '' : g.n > 1 ? ` · click to choose one of its ${fmt(g.n)} troves` : ' · Click to open trove';
+                        const divider = w / 100 * barW >= 3 ? '; box-shadow: inset -1px 0 0 #12161d' : '';
+                        return `<div class="absolute inset-y-0" data-seg="${i}"${g.kind === 'batch' ? ` data-mgr="${esc(g.manager)}"` : ''} style="left: ${Math.min(X(g.x0), 100 - w)}%; width: ${w}%; background: ${fill(g)}${divider}${g.kind === 'self' ? '; z-index: 1' : ''}" data-tip="${esc(tip(g) + hint)}"${go}></div>`;
+                    }).join('');
+                    const zone = (a, z, key, text) => z > a ? `<div class="absolute inset-y-0" style="left: ${a}%; width: ${z - a}%; background: ${TV_BANDS[key].ink}; opacity: .85" data-tip="${esc(text)}"></div>` : '';
+                    // Markers: typical week ▼ above the bar, busiest week ▲ under it, this trove ▲ under it in its band colour. Each
+                    // triangle sits exactly at its point; its text goes on whichever side fits (estimated from the bar's width), in a
+                    // shorter form if needed, or as a last resort shifted by its own position so it stays inside the bar
+                    const place = (p, texts) => tvPlace(barW, p, texts);
+                    const marker = (p, top, sym, m, color, kind, textColor = color) => `<div class="absolute text-[13px] leading-none" data-mark="${kind}" style="left: clamp(6px, ${p}%, calc(100% - 6px)); top: ${top}px; transform: translateX(-50%); color: ${color}; z-index: 3">${sym}</div>
+                        <div class="absolute text-[10px] leading-none mono whitespace-nowrap" data-mark-text="${kind}" style="top: ${m.side ? top + 2 : top + 15}px; color: ${textColor}; ${m.side === 'right' ? `left: calc(${p}% + 10px)` : m.side === 'left' ? `right: calc(${100 - p}% + 10px)` : `left: ${p}%; transform: translateX(-${p}%)`}">${m.txt}</div>`;
+                    // 2 px lines with a thin dark outline, so they stand out on the grey and blue blocks and on the panel alike
+                    const vline = (p, top, bottom, color, kind) => `<div class="absolute" data-line="${kind}" data-p="${p}" style="left: calc(${p}% - 1px); width: 2px; top: ${top}px; height: ${bottom - top}px; background: ${color}; box-shadow: 0 0 0 1px rgba(7,9,13,.75); z-index: 2"></div>`;
+                    const TW = 'var(--bad)', BW = 'var(--warn)';   // each marker in the colour of the zone that ends at it: red ends at TW, amber at BW
+                    const selfW = Math.max(X(t.front + t.debt) - X(t.front), 0.8), selfMid = Math.min(X(t.front), 100 - selfW) + selfW / 2;   // the middle of the drawn block (at least 0.8% wide, inside the bar)
+                    const pT = X(typ), pB = X(busy);
+                    const mSelf = place(selfMid, [`this trove · ${t.front === 0 ? 'first in line' : `${compact(t.front)} in front`}`, t.front === 0 ? 'first in line' : `${compact(t.front)} in front`]);
+                    const busyTexts = [`BW ${compact(busy)}${busy > b.queueDebt ? ' (whole branch)' : ''}`, `BW ${compact(busy)}`];
+                    const mTyp = place(pT, [`TW ${compact(typ)}`]), mBusy = place(pB, busyTexts);
+                    // layout (px): typical marker 0, bar 16–38, strip 42–46, first row under it 50; the busiest marker drops a row
+                    // when it would run into the trove's marker (its line then stops under the strip, so it does not cross that row)
+                    const R1 = 50, selfRows = mSelf.side ? 1 : 2, clash = mBusy.lo < mSelf.hi + 8 && mSelf.lo < mBusy.hi + 8;
+                    const busyTop = clash ? R1 + 16 * selfRows : R1, height = Math.max(R1 + 16 * selfRows, busyTop + (mBusy.side ? 16 : 30));
+                    const rest = b.queue.length - drawn, dot = c => `<span class="legend-swatch" style="background: ${c}"></span>`;
+                    tvBars.set(t.key, { segs: segs.map(g => ({ kind: g.kind, manager: g.manager, x0: g.x0, debt: g.debt, behind: g.behind })),
+                        D, pB, busyTexts, front: t.front, debt: t.debt, share: b.share });
+                    bar = `<div class="pt-12 pb-4">
+                        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-2">
+                            <div class="kicker flex items-center">${esc(b.name)} branch queue${infoTip(`Every trove of the ${b.name} branch in redemption order, the next in line on the left; the width of each block is its debt. Blue blocks are batches, steel-grey blocks single troves (small ones next to each other are grouped), dimmer once behind this trove. ▼ TW and ▲ BW mark how far a typical week and the busiest week of the last 180 days of redemptions would reach on this branch, with its current share of ${pctOf(b.share, 0)} of every redemption. The strip under the bar uses the colours of the tiles above. The bar zooms to each trove: it runs to a little beyond this trove or the busiest week, whichever is farther, so its scale differs from trove to trove.`, 'Branch queue')}</div>
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style="color: var(--ink-2)">
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('rgba(57,135,229,.75)')}batch</span>
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('#9ea6ae')}single troves</span>
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap" data-legend-self>${dot(B.ink)}this trove</span>
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="text-[12px] leading-none" style="color: ${TW}">▼</span>TW · typical week on ${esc(b.name)}</span>
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="text-[12px] leading-none" style="color: ${BW}">▲</span>BW · busiest week on ${esc(b.name)}</span>
+                            </div>
+                        </div>
+                        <div class="relative" data-bar-area="${esc(t.key)}" style="height: ${height}px">
+                            ${marker(pT, 0, '▼', mTyp, TW, 'typ', 'var(--ink-2)')}
+                            ${vline(pT, 12, 46, TW, 'typ')}
+                            <div class="absolute inset-x-0 rounded overflow-hidden" style="top: 16px; height: 22px; background: rgba(255,255,255,.04)">${segHtml}</div>
+                            <div class="absolute inset-x-0 rounded-full overflow-hidden" style="top: 42px; height: 4px">
+                                ${zone(0, pT, 'red', 'Reached by a typical week of redemptions')}${zone(pT, pB, 'amber', 'Reached only by a week as busy as the busiest of the last 180 days')}${zone(pB, 100, 'green', 'Beyond the busiest week of the last 180 days')}
+                            </div>
+                            ${vline(pB, 16, clash ? 48 : busyTop, BW, 'busy')}
+                            ${marker(pB, busyTop, '▲', mBusy, BW, 'busy', 'var(--ink-2)')}
+                            ${marker(selfMid, R1, '▲', mSelf, B.ink, 'self')}
+                        </div>
+                        <div class="flex justify-between gap-3 text-[10px] mono whitespace-nowrap mt-1.5" style="color: var(--muted)"><span>next in line</span><span>scale 0–${compact(D)} BOLD${rest > 0 ? `<span class="hidden sm:inline"> · ${fmt(rest)} more trove${rest === 1 ? '' : 's'} behind</span>` : ''}</span></div>
+                        ${b.queue.slice(0, t.position - 1).some(x => x.batchManager && x.batchManager !== t.batchManager) ? `<div class="mt-4 min-h-[34px]"><div data-sim-tag class="invisible inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs px-3 py-1.5 rounded-lg" style="background: rgba(57,135,229,.2); border: 1px solid rgba(57,135,229,.6); color: #dbe8fc"></div></div>` : ''}
+                    </div>`;
+                }
+                // Batches ahead (not the trove's own) that could reprice above it
+                const ahead = b.queue.slice(0, t.position - 1);
+                const groups = new Map();
+                for (const x of ahead) if (x.batchManager && x.batchManager !== t.batchManager) {
+                    const g = groups.get(x.batchManager) || { manager: x.batchManager, debt: 0, rate: x.rate, troves: 0 };
+                    g.debt += x.debt; g.troves++; groups.set(x.batchManager, g);
+                }
+                const leap = [...groups.values()].sort((x, y) => y.debt - x.debt);
+                const sim = bar ? (attrs, label) => `<button class="tv-sim" ${attrs} aria-pressed="false" aria-label="${label}"></button>` : () => '';
+                const leapTable = leap.length ? mini([...(bar ? [[sim('data-tvsim-all', 'Simulate all batches moving above this trove')]] : []), ['Batch manager'], ['Rate', true], ['Troves', true], ['Debt', true], ['In front if moved', true,
+                    'Debt in front of this trove if this batch moved its rate above this trove\'s. Batch managers reprice all their troves at once, so the whole batch would leave the debt in front. In our research this was the most common reason why troves deep in the queue were suddenly redeemed.']],
+                    leap.slice(0, 5).map(g => [...(bar ? [sim(`data-tvsim="${esc(g.manager)}"`, `Simulate batch ${esc(short(g.manager))} moving above this trove`)] : []), tvAddr(g.manager), `${fmt(g.rate, 2)}%`, fmt(g.troves), compact(g.debt), compact(t.front - g.debt)]))
+                    : mini([['Batch manager'], ['Rate', true], ['Troves', true], ['Debt', true], ['In front if moved', true]], [])
+                        .replace('<tbody></tbody>', '<tbody><tr class="border-t border-white/5"><td colspan="5" class="px-2.5 py-2.5" style="color: var(--muted)">No other batch sits ahead of this trove.</td></tr></tbody>');
+                // The trove's own batch as a bar, a breakdown at a glance: its troves in redemption order, each as wide as its debt;
+                // small neighbours (each under 1.5% of the batch) form one block, never across this trove. Troves ahead in blue,
+                // this trove in its band colour, troves behind dimmer; hover gives each block's troves, BOLD and share (no click)
+                const batchBar = (members, k) => {
+                    const total = members.reduce((a, x) => a + x.debt, 0) || 1;
+                    const parts = [];
+                    members.forEach((x, i) => {
+                        const side = i === k ? 'self' : i < k ? 'ahead' : 'behind', small = side !== 'self' && x.debt < total * 0.015, last = parts[parts.length - 1];
+                        if (small && last && last.small && last.side === side) { last.debt += x.debt; last.n++; }
+                        else parts.push({ side, small, debt: x.debt, n: 1, id: x.id });
+                    });
+                    // the bar's width: half the open row on wide screens, all of it on narrow ones (for sizes in pixels)
+                    const W = Math.max(($('tvScroll').clientWidth - (innerWidth < 768 ? 66 : 86)) / (innerWidth >= 1024 ? 2 : 1) - 8, 160);
+                    let acc = 0;
+                    const blocks = parts.map(g => {
+                        const l = acc / total * 100, self = g.side === 'self'; acc += g.debt;
+                        const w = Math.max(g.debt / total * 100, self ? 300 / W : 0);
+                        const fill = self ? (B ? B.ink : 'var(--ink-1)') : g.side === 'ahead' ? 'rgba(57,135,229,.6)' : 'rgba(57,135,229,.22)';
+                        const where = g.side === 'ahead' ? 'ahead of this one' : 'behind this one';
+                        const what = self ? 'This trove' : g.n > 1 ? `${fmt(g.n)} troves ${where}` : `Trove ${short(g.id)}, ${where}`;
+                        return `<div class="absolute inset-y-0" data-batch-part="${g.side}" data-n="${g.n}" data-debt="${g.debt}" style="left: ${Math.min(l, 100 - w)}%; width: ${w}%; background: ${fill}${w / 100 * W >= 3 ? '; box-shadow: inset -1px 0 0 #12161d' : ''}${self ? '; z-index: 1' : ''}"
+                            data-tip="${esc(`${what}: ${compact(g.debt)} BOLD, ${pctOf(g.debt / total, 1)} of the batch`)}"></div>`;
+                    }).join('');
+                    return `<div class="relative mt-3 rounded overflow-hidden" data-batch-bar style="height: 16px; background: rgba(255,255,255,.04)">${blocks}</div>
+                        <div class="flex justify-between text-[10px] mono mt-1.5" style="color: var(--muted)"><span>redeemed first</span><span>redeemed last</span></div>`;
+                };
+                // Position inside its own batch
+                let ownBatch = '';
+                if (t.mgr) {
+                    const members = b.queue.filter(x => x.batchManager === t.batchManager);
+                    const k = members.indexOf(t);
+                    const before = members.slice(0, k).reduce((a, x) => a + x.debt, 0);
+                    ownBatch = `<div class="text-xs" style="color: var(--ink-2)"><div class="kicker flex items-center">In its own batch${infoTip('All troves of a batch share its interest rate and sit together in the queue. The whole batch moves together when its manager changes the rate.', 'In its own batch')}</div>
+                        <p class="mt-1.5">Trove <b class="text-white mono">${fmt(k + 1)}</b> of ${fmt(members.length)} in its batch (${compact(members.reduce((a, x) => a + x.debt, 0))} BOLD at ${fmt(t.rate, 2)}%),
+                        with ${compact(before)} BOLD of the batch ahead of it (${pctOf(before / (members.reduce((a, x) => a + x.debt, 0) || 1), 1)}).</p>${k >= 0 ? batchBar(members, k) : ''}</div>`;
+                }
+                // Next safe steps: the rate that would move the trove past a typical week, then past the busiest week, then to the top
+                let steps = '';
+                if (!t.mgr && isFinite(t.system) && tv.weekVol) {
+                    const goals = [['amber', 'Past a typical week', tv.weekVol * b.share], ['green', 'Past the busiest week', tv.maxWeek * b.share]];
+                    const ladder = rateLadder(t, goals.map(g => g[2]));
+                    const rows = goals.map(([bandKey, label, target]) => {
+                        const r = ladder.find(x => !x.last && Math.abs(x.target - target) < 1e-6);
+                        if (!r) return null;
+                        return [`<span style="color: ${TV_BANDS[bandKey].ink}">●</span> ${label}`, `${compact(target)} BOLD`,
+                            r.already ? '<span class="good">current</span>' : `${fmt(r.needed, 2)}%`, r.already ? '–' : `+${fmt(r.extra, 0)} BOLD`];
+                    }).filter(Boolean);
+                    const top = ladder.find(x => x.last);
+                    if (top) rows.push([`<span style="color: var(--good)">●</span> Top of the queue`, `${compact(top.target)} BOLD`,
+                        top.already ? '<span class="good">current</span>' : `${fmt(top.needed, 2)}%`, top.already ? '–' : `+${fmt(top.extra, 0)} BOLD`]);
+                    steps = rows.length ? `<div><div class="kicker mb-1.5 flex items-center">Rate adjustment scenarios${infoTip('A trove\'s interest rate decides how much debt sits in front of it. Each scenario gives the lowest rate that would leave enough of this branch\'s debt in front to move the trove past that amount of system-wide redemptions, with the queue as it is now, and what it would cost per year on top of the current interest. "Current" means the trove\'s present rate already achieves it. Changing the rate within 7 days of the last change costs an upfront fee of about 7 days of average interest.', 'Rate adjustment scenarios')}</div>
+                        ${mini([['Goal'], ['Debt in front needed', true], ['Rate', true], ['Extra per year', true]], rows)}
+                        <p class="text-[11px] mt-1.5" style="color: var(--muted)">Now: ${fmt(t.rate, 2)}% with ${compact(t.front)} BOLD in front. A guide for today's queue, not a guarantee.</p></div>` : '';
+                }
+                queue = `<div class="rounded-xl p-4 md:p-5 space-y-4" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.07)">
+                    <div class="text-sm font-semibold text-white flex items-center">Place in the redemption queue${infoTip(bandHint, 'Place in the redemption queue')}</div>
+                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr))">
+                        ${tile('Position in the queue', `${fmt(t.position)} of ${fmt(b.queue.length)}`, `${esc(b.name)} branch, lowest rate first`,
+                            'Troves are redeemed from the lowest interest rate up (after the branch\'s most recent zombie trove, if any). Position 1 is next in line.')}
+                        ${tile('Debt in front', `${compact(t.front)} BOLD`, 'on this branch',
+                            'The debt of every trove ahead in the queue. The branch\'s redemptions must clear all of it before reaching this trove.')}
+                        ${tile('System-wide distance', `${tvDist(t.system)} BOLD`, B ? B.label : 'across all branches',
+                            'BOLD that would have to be redeemed across all branches before this trove is reached: debt in front divided by the branch\'s current share of each redemption.')}
+                    </div>
+                    ${verdict ? `<p class="text-xs leading-relaxed max-w-4xl" style="color: var(--ink-2)">${verdict}</p>` : ''}
+                    ${bar}
+                    <div class="grid gap-4 lg:grid-cols-2 items-start">
+                        <div class="space-y-1.5 min-w-0"><div class="kicker flex items-center">Batches ahead of this trove${bar && leap.length ? infoTip('Tick one or more batches, or the box in the header for all of them, to see the queue bar as if those batches moved their rate just above this trove\'s: their blocks move behind it and the trove moves forward. The tiles and the text above keep showing today\'s queue.', 'Batches ahead of this trove') : ''}</div>${leapTable}</div>
+                        <div class="space-y-4 min-w-0">${ownBatch}${steps}</div>
+                    </div>
+                </div>`;
+            }
+
+            // 2. Position, as one compact table
+            const dd = tv.drawdowns, fall = t.liqDrop != null ? Math.floor(t.liqDrop * 100) : null;
+            const since = dd ? new Date(dd.from).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '';
+            const drops = !t.liqPrice ? '–' : !dd || fall == null || fall < 0 ? '–'
+                : (p => `1 week: ${p(dd.d7[fall])} · 1 month: ${p(dd.d30[fall])}`)(v => !v || fall > 95 ? '0%' : v < 0.005 ? '&lt;1%' : pctOf(v, 0));
+            const nextFree = (t.lastChange || 0) + RATE_COOLDOWN;
+            const position = `<div class="space-y-1.5"><div class="text-sm font-semibold text-white flex items-center">Position${infoTip('Collateral is valued at the market price (ETH on Uniswap, times the LST\'s exchange rate). The collateral ratio and the liquidation price use Liquity\'s own price, which liquidations use.', 'Position')}</div>
+                ${mini([['Collateral', true], ['Debt', true], ['CR · LTV', true], ['Liquidation price', true, 'The collateral price at which the trove would fall to the branch\'s minimum collateral ratio and could be liquidated, and how far the price is from it now.'],
+                    ['Historical liquidation chance', true, `How often, since ${since}, ETH fell far enough within 1 week or within 1 month to reach this trove's liquidation price: the share of all 7-day and 30-day periods in which it happened, from Coinbase prices. A record of the past, not a forecast. For wstETH and rETH it assumes the token follows ETH.`],
+                    ['Rate', true], ['Cost per year', true], [t.mgr ? 'Last rate change (manager)' : 'Last rate change', true]].concat(t.mgr ? [] : [['Free rate change', true, 'Changing the rate within 7 days of the last change costs an upfront fee of about 7 days of average interest. Available: the rate can be changed now without that fee. In ~N days: when the fee stops applying (hover for the exact time).']]),
+                    [[`${fmt(t.coll, 4)} ${esc(b.name)}<div style="color: var(--muted)">${usd(t.collUsd, 0)}</div>`,
+                      `${fmt(t.debt, 2)}<div style="color: var(--muted)">+${fmt(t.accruedInterest + (t.accruedBatchFee || 0), 2)} since last update</div>`,
+                      `<span class="${crClass(t)}">${pctOf(t.cr, 1)}</span><div style="color: var(--muted)">LTV ${t.cr ? pctOf(1 / t.cr, 1) : '–'}</div>`,
+                      t.liqPrice ? `${usd(t.liqPrice, 2)}<div style="color: var(--muted)">${fmt(t.liqDrop * 100, 1)}% below now</div>` : (t.debt > 0 ? '–' : 'no debt'),
+                      drops,
+                      `${fmt(t.rate, 2)}%${t.fee ? `<div style="color: var(--muted)">+ ${fmt(t.fee, 2)}% manager fee</div>` : ''}`,
+                      `${fmt((t.rate + t.fee) * t.debt / 100, 0)} BOLD`,
+                      t.lastChange ? `${date(t.lastChange * 1000)}<div style="color: var(--muted)">${ago(t.lastChange * 1000)}</div>` : '–']
+                      .concat(t.mgr ? [] : [nextFree <= now
+                          ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(52,211,153,.12); color: var(--good)">available</span>'
+                          : `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" data-tip="Without the upfront fee from ${esc(dateTime(nextFree * 1000))}">in ~${nextFree - now >= 86400 ? `${Math.ceil((nextFree - now) / 86400)} day${Math.ceil((nextFree - now) / 86400) === 1 ? '' : 's'}` : `${Math.ceil((nextFree - now) / 3600)} h`}</span>`])])}</div>`;
+
+            // 3. Redemption record: a summary and a compact, scrollable list
+            const hits = tvTroveHits(t);
+            const lossOf = h => h.price != null ? h.coll * h.price - h.debt : null;
+            const missedOf = h => b.marketPrice != null ? h.coll * b.marketPrice - h.coll * (h.price ?? b.marketPrice) : null;
+            const sum = f => hits.reduce((a, h) => a + (f(h) ?? 0), 0);
+            const record = box('Redemption record', hits.length ? `<div>
+                ${line('Redeemed against', `${fmt(hits.length)} time${hits.length === 1 ? '' : 's'} · last ${ago(hits[hits.length - 1].ts)}`)}
+                ${line('Debt repaid · collateral removed', `${compact(sum(h => h.debt))} BOLD · ${fmt(sum(h => h.coll), 3)} ${esc(b.name)}`)}
+                ${line('Net cost at the time', `${usd(sum(lossOf), 0)}${sum(lossOf) < 0 ? ' <span style="color: var(--muted)">(fee more than compensated)</span>' : ''}`)}
+                ${line('Removed collateral, value change since', `${sum(missedOf) >= 0 ? '+' : ''}${usd(sum(missedOf), 0)} <span style="color: var(--muted)">(${sum(missedOf) >= 0 ? 'upside missed' : 'loss avoided'})</span>`)}</div>
+                <div class="overflow-y-auto scroll mt-2 max-h-44 rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                    ${hits.slice().reverse().map(h => `<div class="flex items-center justify-between gap-3 px-2.5 py-1 border-b border-white/5 last:border-0">
+                        <a class="hover:underline shrink-0" style="color: #8bb8f0" target="_blank" rel="noopener" title="${esc(dateTime(h.ts))} · transaction ${esc(h.tx)}" href="https://etherscan.io/tx/${esc(h.tx)}">${date(h.ts)} ↗</a>
+                        <span class="mono text-right">${fmt(h.debt, 0)} BOLD <span style="color: var(--muted)">at ${h.rate == null ? '–' : fmt(h.rate, 2) + '%'}${h.manager ? ' · batch' : ''}${h.calls > 1 ? ` · ${h.calls} calls` : ''}</span></span>
+                    </div>`).join('')}
+                </div>`
+                : '<p style="color: var(--muted)">Never redeemed against.</p>',
+                'Net cost of a redemption: the collateral removed, at its market price at the time, minus the debt it repaid; the redemption fee stays in the trove and is already left out of the collateral removed. Value change since: what the removed collateral would be worth today minus what it was worth then; positive is upside the borrower missed, negative is a loss avoided. The list shows each redemption\'s date, the debt it repaid and the trove\'s rate at the time. A transaction counts as one redemption even when it makes several redemption calls that each reach the trove; the number of calls is then shown.');
+
+            // 4. Batch manager
+            let manager = '';
+            if (t.mgr) {
+                const m = t.mgr, mh = tv.byManager.get(m.address) || [];
+                const inBatch = tv.troves.filter(x => x.mgr === m);
+                manager = box('Batch manager', `
+                    ${line('Manager', tvAddr(m.address))}
+                    ${line('Rate · annual management fee', `${fmt(m.rate, 2)}% · ${fmt(m.fee, 2)}%`)}
+                    ${line("Compared with the branch's average rate", `${m.rate >= b.avgRate ? '+' : ''}${fmt(m.rate - b.avgRate, 2)}% <span style="color: var(--muted)">(average ${fmt(b.avgRate, 2)}%)</span>`)}
+                    ${line('Rate range allowed', `${fmt(m.minRate, 2)}–${fmt(m.maxRate, 2)}%`)}
+                    ${line('Minimum time between rate changes', m.minChangePeriod >= 86400 ? `${fmt(m.minChangePeriod / 86400, 1)} days` : `${fmt(m.minChangePeriod / 3600, 1)} hours`)}
+                    ${line('Last rate change', daysAgo(m.lastRateChange))}
+                    ${line('Troves and debt in the batch now', `${fmt(inBatch.length)} · ${compact(m.debt)} BOLD`)}
+                    ${line('Redemptions', mh.length ? `${fmt(mh.length)} hits on ${fmt(new Set(mh.map(h => h.trove)).size)} troves · ${compact(mh.reduce((a, h) => a + h.debt, 0))} BOLD repaid` : 'none recorded')}`,
+                    'A batch manager sets the interest rate of every trove in its batch and charges an annual fee on top. Redemptions counts, over all time, every redemption that hit one of its troves while the trove was in this batch; hits before a trove joined the batch are not included.');
+            }
+
+            // 5. Ownership and permissions
+            const who = a => a ? (KNOWN_MANAGERS[a] ? `${tvAddr(a, KNOWN_MANAGERS[a])}` : a === t.owner ? 'the owner' : tvAddr(a)) : null;
+            const permissions = box('Ownership and permissions', `
+                ${line('Owner (holds the trove NFT)', t.owner ? `<span class="inline-flex items-center gap-0.5">${tvAddr(t.owner)}${tvCopy(t.owner, 'owner address')}</span>` : '–')}
+                ${line('May add collateral and repay', t.addManager ? `owner and ${who(t.addManager)}` : 'anyone (the default)')}
+                ${line('May withdraw collateral and borrow', t.removeManager ? `owner and ${who(t.removeManager)}` : 'owner only')}
+                ${t.removeManager ? line('Withdrawals by that manager go to', t.receiver ? who(t.receiver) : 'the owner') : ''}
+                ${line('May change the interest rate', t.mgr ? `batch manager ${tvAddr(t.mgr.address)}` : t.delegate ? `owner and ${tvAddr(t.delegate.account)} (${fmt(t.delegate.minRate, 2)}–${fmt(t.delegate.maxRate, 2)}%)` : 'owner only')}`,
+                'Liquity lets a trove owner give other addresses limited rights. Adding collateral or repaying is open to anyone unless restricted. Troves opened through the Liquity app have one of Liquity\'s zapper contracts as manager and receiver: the zapper only acts for the owner and forwards withdrawals to them.');
+
+            // Bottom cards in two columns of equal height, the last card of a column stretching to fill it:
+            // batch manager and permissions | record; without redemptions, batch manager | permissions; without a manager, permissions | record
+            const cols = !manager ? [[permissions], [record]] : hits.length ? [[manager, permissions], [record]] : [[manager], [permissions]];
+
+            return `<div class="tx-detail px-4 md:px-5 py-5 space-y-4" style="--detail-w: ${$('tvScroll').clientWidth}px">
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style="color: var(--ink-2)">
+                    <span class="inline-flex items-center gap-2 font-semibold text-white">${branchIcon(b.name, 'w-5 h-5')}Trove ${esc(short(t.id))}${tvCopy(t.id, 'trove ID')}</span>
+                    <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" target="_blank" rel="noopener" href="https://etherscan.io/nft/${esc(b.troveNFT)}/${BigInt(t.id).toString()}">trove NFT on Etherscan<span aria-hidden="true">↗</span></a>
+                    <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" href="#troves/${esc(t.owner || t.id)}" data-tvlink="${esc(t.owner || t.id)}">${t.owner ? 'this owner\'s troves' : 'this trove'}</a>
+                </div>
+                ${warnings}
+                ${position}
+                ${queue}
+                <div class="grid gap-3 lg:grid-cols-2">
+                    ${cols.map(col => `<div class="flex flex-col gap-3 min-w-0">${col.map((c, i) => i === col.length - 1 ? c.replace('<div class="', '<div class="flex-1 ') : c).join('')}</div>`).join('')}
+                </div>
+                <p class="text-[11px]" style="color: var(--muted)">Snapshot at block ${fmt(tv.snap.block)} (${ago(tv.snap.ts * 1000)}). For information only, not financial advice.</p>
+            </div>`;
+        }
+
+        // Interactions
+        $('tvSearch').addEventListener('input', () => {
+            tvOpen = null; tvPage = 1;
+            const q = $('tvSearch').value.trim();
+            history.replaceState(null, '', q ? `#troves/${encodeURIComponent(q)}` : '#troves');
+            if (tv) renderTroveTable();
+        });
+        $('tvZombies').addEventListener('click', () => {
+            tvShowZombies = !tvShowZombies; tvPage = 1;
+            $('tvZombies').setAttribute('aria-checked', tvShowZombies);
+            if (tv) renderTroveTable();
+        });
+        $('tvPager').addEventListener('click', e => {
+            const btn = e.target.closest('[data-page]');
+            if (!btn || btn.disabled) return;
+            tvPage = Number(btn.dataset.page); tvOpen = null;
+            renderTroveTable();
+            $('tvScroll').scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+        $('tvBranchFilter').addEventListener('click', e => {
+            const b = e.target.closest('[data-tvbranch]')?.dataset.tvbranch;
+            if (!b) return;
+            // a branch is added to or taken out of the selection; selecting every branch, or none, means all
+            if (b === 'all') tvBranchSel.clear();
+            else if (tvBranchSel.has(b)) tvBranchSel.delete(b);
+            else { tvBranchSel.add(b); if (tvBranchSel.size >= tv.branches.length) tvBranchSel.clear(); }
+            tvOpen = null; tvPage = 1; renderTroves();
+        });
+        $('tvHead').addEventListener('click', e => {
+            const k = e.target.closest('[data-tvsort]')?.dataset.tvsort;
+            if (!k) return;
+            tvSort = { key: k, dir: tvSort.key === k ? -tvSort.dir : 1 }; tvPage = 1;
+            renderTroveTable();
+        });
+        // Open a trove in the list: on its page in the current view, or by its ID when the filters hide it
+        function tvGoto(key) {
+            const t = tv.troves.find(x => x.key === key);
+            if (!t) return;
+            tvHidePicker();
+            if (!tvFiltered().some(x => x.key === key)) {
+                $('tvSearch').value = t.id;
+                history.replaceState(null, '', `#troves/${encodeURIComponent(t.id)}`);
+            }
+            tvOpen = key;
+            renderTroveTable();
+            document.querySelector(`#tvRows [data-tvkey="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+        // A block of several troves (a batch, or small troves grouped) opens a list to choose from
+        const tvPicker = Object.assign(document.createElement('div'), { id: 'tvPicker', className: 'hidden fixed rounded-lg text-xs py-1 overflow-y-auto scroll' });
+        tvPicker.setAttribute('role', 'menu');
+        tvPicker.style.cssText = 'z-index: 75; max-height: 260px; min-width: 240px; background: var(--surface); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 12px 32px rgba(0,0,0,.5)';
+        document.body.appendChild(tvPicker);
+        function tvHidePicker() { tvPicker.classList.add('hidden'); }
+        function tvShowPicker(block, x, y) {
+            const list = block.dataset.tvgo.split(',').map(k => tv.troves.find(t => t.key === k)).filter(Boolean);
+            hideTip();
+            tvPicker.innerHTML = `<div class="px-3 pt-1.5 pb-1.5 text-[11px] font-semibold" style="color: var(--ink-2); border-bottom: 1px solid rgba(255,255,255,.06)">${esc(block.dataset.tvgoTitle)}</div>` + list.map(t => `
+                <button class="w-full flex items-center justify-between gap-4 px-3 py-1.5 text-left hover:bg-white/5 transition" role="menuitem" data-tvpick="${esc(t.key)}">
+                    <span class="mono" style="color: #8bb8f0">${esc(short(t.id))}</span>
+                    <span class="mono" style="color: var(--ink-2)">${compact(t.debt)} BOLD · ${fmt(t.rate, 2)}%</span>
+                </button>`).join('');
+            tvPicker.classList.remove('hidden');
+            const r = tvPicker.getBoundingClientRect();
+            tvPicker.style.left = `${Math.min(Math.max(8, x - r.width / 2), innerWidth - r.width - 8)}px`;
+            tvPicker.style.top = `${y + 12 + r.height > innerHeight - 8 ? Math.max(8, y - r.height - 12) : y + 12}px`;
+        }
+        tvPicker.addEventListener('click', e => { const k = e.target.closest('[data-tvpick]')?.dataset.tvpick; if (k) tvGoto(k); });
+        document.addEventListener('click', e => { if (!tvPicker.contains(e.target) && !e.target.closest('[data-tvgo]')) tvHidePicker(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') tvHidePicker(); });
+        addEventListener('scroll', tvHidePicker, { passive: true });
+        addEventListener('resize', tvHidePicker);
+
+        // Hovering a batch in "Batches ahead of this trove" lights up its blocks in the queue bar
+        const tvBatchHover = (e, on) => {
+            // only a row of that table: its own cells hold the tick box (the whole trove detail also sits in a row)
+            const box = e.target.closest('tr')?.querySelector(':scope > td > [data-tvsim]');
+            const area = box?.closest('.tx-detail')?.querySelector('[data-bar-area]');
+            if (!area) return;
+            if (!on && e.relatedTarget && e.target.closest('tr').contains(e.relatedTarget)) return;
+            area.classList.toggle('tv-hl-on', on);
+            area.querySelectorAll('[data-mgr]').forEach(el => el.classList.toggle('tv-hl', on && el.dataset.mgr === box.dataset.tvsim));
+        };
+        $('tvRows').addEventListener('pointerover', e => tvBatchHover(e, true));
+        $('tvRows').addEventListener('pointerout', e => tvBatchHover(e, false));
+        $('tvRows').addEventListener('click', async e => {
+            const copyBtn = e.target.closest('[data-copy]');
+            if (copyBtn) {
+                const what = copyBtn.dataset.copyWhat;
+                try {
+                    await navigator.clipboard.writeText(copyBtn.dataset.copy);
+                    copyBtn.innerHTML = CHECK_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--good)'; copyBtn.dataset.tip = 'Copied';
+                } catch { copyBtn.dataset.tip = `Copy failed: select the ${what} instead`; }
+                clearTimeout(copyBtn._reset);
+                copyBtn._reset = setTimeout(() => { copyBtn.innerHTML = COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--muted)'; copyBtn.dataset.tip = `Copy ${what}`; }, 1500);
+                return;
+            }
+            const simBtn = e.target.closest('[data-tvsim], [data-tvsim-all], [data-tvsim-reset]');
+            if (simBtn) {
+                const detail = simBtn.closest('.tx-detail');
+                if (simBtn.hasAttribute('data-tvsim-reset')) detail.querySelectorAll('[data-tvsim]').forEach(x => x.setAttribute('aria-pressed', 'false'));
+                else if (simBtn.hasAttribute('data-tvsim-all')) { const on = simBtn.getAttribute('aria-pressed') !== 'true'; detail.querySelectorAll('[data-tvsim]').forEach(x => x.setAttribute('aria-pressed', String(on))); }
+                else simBtn.setAttribute('aria-pressed', String(simBtn.getAttribute('aria-pressed') !== 'true'));
+                tvSimulate(detail);
+                return;
+            }
+            const block = e.target.closest('[data-tvgo]');
+            if (block) {
+                const keys = block.dataset.tvgo.split(',');
+                if (keys.length === 1) tvGoto(keys[0]); else tvShowPicker(block, e.clientX, e.clientY);
+                return;
+            }
+            const link = e.target.closest('[data-tvlink]');
+            if (link) { e.preventDefault(); $('tvSearch').value = link.dataset.tvlink; $('tvSearch').dispatchEvent(new Event('input')); return; }
+            if (e.target.closest('a')) return;
+            if (e.target.closest('.detail-row')) return;
+            const key = e.target.closest('[data-tvkey]')?.dataset.tvkey;
+            if (!key) return;
+            tvOpen = tvOpen === key ? null : key;
+            renderTroveTable();
+        });
+
         function showView(name) {
-            for (const v of ['dashboard', 'how']) {
+            for (const v of ['dashboard', 'troves', 'how']) {
                 $(`view-${v}`).classList.toggle('hidden', v !== name);
                 $(`tab-${v}`).classList.toggle('tab-active', v === name);
                 $(`tab-${v}`).setAttribute('aria-selected', v === name);
             }
             if (name === 'how') renderHow();
+            else if (name === 'troves') loadTroves();
             else Object.values(charts).forEach(c => c.resize());
-            history.replaceState(null, '', name === 'how' ? '#how' : location.pathname);
+            const q = name === 'troves' ? $('tvSearch').value.trim() : '';
+            history.replaceState(null, '', name === 'how' ? '#how' : name === 'troves' ? (q ? `#troves/${encodeURIComponent(q)}` : '#troves') : location.pathname);
         }
 
         // Tip address: copy icon that turns into a check mark once copied
@@ -2199,9 +3127,15 @@
 
         $('tab-dashboard').addEventListener('click', () => showView('dashboard'));
         $('tab-how').addEventListener('click', () => showView('how'));
+        $('tab-troves').addEventListener('click', () => showView('troves'));
 
         if (location.hash === '#how') showView('how');
         detectMode().then(() => {
+            // A shared link to the Troves tab, optionally with an address or trove ID: #troves/0x…
+            if (location.hash.startsWith('#troves')) {
+                $('tvSearch').value = decodeURIComponent(location.hash.slice('#troves/'.length) || '');
+                showView('troves');
+            }
             fetchData();
             pollStatus();
             setInterval(pollStatus, staticMode ? 60000 : 5000);

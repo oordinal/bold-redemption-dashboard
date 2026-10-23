@@ -86,3 +86,11 @@ CREATE TABLE IF NOT EXISTS addresses (
     deployer_checked_at INTEGER,     -- ms since epoch of the last deployer lookup (NULL: not yet)
     ens_checked_at INTEGER           -- ms since epoch of the last ENS lookup
 );
+
+-- Latest snapshot of every open trove (troves.js), for the Troves tab: one JSON document, replaced after each sync
+CREATE TABLE IF NOT EXISTS trove_snapshot (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    taken_at INTEGER NOT NULL,       -- ms since epoch
+    block INTEGER NOT NULL,          -- block the snapshot was read at
+    data TEXT NOT NULL               -- JSON: branches, batch managers, troves (see troves.js)
+);

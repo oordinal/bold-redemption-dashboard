@@ -47,8 +47,9 @@ const batchTotalsQuery = db.prepare(`
            (SELECT COALESCE(SUM(debt_redeemed), 0) FROM redemption_troves WHERE batch_manager IS NOT NULL) AS batch_bold,
            (SELECT COUNT(*) FROM troves) AS troves,
            (SELECT COALESCE(SUM(batched), 0) FROM troves) AS batch_troves,
-           (SELECT COUNT(*) FROM redemption_troves) AS hits,
-           (SELECT COUNT(*) FROM redemption_troves WHERE batch_manager IS NOT NULL) AS batch_hits`);
+           -- a hit is a trove reached by a transaction (one transaction can make several redemption calls)
+           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM redemption_troves) AS hits,
+           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM redemption_troves WHERE batch_manager IS NOT NULL) AS batch_hits`);
 const batchManagersQuery = db.prepare(`
     SELECT batch_manager AS address,
            COUNT(DISTINCT branch || trove_id) AS troves,
@@ -83,6 +84,24 @@ const txTrovesQuery = db.prepare('SELECT * FROM redemption_troves WHERE tx_hash 
 const allEventsQuery = db.prepare('SELECT * FROM redemption_events ORDER BY tx_hash, log_index');
 const allTrovesQuery = db.prepare('SELECT * FROM redemption_troves ORDER BY tx_hash, log_index');
 
+// Troves tab: the latest snapshot of every open trove (troves.js), and every redemption hit in compact form so the page
+// can show a trove's or a batch manager's redemption record: rows of [timestamp, tx index, branch, trove index, BOLD debt
+// repaid, collateral removed, fee left in the trove (collateral), manager index or -1, interest rate %, collateral market price]
+const troveSnapshotQuery = db.prepare('SELECT data FROM trove_snapshot WHERE id = 1');
+const troveHitsQuery = db.prepare(`
+    SELECT r.timestamp, t.tx_hash, t.branch, t.trove_id, t.debt_redeemed, t.coll_redeemed, t.fee_coll, t.batch_manager, t.interest_rate,
+           (SELECT MAX(e.coll_market_price) FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS market_price
+    FROM redemption_troves t JOIN redemptions r USING (tx_hash)
+    ORDER BY r.timestamp, t.tx_hash, t.log_index`);
+function troveHits() {
+    const indexer = () => { const m = new Map(); const idx = v => { if (!m.has(v)) m.set(v, m.size); return m.get(v); }; idx.keys = () => [...m.keys()]; return idx; };
+    const txIdx = indexer(), troveIdx = indexer(), managerIdx = indexer();
+    const round = (v, d) => v == null ? null : Math.round(v * 10 ** d) / 10 ** d;
+    const rows = troveHitsQuery.all().map(r => [r.timestamp, txIdx(r.tx_hash), r.branch, troveIdx(r.trove_id.toLowerCase()), round(r.debt_redeemed, 4),
+        round(r.coll_redeemed, 8), round(r.fee_coll, 8), r.batch_manager ? managerIdx(r.batch_manager) : -1, round(r.interest_rate, 4), round(r.market_price, 4)]);
+    return { txs: txIdx.keys(), troves: troveIdx.keys(), managers: managerIdx.keys(), rows };
+}
+
 function groupByTx(rows) {
     const map = new Map();
     for (const r of rows) {
@@ -99,6 +118,8 @@ module.exports = {
     batchRows,
     addresses: () => addressesQuery.all(),
     txDetail: hash => ({ events: txEventsQuery.all(hash), troves: txTrovesQuery.all(hash) }),
+    troves: () => { const row = troveSnapshotQuery.get(); return row ? JSON.parse(row.data) : null; },
+    troveHits,
     // Every transaction's detail at once, for the static export
     allTxDetails: () => {
         const events = groupByTx(allEventsQuery.all());
