@@ -1553,8 +1553,15 @@
                     </div>
                 </div>`;
 
+            const header = `
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style="color: var(--ink-2)">
+                    <span class="inline-flex items-center gap-2 font-semibold text-white">Redemption Tx ${esc(short(r.tx_hash))}${tvCopy(r.tx_hash, 'transaction hash')}</span>
+                    ${shareBtn(`tx=${r.tx_hash}`, 'redemption')}
+                </div>`;
+
             return box(`
                 <div class="space-y-4">
+                    ${header}
                     ${summary}
 
                     <div class="flex flex-col lg:flex-row gap-3 items-stretch">
@@ -2411,7 +2418,12 @@
         }
 
         const tvTroveHits = t => (tv.byTrove.get(`${t.b.name}:${t.id}`) || []);
-        // A small copy button; the click handler on the list copies its value and shows a check mark for a moment
+        // Share links: /?trove=<branch>:0x<id> opens that trove, /?tx=0x<hash> that redemption (a trove ID can exist on two
+        // branches, so the branch is part of the link). "Copy link" copies one; openSharedLink() opens it when the page loads
+        const LINK_ICON = '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></svg>';
+        const shareBtn = (query, what) => `<button type="button" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-normal hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
+            data-share="${esc(`${location.origin}/?${query}`)}" data-tip="Copy a link to this ${what}" aria-label="Copy a link to this ${what}">${LINK_ICON}<span>copy link</span></button>`;
+        // A small copy button; the page-wide copy handler (below, with the share links) copies its value and shows a check mark
         const tvCopy = (value, what) => `<button type="button" class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-white/5 transition align-middle" style="color: var(--muted)"
             data-copy="${esc(value)}" data-copy-what="${esc(what)}" data-tip="Copy ${esc(what)}" aria-label="Copy ${esc(what)}">${COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5')}</button>`;
         // Where a marker's text goes: right of its triangle if it fits in the bar's width, else left, trying each text in turn
@@ -2960,6 +2972,7 @@
             return `<div class="tx-detail px-4 md:px-5 py-5 space-y-4" style="--detail-w: ${$('tvScroll').clientWidth}px">
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style="color: var(--ink-2)">
                     <span class="inline-flex items-center gap-2 font-semibold text-white">${branchIcon(b.name, 'w-5 h-5')}Trove ${esc(short(t.id))}${tvCopy(t.id, 'trove ID')}</span>
+                    ${shareBtn(`trove=${encodeURIComponent(b.name)}:${t.id}`, 'trove')}
                     <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" target="_blank" rel="noopener" href="https://etherscan.io/nft/${esc(b.troveNFT)}/${BigInt(t.id).toString()}">trove NFT on Etherscan<span aria-hidden="true">↗</span></a>
                     <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" href="#troves/${esc(t.owner || t.id)}" data-tvlink="${esc(t.owner || t.id)}">${t.owner ? 'this owner\'s troves' : 'this trove'}</a>
                 </div>
@@ -3057,18 +3070,7 @@
         };
         $('tvRows').addEventListener('pointerover', e => tvBatchHover(e, true));
         $('tvRows').addEventListener('pointerout', e => tvBatchHover(e, false));
-        $('tvRows').addEventListener('click', async e => {
-            const copyBtn = e.target.closest('[data-copy]');
-            if (copyBtn) {
-                const what = copyBtn.dataset.copyWhat;
-                try {
-                    await navigator.clipboard.writeText(copyBtn.dataset.copy);
-                    copyBtn.innerHTML = CHECK_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--good)'; copyBtn.dataset.tip = 'Copied';
-                } catch { copyBtn.dataset.tip = `Copy failed: select the ${what} instead`; }
-                clearTimeout(copyBtn._reset);
-                copyBtn._reset = setTimeout(() => { copyBtn.innerHTML = COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--muted)'; copyBtn.dataset.tip = `Copy ${what}`; }, 1500);
-                return;
-            }
+        $('tvRows').addEventListener('click', e => {
             const simBtn = e.target.closest('[data-tvsim], [data-tvsim-all], [data-tvsim-reset]');
             if (simBtn) {
                 const detail = simBtn.closest('.tx-detail');
@@ -3132,6 +3134,70 @@
         $('tab-how').addEventListener('click', () => showView('how'));
         $('tab-troves').addEventListener('click', () => showView('troves'));
 
+        // Copy buttons (trove ID, owner, transaction hash): copy the value and show a check mark for a moment
+        document.addEventListener('click', async e => {
+            const copyBtn = e.target.closest('[data-copy]');
+            if (!copyBtn) return;
+            e.stopPropagation();
+            const what = copyBtn.dataset.copyWhat;
+            try {
+                await navigator.clipboard.writeText(copyBtn.dataset.copy);
+                copyBtn.innerHTML = CHECK_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--good)'; copyBtn.dataset.tip = 'Copied';
+            } catch { copyBtn.dataset.tip = `Copy failed: select the ${what} instead`; }
+            clearTimeout(copyBtn._reset);
+            copyBtn._reset = setTimeout(() => { copyBtn.innerHTML = COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5'); copyBtn.style.color = 'var(--muted)'; copyBtn.dataset.tip = `Copy ${what}`; }, 1500);
+        }, true);
+        // "Copy link": copies the share link and shows "copied" for a moment (captured first, so a row does not toggle)
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('[data-share]');
+            if (!btn) return;
+            e.stopPropagation();
+            const label = btn.querySelector('span');
+            try {
+                await navigator.clipboard.writeText(btn.dataset.share);
+                label.textContent = 'copied'; btn.style.color = 'var(--good)';
+            } catch { label.textContent = 'copy failed'; }
+            clearTimeout(btn._reset);
+            btn._reset = setTimeout(() => { label.textContent = 'copy link'; btn.style.color = '#8bb8f0'; }, 1500);
+        }, true);
+
+        // A shared link (/?trove=… or /?tx=…): open that trove or redemption once its data is loaded, then take the link
+        // out of the address bar so a reload or another tab does not open it again; a message if it no longer exists
+        async function openSharedLink() {
+            const params = new URLSearchParams(location.search), trove = params.get('trove'), tx = params.get('tx');
+            if (!trove && !tx) return;
+            const until = async test => { for (const t0 = Date.now(); !test(); await new Promise(r => setTimeout(r, 100))) if (Date.now() - t0 > 30000) return false; return true; };
+            const done = () => history.replaceState(null, '', location.pathname + location.hash);
+            const notice = (view, text) => {
+                const n = document.createElement('div');
+                n.className = 'card px-4 py-3 mb-4 text-xs flex items-center justify-between gap-3';
+                n.setAttribute('role', 'status');
+                n.style.color = 'var(--warn)';
+                n.innerHTML = `<span>${esc(text)}</span><button type="button" class="text-base leading-none px-1" style="color: var(--muted)" aria-label="Close">×</button>`;
+                n.querySelector('button').addEventListener('click', () => n.remove());
+                $(view).prepend(n);
+            };
+            if (trove) {
+                const [branch, id] = trove.includes(':') ? trove.split(':') : [null, trove];
+                showView('troves');
+                if (!await until(() => tv)) return;
+                const t = tv.troves.find(x => x.id.toLowerCase() === (id || '').toLowerCase() && (!branch || x.b.name.toLowerCase() === branch.toLowerCase()));
+                if (t) tvGoto(t.key);
+                done();
+                if (!t) notice('view-troves', 'The trove in this link is no longer open (it may have been closed), or the link is incomplete.');
+            } else {
+                if (!await until(() => chartRows.length)) return;
+                const rows = sortedFeed(), i = rows.findIndex(r => r.tx_hash.toLowerCase() === tx.toLowerCase());
+                done();
+                if (i < 0) return notice('view-dashboard', 'No redemption on this dashboard matches the transaction in this link.');
+                feed.page = Math.floor(i / PAGE_SIZE) + 1;
+                openTx = rows[i].tx_hash;
+                loadTxDetail(openTx);
+                renderFeedPage();
+                requestAnimationFrame(() => document.querySelector(`#redemptionFeed [data-tx="${openTx}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+            }
+        }
+
         if (location.hash === '#how') showView('how');
         detectMode().then(() => {
             // A shared link to the Troves tab, optionally with an address or trove ID: #troves/0x…
@@ -3140,6 +3206,7 @@
                 showView('troves');
             }
             fetchData();
+            openSharedLink();
             pollStatus();
             setInterval(pollStatus, staticMode ? 60000 : 5000);
             if (!staticMode) setInterval(fetchData, 60000);
