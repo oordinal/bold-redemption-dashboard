@@ -2423,13 +2423,13 @@
         const LINK_ICON = '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></svg>';
         const shareBtn = (query, what) => `<button type="button" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-normal hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
             data-share="${esc(`${location.origin}/?${query}`)}" data-tip="Copy a link to this ${what}" aria-label="Copy a link to this ${what}">${LINK_ICON}<span>copy link</span></button>`;
-        // "Alerts on Telegram": opens @BoldbotAlertsBot with this trove (the start code is "t" + branch index + the 32-byte id
-        // in base64url, decoded by api/telegram.js); only for open troves
+        // "Alerts on Telegram": a small menu opens @BoldbotAlertsBot with this trove, in the Telegram app or in Telegram Web (the
+        // start code is "t" + branch index + the 32-byte id in base64url, decoded by api/telegram.js); only for open troves
         const TELEGRAM_BOT = 'BoldbotAlertsBot';
         const PLANE_ICON = '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>';
         const telegramCode = t => `t${t.branch}${btoa(String.fromCharCode(...t.id.slice(2).match(/../g).map(h => parseInt(h, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
-        const telegramBtn = t => t.status !== 1 ? '' : `<a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
-            href="https://t.me/${TELEGRAM_BOT}?start=${telegramCode(t)}" target="_blank" rel="noopener" data-tip="Get alerts about this trove in Telegram">${PLANE_ICON}<span>Alerts on Telegram</span></a>`;
+        const telegramBtn = t => t.status !== 1 ? '' : `<button type="button" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
+            data-tgmenu="${telegramCode(t)}" aria-haspopup="menu" data-tip="Get alerts about this trove in Telegram (app or web)">${PLANE_ICON}<span>Alerts on Telegram</span></button>`;
         // A small copy button; the page-wide copy handler (below, with the share links) copies its value and shows a check mark
         const tvCopy = (value, what) => `<button type="button" class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-white/5 transition align-middle" style="color: var(--muted)"
             data-copy="${esc(value)}" data-copy-what="${esc(what)}" data-tip="Copy ${esc(what)}" aria-label="Copy ${esc(what)}">${COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5')}</button>`;
@@ -2489,8 +2489,12 @@
             const pos = []; let acc = 0;
             m.segs.forEach((g, i) => { if (i < selfI && !isMoved(g, i)) { pos[i] = acc; acc += g.debt; } });
             const front = acc; pos[selfI] = acc; acc += m.debt;
+            // A trove in a batch moves forward together with the rest of its batch (all troves of a batch share one rate and sit
+            // together in the queue): those blocks stay right behind it, and the moved batches go behind the end of the batch
+            let ownEnd = selfI;
+            if (m.mgr) while (m.segs[ownEnd + 1]?.kind === 'batch' && m.segs[ownEnd + 1].manager === m.mgr) { ownEnd++; pos[ownEnd] = acc; acc += m.segs[ownEnd].debt; }
             m.segs.forEach((g, i) => { if (isMoved(g, i)) { pos[i] = acc; acc += g.debt; } });
-            m.segs.forEach((g, i) => { if (i > selfI) pos[i] = g.x0; });
+            m.segs.forEach((g, i) => { if (i > ownEnd) pos[i] = g.x0; });
             const ink = TV_BANDS[exposureBand(m.share > 0 ? front / m.share : Infinity) || 'green'].ink;
             const today = new Map(area._today.els.map(o => [o.el, o]));
             for (const el of area.querySelectorAll('[data-seg]')) {
@@ -2500,7 +2504,7 @@
                 el.style.width = `${w}%`;
                 el.style.background = self ? ink : g.kind === 'batch' ? (behind ? 'rgba(57,135,229,.22)' : 'rgba(57,135,229,.6)') : (behind ? 'rgba(158,166,174,.33)' : '#9ea6ae');
                 const tip = today.get(el).tip;
-                el.dataset.tip = self ? `${tip} · in this scenario ${compact(front)} BOLD in front` : isMoved(g, i) ? `${tip} · in this scenario moved above this trove` : tip;
+                el.dataset.tip = self ? `${tip} · in this scenario ${compact(front)} BOLD in front` : isMoved(g, i) ? `${tip} · in this scenario moved above this trove${m.mgr ? '\'s batch' : ''}` : tip;
             }
             // markers: this trove's follows its block; the busiest week's may change row
             const barW = area.clientWidth;
@@ -2521,7 +2525,7 @@
             q('[data-line="busy"]').style.height = `${(clash ? 48 : busyTop) - 16}px`;
             area.style.height = `${Math.max(R1 + 16 * selfRows, busyTop + (mBusy.side ? 16 : 30))}px`;
             if (legend) legend.querySelector('.legend-swatch').style.background = ink;
-            tag.innerHTML = `<span class="font-semibold text-white">Scenario</span><span>${moved.size} batch${moved.size === 1 ? '' : 'es'} moved above this trove · <b class="mono text-white">${compact(m.front)} → ${now}</b></span>
+            tag.innerHTML = `<span class="font-semibold text-white">Scenario</span><span>${moved.size} batch${moved.size === 1 ? '' : 'es'} moved above this trove${m.mgr ? '\'s batch' : ''} · <b class="mono text-white">${compact(m.front)} → ${now}</b></span>
                 <button class="px-2 py-0.5 rounded text-[11px] font-medium hover:brightness-125 transition" style="background: rgba(57,135,229,.35); color: #fff" data-tvsim-reset>Reset</button>`;
             tag.classList.remove('invisible');
         }
@@ -2790,7 +2794,7 @@
                     const busyTop = clash ? R1 + 16 * selfRows : R1, height = Math.max(R1 + 16 * selfRows, busyTop + (mBusy.side ? 16 : 30));
                     const rest = b.queue.length - drawn, dot = c => `<span class="legend-swatch" style="background: ${c}"></span>`;
                     tvBars.set(t.key, { segs: segs.map(g => ({ kind: g.kind, manager: g.manager, x0: g.x0, debt: g.debt, behind: g.behind })),
-                        D, pB, busyTexts, front: t.front, debt: t.debt, share: b.share });
+                        D, pB, busyTexts, front: t.front, debt: t.debt, share: b.share, mgr: t.batchManager || null });
                     bar = `<div class="pt-12 pb-4">
                         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-2">
                             <div class="kicker flex items-center">${esc(b.name)} branch queue${infoTip(`Every trove of the ${b.name} branch in redemption order, the next in line on the left; the width of each block is its debt. Blue blocks are batches, steel-grey blocks single troves (small ones next to each other are grouped), dimmer once behind this trove. ▼ TW and ▲ BW mark how far a typical week and the busiest week of the last 180 days of redemptions would reach on this branch, with its current share of ${pctOf(b.share, 0)} of every redemption. The strip under the bar uses the colours of the tiles above. The bar zooms to each trove: it runs to a little beyond this trove or the busiest week, whichever is farther, so its scale differs from trove to trove.`, 'Branch queue')}</div>
@@ -2898,7 +2902,8 @@
                     ${verdict ? `<p class="text-xs leading-relaxed max-w-4xl" style="color: var(--ink-2)">${verdict}</p>` : ''}
                     ${bar}
                     <div class="grid gap-4 lg:grid-cols-2 items-start">
-                        <div class="space-y-1.5 min-w-0"><div class="kicker flex items-center">Batches ahead of this trove${bar && leap.length ? infoTip('Tick one or more batches, or the box in the header for all of them, to see the queue bar as if those batches moved their rate just above this trove\'s: their blocks move behind it and the trove moves forward. The tiles and the text above keep showing today\'s queue.', 'Batches ahead of this trove') : ''}</div>${leapTable}</div>
+                        <div class="space-y-1.5 min-w-0"><div class="kicker flex items-center">Batches ahead of this trove${bar && leap.length ? infoTip(t.mgr ? 'Tick one or more batches, or the box in the header for all of them, to see the queue bar as if those batches moved their rate just above the rate of this trove\'s batch: their blocks move behind the whole batch, and the trove moves forward together with its batch. The tiles and the text above keep showing today\'s queue.'
+                            : 'Tick one or more batches, or the box in the header for all of them, to see the queue bar as if those batches moved their rate just above this trove\'s: their blocks move behind it and the trove moves forward. The tiles and the text above keep showing today\'s queue.', 'Batches ahead of this trove') : ''}</div>${leapTable}</div>
                         <div class="space-y-4 min-w-0">${ownBatch}${steps}</div>
                     </div>
                 </div>`;
@@ -3050,6 +3055,7 @@
         function tvShowPicker(block, x, y) {
             const list = block.dataset.tvgo.split(',').map(k => tv.troves.find(t => t.key === k)).filter(Boolean);
             hideTip();
+            tvPicker.dataset.for = '';             // the popup now holds a batch list, not a Telegram menu
             tvPicker.innerHTML = `<div class="px-3 pt-1.5 pb-1.5 text-[11px] font-semibold" style="color: var(--ink-2); border-bottom: 1px solid rgba(255,255,255,.06)">${esc(block.dataset.tvgoTitle)}</div>` + list.map(t => `
                 <button class="w-full flex items-center justify-between gap-4 px-3 py-1.5 text-left hover:bg-white/5 transition" role="menuitem" data-tvpick="${esc(t.key)}">
                     <span class="mono" style="color: #8bb8f0">${esc(short(t.id))}</span>
@@ -3060,8 +3066,28 @@
             tvPicker.style.left = `${Math.min(Math.max(8, x - r.width / 2), innerWidth - r.width - 8)}px`;
             tvPicker.style.top = `${y + 12 + r.height > innerHeight - 8 ? Math.max(8, y - r.height - 12) : y + 12}px`;
         }
-        tvPicker.addEventListener('click', e => { const k = e.target.closest('[data-tvpick]')?.dataset.tvpick; if (k) tvGoto(k); });
-        document.addEventListener('click', e => { if (!tvPicker.contains(e.target) && !e.target.closest('[data-tvgo]')) tvHidePicker(); });
+        // The Telegram menu: the bot with this trove in the app (t.me) or in Telegram Web, each in a new tab
+        function tvShowTelegramMenu(btn) {
+            const code = btn.dataset.tgmenu, tg = `tg://resolve?domain=${TELEGRAM_BOT}&start=${code}`;
+            const item = (href, icon, title, sub) => `<a class="flex items-start gap-2.5 px-3 py-2 hover:bg-white/5 transition" role="menuitem" href="${href}" target="_blank" rel="noopener" data-tgopen>
+                <span class="mt-0.5" style="color: #8bb8f0">${icon}</span><span><span class="block text-white">${title}</span><span class="block text-[11px]" style="color: var(--muted)">${sub}</span></span></a>`;
+            hideTip();
+            tvPicker.innerHTML = `<div class="px-3 pt-1.5 pb-1.5 text-[11px] font-semibold" style="color: var(--ink-2); border-bottom: 1px solid rgba(255,255,255,.06)">Get alerts about this trove</div>`
+                + item(`https://t.me/${TELEGRAM_BOT}?start=${code}`, PLANE_ICON, 'Telegram app', 'desktop or phone, opens the app')
+                + item(`https://web.telegram.org/a/#?tgaddr=${encodeURIComponent(tg)}`, '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>', 'Telegram Web', 'in this browser, no install needed')
+                + `<div class="px-3 pt-1.5 pb-1 text-[11px]" style="color: var(--muted); border-top: 1px solid rgba(255,255,255,.06)">Then tap Start in the bot.</div>`;
+            tvPicker.dataset.for = code;
+            tvPicker.classList.remove('hidden');
+            const b = btn.getBoundingClientRect(), r = tvPicker.getBoundingClientRect();
+            tvPicker.style.left = `${Math.min(Math.max(8, b.left), innerWidth - r.width - 8)}px`;
+            tvPicker.style.top = `${b.bottom + 6 + r.height > innerHeight - 8 ? Math.max(8, b.top - r.height - 6) : b.bottom + 6}px`;
+        }
+        tvPicker.addEventListener('click', e => {
+            const k = e.target.closest('[data-tvpick]')?.dataset.tvpick;
+            if (k) tvGoto(k);
+            if (e.target.closest('[data-tgopen]')) setTimeout(tvHidePicker, 0);   // Telegram opens in a new tab; the menu closes
+        });
+        document.addEventListener('click', e => { if (!tvPicker.contains(e.target) && !e.target.closest('[data-tvgo]') && !e.target.closest('[data-tgmenu]')) tvHidePicker(); });
         document.addEventListener('keydown', e => { if (e.key === 'Escape') tvHidePicker(); });
         addEventListener('scroll', tvHidePicker, { passive: true });
         addEventListener('resize', tvHidePicker);
@@ -3079,6 +3105,12 @@
         $('tvRows').addEventListener('pointerover', e => tvBatchHover(e, true));
         $('tvRows').addEventListener('pointerout', e => tvBatchHover(e, false));
         $('tvRows').addEventListener('click', e => {
+            const tgBtn = e.target.closest('[data-tgmenu]');
+            if (tgBtn) {
+                if (!tvPicker.classList.contains('hidden') && tvPicker.dataset.for === tgBtn.dataset.tgmenu) tvHidePicker();
+                else tvShowTelegramMenu(tgBtn);
+                return;
+            }
             const simBtn = e.target.closest('[data-tvsim], [data-tvsim-all], [data-tvsim-reset]');
             if (simBtn) {
                 const detail = simBtn.closest('.tx-detail');
