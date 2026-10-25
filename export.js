@@ -8,6 +8,7 @@ const db = require('./db');
 const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
+const { runAlerts } = require('./alerts');
 
 const outDir = path.resolve(process.argv[2] || 'out');
 
@@ -18,6 +19,13 @@ async function main() {
         await snapshotTroves();
     } catch (e) {
         console.warn(`Trove snapshot not updated: ${e.shortMessage || e.message}`);
+    }
+    // Telegram alerts for the watched troves (does nothing without the Upstash and Telegram settings; never stops the export)
+    try {
+        const r = await runAlerts();
+        console.log(`Telegram alerts: ${JSON.stringify(r)}`);
+    } catch (e) {
+        console.warn(`Telegram alerts not sent: ${e.message}`);
     }
 
     fs.mkdirSync(outDir, { recursive: true });

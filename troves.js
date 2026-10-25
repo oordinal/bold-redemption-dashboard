@@ -91,9 +91,11 @@ async function multicall(provider, calls, blockTag) {
 const insertSnapshot = db.prepare('INSERT OR REPLACE INTO trove_snapshot (id, taken_at, block, data) VALUES (1, ?, ?, ?)');
 const readSnapshot = db.prepare('SELECT data FROM trove_snapshot WHERE id = 1');
 
-async function snapshotTroves() {
+// The latest snapshot, stored for the page. With { block, store: false } it reads the troves at an earlier block without
+// storing them (used to replay past events when testing the Telegram alerts)
+async function snapshotTroves({ block: atBlock, store = true } = {}) {
     const provider = makeProvider();
-    const block = (await withRetry(() => provider.getBlockNumber())) - CONFIRMATIONS;
+    const block = atBlock ?? (await withRetry(() => provider.getBlockNumber())) - CONFIRMATIONS;
 
     // 1. Branch contracts, from the CollateralRegistry
     const [[n]] = await multicall(provider, [[REGISTRY, I.reg, 'totalCollaterals']], block);
@@ -195,7 +197,7 @@ async function snapshotTroves() {
             mcr: b.mcr, ccr: b.ccr, scr: b.scr, lastZombie: b.lastZombie })),
         managers, troves
     };
-    insertSnapshot.run(Date.now(), block, JSON.stringify(snapshot));
+    if (store) insertSnapshot.run(Date.now(), block, JSON.stringify(snapshot));
     return snapshot;
 }
 

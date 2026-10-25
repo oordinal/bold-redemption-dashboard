@@ -2423,6 +2423,13 @@
         const LINK_ICON = '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></svg>';
         const shareBtn = (query, what) => `<button type="button" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-normal hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
             data-share="${esc(`${location.origin}/?${query}`)}" data-tip="Copy a link to this ${what}" aria-label="Copy a link to this ${what}">${LINK_ICON}<span>copy link</span></button>`;
+        // "Alerts on Telegram": opens @BoldbotAlertsBot with this trove (the start code is "t" + branch index + the 32-byte id
+        // in base64url, decoded by api/telegram.js); only for open troves
+        const TELEGRAM_BOT = 'BoldbotAlertsBot';
+        const PLANE_ICON = '<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>';
+        const telegramCode = t => `t${t.branch}${btoa(String.fromCharCode(...t.id.slice(2).match(/../g).map(h => parseInt(h, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+        const telegramBtn = t => t.status !== 1 ? '' : `<a class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:brightness-125 transition align-middle" style="background: rgba(57,135,229,.14); color: #8bb8f0"
+            href="https://t.me/${TELEGRAM_BOT}?start=${telegramCode(t)}" target="_blank" rel="noopener" data-tip="Get alerts about this trove in Telegram">${PLANE_ICON}<span>Alerts on Telegram</span></a>`;
         // A small copy button; the page-wide copy handler (below, with the share links) copies its value and shows a check mark
         const tvCopy = (value, what) => `<button type="button" class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-white/5 transition align-middle" style="color: var(--muted)"
             data-copy="${esc(value)}" data-copy-what="${esc(what)}" data-tip="Copy ${esc(what)}" aria-label="Copy ${esc(what)}">${COPY_ICON.replace('w-4 h-4', 'w-3.5 h-3.5')}</button>`;
@@ -2973,6 +2980,7 @@
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style="color: var(--ink-2)">
                     <span class="inline-flex items-center gap-2 font-semibold text-white">${branchIcon(b.name, 'w-5 h-5')}Trove ${esc(short(t.id))}${tvCopy(t.id, 'trove ID')}</span>
                     ${shareBtn(`trove=${encodeURIComponent(b.name)}:${t.id}`, 'trove')}
+                    ${telegramBtn(t)}
                     <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" target="_blank" rel="noopener" href="https://etherscan.io/nft/${esc(b.troveNFT)}/${BigInt(t.id).toString()}">trove NFT on Etherscan<span aria-hidden="true">↗</span></a>
                     <a class="num text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:brightness-125 transition" style="background: rgba(57,135,229,.14); color: #8bb8f0" href="#troves/${esc(t.owner || t.id)}" data-tvlink="${esc(t.owner || t.id)}">${t.owner ? 'this owner\'s troves' : 'this trove'}</a>
                 </div>
