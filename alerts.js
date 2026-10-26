@@ -1,7 +1,8 @@
 // Telegram alerts for watched troves (@BoldbotAlertsBot). Runs after each trove snapshot, in the same job, and compares
 // every watched trove with the state last reported for it (kept in Upstash Redis), so each change is reported once even if
-// a run is repeated. Three alerts:
-//   - self-managed trove: a batch that was in front of it moved its rate above the trove's (the trove moves forward)
+// a run is repeated. Each trove gets at most one message per run, combining what happened:
+//   - self-managed trove: it was redeemed against (all redemptions since the last run, summed); a batch that was in front of
+//     it moved its rate above the trove's (the trove moves forward)
 //   - trove in a batch: redemptions hit troves of the batch; and/or the batch manager changed the rate
 //   - the trove closed or became a zombie: a last message, and the subscription ends
 // The queue figures follow the page's own rules (debt in front, system-wide distance, typical and busiest week).
@@ -40,6 +41,8 @@ const compact = v => {
 };
 const pct = (v, d = 2) => `${v.toFixed(d)}%`;
 const short = a => `${a.slice(0, 6)}…${a.slice(-4)}`;
+const dollars = v => `$${Math.round(Math.abs(v)).toLocaleString('en-US')}`;
+const amount = v => Number(v.toFixed(3)).toLocaleString('en-US', { maximumFractionDigits: 3 });
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const BAND = {
     red: '🔴 within reach of a typical week of redemptions',
@@ -116,6 +119,20 @@ function batchHits(branchName, manager, fromBlock, toBlock) {
     return { txs: new Set(rows.map(r => r.tx_hash)).size, troves: new Set(rows.map(r => r.trove_id)), debt: rows.reduce((a, r) => a + r.debt_redeemed, 0), rows };
 }
 
+// Redemptions that hit one trove in a block range, grouped: transactions (one redemption each), debt repaid, collateral removed,
+// and the result for the trove at the time: debt repaid minus the removed collateral at its market price (positive: in the
+// trove's favour, the redemption fee left in the trove covered the price gap)
+const troveRows = db.prepare(`SELECT r.tx_hash, t.debt_redeemed, t.coll_redeemed,
+    (SELECT MAX(e.coll_market_price) FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS price
+    FROM redemption_troves t JOIN redemptions r USING (tx_hash) WHERE t.branch = ? AND t.trove_id = ? AND r.block > ? AND r.block <= ?`);
+const NO_HITS = { txs: 0, debt: 0, coll: 0, result: 0 };
+function troveHits(branchName, troveId, fromBlock, toBlock) {
+    const rows = troveRows.all(branchName, troveId, fromBlock, toBlock);
+    if (!rows.length) return NO_HITS;
+    return { txs: new Set(rows.map(r => r.tx_hash)).size, debt: rows.reduce((a, r) => a + r.debt_redeemed, 0), coll: rows.reduce((a, r) => a + r.coll_redeemed, 0),
+        result: rows.reduce((a, r) => a + (r.price != null ? r.debt_redeemed - r.coll_redeemed * r.price : 0), 0) };
+}
+
 // ---------------------------------------------------------------- Detection and messages
 const troveLink = view => `${SITE}/?trove=${encodeURIComponent(view.b.name)}:${view.t.id}`;
 const head = (view, title) => `<b>${title}</b>\nTrove <a href="${troveLink(view)}">${short(view.t.id)}</a> · ${esc(view.b.name)} · ${pct(view.t.rate)}`;
@@ -134,8 +151,9 @@ const statusLine = (view, state) => {
 const FOOTER = '\n\n<i>ℹ️ Alerts arrive up to about 30 minutes after a change occurs on chain and are for information purposes only. Before acting on a trove, check its current state in the front end of your choice.</i>';
 
 // The messages for one trove (state: last reported; view: now); { end: true } when the subscription should stop
-function detect(state, view, model, hits) { return withFooter(detectAll(state, view, model, hits), view.gone ? null : troveLink(view)); }
-function detectAll(state, view, model, hits) {
+// own: the redemptions on this trove itself (for a self-managed trove); every trove gets at most one message per run
+function detect(state, view, model, hits, own = NO_HITS) { return withFooter(detectAll(state, view, model, hits, own), view.gone ? null : troveLink(view)); }
+function detectAll(state, view, model, hits, own) {
     if (view.gone) return { messages: [`<b>Trove no longer open</b>\nTrove ${short(view.key.split(':')[1])} was closed or liquidated. Alerts for it have stopped.`], end: true };
     if (view.zombie) return { messages: [`${head(view, 'Trove left the redemption queue')}\nIts debt fell below the 2,000 BOLD minimum after a redemption, so it is now a zombie trove, out of the queue. Alerts for it have stopped.`], end: true };
     const { t } = view, messages = [];
@@ -150,9 +168,17 @@ function detectAll(state, view, model, hits) {
             const mg = model.managers.get(`${t.branch}:${m}`);
             return !view.ahead.has(m) && mg && mg.lastRateChange !== change;
         }).map(([m, [, oldRate]]) => ({ mg: model.managers.get(`${t.branch}:${m}`), oldRate }));
-        if (moved.length) {
-            const list = moved.map(({ mg, oldRate }) => `• Batch ${short(mg.address)} (${compact(mg.debt)} BOLD) changed its rate ${oldRate != null ? `${pct(oldRate)} → ` : 'to '}${pct(mg.rate)}`).join('\n');
-            messages.push(`${head(view, moved.length === 1 ? 'A batch moved above your trove' : `${moved.length} batches moved above your trove`)}\n${list}\n${frontLine(view, state, true)}\n${statusLine(view, state)}`);
+        const parts = [];
+        // redemptions on the trove since the last run, as one summary
+        if (own.txs) parts.push(`${own.txs} redemption${own.txs === 1 ? '' : 's'} repaid <b>${compact(own.debt)} BOLD</b> of its debt and removed ${amount(own.coll)} ${esc(view.b.name)}. `
+            + `Result at the time: ${own.result >= 0 ? `<b>+${dollars(own.result)}</b> in the trove's favour (the redemption fee kept in the trove covered the price gap)` : `<b>${dollars(own.result)}</b> cost to the trove`}. `
+            + `Its debt is now <b>${compact(t.debt)} BOLD</b>.`);
+        if (moved.length) parts.push(moved.map(({ mg, oldRate }) => `• Batch ${short(mg.address)} (${compact(mg.debt)} BOLD) changed its rate ${oldRate != null ? `${pct(oldRate)} → ` : 'to '}${pct(mg.rate)}`).join('\n'));
+        if (parts.length) {
+            const movedTitle = moved.length === 1 ? 'a batch moved above it' : `${moved.length} batches moved above it`;
+            const title = own.txs && moved.length ? `Your trove was redeemed against, and ${movedTitle}` : own.txs ? 'Your trove was redeemed against'
+                : moved.length === 1 ? 'A batch moved above your trove' : `${moved.length} batches moved above your trove`;
+            messages.push(`${head(view, title)}\n${parts.join('\n')}\n${frontLine(view, state, moved.length > 0 && !own.txs)}\n${statusLine(view, state)}`);
         }
     } else {
         // In a batch: redemptions on the batch, and the manager's rate
@@ -210,7 +236,8 @@ async function runAlerts({ snapshot } = {}) {
             }
             if (!view.gone && view.t.status === 1 && state.block >= snap.block) continue;   // nothing newer than what was reported
             const hits = view.t?.mgr ? batchHits(view.b.name, view.t.mgr.address, state.hitBlock, upTo) : { txs: 0, troves: new Set(), debt: 0, rows: [] };
-            const { messages, end } = detect(state, view, model, hits);
+            const own = view.t && !view.t.mgr ? troveHits(view.b.name, view.t.id, state.hitBlock, upTo) : NO_HITS;
+            const { messages, end } = detect(state, view, model, hits, own);
             const chats = await kv('SMEMBERS', `watchers:${key}`);
             for (const text of messages) for (const chat of chats) {
                 const r = await telegram('sendMessage', { chat_id: chat, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
@@ -232,7 +259,7 @@ async function runAlerts({ snapshot } = {}) {
     return { watched: watched.length, sent, failed };
 }
 
-module.exports = { runAlerts, buildModel, troveView, stateOf, detect, batchHits, kv, telegram };
+module.exports = { runAlerts, buildModel, troveView, stateOf, detect, batchHits, troveHits, kv, telegram };
 
 if (require.main === module) {
     runAlerts().then(r => console.log('Telegram alerts:', JSON.stringify(r))).catch(e => { console.error(e.message); process.exit(1); });

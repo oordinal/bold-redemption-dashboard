@@ -63,8 +63,8 @@ the troves' and managers' records), served at `/api/troves` and `/api/trovehits`
 
 ## Telegram alerts
 
-[@BoldbotAlertsBot](https://t.me/BoldbotAlertsBot) sends alerts about any trove someone follows: a batch in front of a
-self-managed trove moving its rate above it, redemptions hitting the batch of a trove, the batch manager changing the rate,
+[@BoldbotAlertsBot](https://t.me/BoldbotAlertsBot) sends alerts about any trove someone follows: a self-managed trove being redeemed
+against, a batch in front of a self-managed trove moving its rate above it, redemptions hitting the batch of a trove, the batch manager changing the rate,
 and a trove joining or leaving a batch, becoming a zombie or closing. People follow a trove with the **Alerts on Telegram**
 button in its detail on the Troves tab.
 

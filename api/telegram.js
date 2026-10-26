@@ -49,7 +49,7 @@ const describe = (snap, key) => {
 
 const HELP = 'This bot sends alerts about Liquity V2 troves, from <a href="' + SITE + '">boldbot.io</a>.\n\n'
     + '<b>To follow a trove</b>, open it on boldbot.io (Troves tab) and tap <b>Alerts on Telegram</b>. You can follow any trove, not only your own, up to ' + MAX_TROVES + '.\n\n'
-    + '<b>You get an alert when</b>\n• a batch in front of a self-managed trove moves its rate above it (the trove moves forward in the redemption queue)\n'
+    + '<b>You get an alert when</b>\n• a self-managed trove is redeemed against (all redemptions of a run in one alert)\n• a batch in front of a self-managed trove moves its rate above it (the trove moves forward in the redemption queue)\n'
     + '• redemptions hit troves of the batch a trove belongs to\n• the batch manager changes the rate\n• the trove leaves a batch, joins one, becomes a zombie or closes\n\n'
     + '/list shows the troves you follow · /stop stops one or all' + FOOTER;
 
@@ -65,7 +65,7 @@ async function subscribe(chat, key) {
     await kv('SADD', 'watched', key);
     const what = d.t.batchManager
         ? `Its rate is set by batch manager ${short(d.t.batchManager)}. You will get an alert when redemptions hit troves of the batch, when the manager changes the rate, or when the trove leaves the batch, becomes a zombie or closes.`
-        : `Its rate is set by the owner. You will get an alert when a batch in front of it moves its rate above it, when it joins a batch, becomes a zombie or closes.`;
+        : `Its rate is set by the owner. You will get an alert when it is redeemed against, when a batch in front of it moves its rate above it, when it joins a batch, becomes a zombie or closes.`;
     return reply(chat, `✅ <b>You now follow trove <a href="${d.link}">${short(d.t.id)}</a></b> · ${d.branch} · ${pct(d.t.rate)}\n${what}\n\nAlerts start from the next data update, within about 30 minutes. /list shows the troves you follow.${FOOTER}`);
 }
 
