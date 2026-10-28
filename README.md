@@ -50,9 +50,10 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 | `queries.js` | The queries behind the feed, the stats tiles and the data for the cards (trove rows, addresses) |
 | `index.js` | Local server: API, static files and the periodic sync |
 | `troves.js` | Troves tab: snapshot of every open trove, the branches and the batch managers, read at one block (about 8 bundled read-only calls), plus the number of active troves at the block about 30 days earlier (one more call, for the change shown on the tab), stored in the `trove_snapshot` table |
-| `export.js` | Sync, trove snapshot, Telegram alerts, then write the static JSON snapshot (used by the GitHub Action) |
-| `alerts.js` | Telegram alerts for the troves people follow: compares each with the state last reported for it and sends what changed |
-| `api/telegram.js` | Vercel function: the webhook of @BoldbotAlertsBot (follow a trove, `/list`, `/stop`, `/help`) |
+| `export.js` | Sync, trove snapshot, Telegram alerts and summaries, then write the static JSON snapshot (used by the GitHub Action) |
+| `alerts.js` | Telegram alerts for the troves people follow: compares each with the state last reported for it and sends what changed; also the daily, weekly or monthly summaries (`/digest`) |
+| `api/telegram.js` | Vercel function: the webhook of @BoldbotAlertsBot (follow a trove, `/status`, `/safe`, `/digest`, `/list`, `/stop`, `/help`) |
+| `api/_view.js` | Shared by the bot and the summaries: queue position, colour band, collateral ratio, liquidation price and the lowest rate to stay in the green (not an endpoint: the underscore keeps Vercel from serving it) |
 | `telegram-setup.js` | One-time setup: registers the bot's webhook and command menu with Telegram (`--check` shows them) |
 | `public/index.html` | The page: the Redemptions, Troves and Methodology tabs |
 | `public/eth_drawdowns.json` | How often ETH fell by 1–95% within 7 or 30 days (Coinbase, May 2025 – October 2026), for the liquidation context; a static table made from Coinbase ETH-USD minute prices by a separate research script, not part of this repo |
@@ -73,13 +74,19 @@ button in its detail on the Troves tab.
 - **Alerts**: after each trove snapshot, `alerts.js` compares every followed trove with the state last reported for it
   (also in Upstash) and sends what changed, so each change is reported once even if a run is repeated. Alerts therefore
   arrive up to about 30 minutes after a change. The queue figures follow the page's rules.
+- **Commands**: `/status` (the state of the followed troves: a button per trove, or all), `/safe` (the lowest rate to stay
+  in the green on each branch and for each followed trove, with how concentrated that protection is), `/digest` (a daily,
+  weekly or monthly summary, sent by `alerts.js` at 08:00 UTC), `/list`, `/stop`, `/help`. `/status` and `/safe` read the
+  published `troves.json`, which carries the typical and busiest week of redemptions (`weeks`) so their colour bands match
+  the alerts.
 - **Storage** (Upstash Redis, free tier): `watched` (followed troves), `watchers:<trove>` and `subs:<chat>` (who follows
-  what), `state:<trove>` (last reported state). Nothing about subscribers is published in this repo.
+  what), `state:<trove>` (last reported state), `digests`, `digest:<chat>` and `dstate:<chat>` (summary choice and the state
+  at the last summary). Nothing about subscribers is published in this repo.
 - **Settings**: GitHub secrets `TELEGRAM_BOT_TOKEN`, `KV_REST_API_URL`, `KV_REST_API_TOKEN` (for the job); Vercel
   environment variables `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` and the `KV_…` variables added by the Upstash
   integration (for the function). Without them the job runs as before and sends nothing.
-- **Setup**, once after the function is deployed: `node telegram-setup.js` (needs `TELEGRAM_BOT_TOKEN` and
-  `TELEGRAM_WEBHOOK_SECRET` in `.env`).
+- **Setup**, once after the function is deployed, and again when the command menu changes: `node telegram-setup.js`
+  (needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in `.env`).
 
 Redemptions are found through BOLD burns: every redemption burns the redeemed BOLD, and Alchemy's
 transfers API lists those burns over any block range (its free tier limits `eth_getLogs` to 10

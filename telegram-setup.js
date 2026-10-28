@@ -17,6 +17,9 @@ async function main() {
             allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
         console.log('webhook:', hook.ok ? 'set' : hook.description);
         const commands = await telegram('setMyCommands', { commands: [
+            { command: 'status', description: 'Current state of the troves you follow' },
+            { command: 'safe', description: 'Lowest rate to stay in the green' },
+            { command: 'digest', description: 'Daily, weekly or monthly summary' },
             { command: 'list', description: 'Troves you follow' },
             { command: 'stop', description: 'Stop alerts for a trove (or /stop all)' },
             { command: 'help', description: 'How the alerts work' }] });

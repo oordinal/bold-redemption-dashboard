@@ -8,6 +8,8 @@
 // The queue figures follow the page's own rules (debt in front, system-wide distance, typical and busiest week).
 // Storage (Upstash, REST): watched = set of trove keys "<branch index>:<id>"; watchers:<key> = set of chat ids;
 // subs:<chat> = set of trove keys; state:<key> = JSON of the last reported state.
+// Summaries (runDigests): digests = chats that chose one (/digest); digest:<chat> = { freq, since }; dstate:<chat> = the
+// state of each followed trove at the last summary, to show what changed by the next one.
 const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -209,14 +211,15 @@ async function unsubscribe(key, chats) {
     await kv('SREM', 'watched', key);
 }
 
-// Ends every subscription of a chat (the person blocked the bot or deleted the chat); a trove nobody watches any more
-// leaves the list of watched troves
+// Ends every subscription of a chat (the person blocked the bot or deleted the chat), and its summaries; a trove nobody
+// watches any more leaves the list of watched troves
 async function dropChat(chat) {
     for (const key of await kv('SMEMBERS', `subs:${chat}`)) {
         await kv('SREM', `watchers:${key}`, chat);
         if (!(await kv('SCARD', `watchers:${key}`))) { await kv('SREM', 'watched', key); await kv('DEL', `state:${key}`); }
     }
-    await kv('DEL', `subs:${chat}`);
+    await kv('DEL', `subs:${chat}`, `digest:${chat}`, `dstate:${chat}`);
+    await kv('SREM', 'digests', String(chat));
 }
 
 // Sends the alerts for every watched trove (snapshot: the latest by default). Without the Upstash or Telegram settings it
@@ -259,7 +262,70 @@ async function runAlerts({ snapshot } = {}) {
     return { watched: watched.length, sent, failed };
 }
 
-module.exports = { runAlerts, buildModel, troveView, stateOf, detect, batchHits, troveHits, kv, telegram };
+// ---------------------------------------------------------------- Summaries (/digest)
+// Sent at 08:00 UTC: daily, on Mondays (weekly) or on the 1st (monthly), by the first run at or after that time. Each summary
+// covers the period since the previous scheduled time and shows each followed trove as /status does, with what changed.
+const V = require('./api/_view');
+const HOUR = 8;
+// The most recent scheduled time at or before now (ms)
+function lastScheduled(freq, now) {
+    const d = new Date(now), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dd = d.getUTCDate();
+    if (freq === 'daily') { const t = Date.UTC(y, mo, dd, HOUR); return t <= now ? t : t - DAY; }
+    if (freq === 'weekly') { const t = Date.UTC(y, mo, dd - (d.getUTCDay() + 6) % 7, HOUR); return t <= now ? t : t - 7 * DAY; }
+    const t = Date.UTC(y, mo, 1, HOUR); return t <= now ? t : Date.UTC(y, mo - 1, 1, HOUR);
+}
+const previousScheduled = (freq, t) => freq === 'daily' ? t - DAY : freq === 'weekly' ? t - 7 * DAY
+    : Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() - 1, 1, HOUR);
+const hitsInPeriod = db.prepare(`SELECT r.tx_hash, t.debt_redeemed, t.coll_redeemed,
+    (SELECT MAX(e.coll_market_price) FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS price
+    FROM redemption_troves t JOIN redemptions r USING (tx_hash) WHERE t.branch = ? AND t.trove_id = ? AND r.timestamp >= ? AND r.timestamp < ?`);
+const redeemedInPeriod = db.prepare('SELECT COALESCE(SUM(amount), 0) AS v FROM redemptions WHERE timestamp >= ? AND timestamp < ?');
+
+async function runDigests({ snapshot, now = Date.now() } = {}) {
+    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN || !process.env.TELEGRAM_BOT_TOKEN) return { skipped: 'not configured' };
+    const snap = snapshot || require('./troves').latestTroveSnapshot();
+    if (!snap) return { skipped: 'no snapshot' };
+    const w = weekVolumes(snap.ts * 1000), weeks = { typical: w.weekVol, busiest: w.maxWeek }, m = V.model(snap, weeks);
+    const chats = await kv('SMEMBERS', 'digests');
+    let due = 0, sent = 0, failed = 0;
+    for (const chat of chats) {
+        try {
+            const raw = await kv('GET', `digest:${chat}`);
+            if (!raw) { await kv('SREM', 'digests', chat); continue; }
+            const set = JSON.parse(raw), to = lastScheduled(set.freq, now);
+            if (!(set.since < to)) continue;                       // already sent for this period (or chosen after it)
+            const from = previousScheduled(set.freq, to), keys = (await kv('SMEMBERS', `subs:${chat}`)).sort();
+            let dropped = false, delivered = 0;
+            if (keys.length) {                                     // nothing to summarise without a followed trove
+                due++;
+                const prev = JSON.parse((await kv('GET', `dstate:${chat}`)) || '{}'), perTrove = {};
+                for (const key of keys) {
+                    const t = m.troves.get(key);
+                    if (!t) continue;
+                    const rows = hitsInPeriod.all(t.b.name, t.id, from, to);
+                    perTrove[key] = { was: prev[key], mgrChanged: t.mgr ? t.mgr.lastRateChange * 1000 >= from : false,
+                        hits: rows.length ? { txs: new Set(rows.map(r => r.tx_hash)).size, debt: rows.reduce((a, r) => a + r.debt_redeemed, 0),
+                            coll: rows.reduce((a, r) => a + r.coll_redeemed, 0), result: rows.reduce((a, r) => a + (r.price != null ? r.debt_redeemed - r.coll_redeemed * r.price : 0), 0) } : { txs: 0 } };
+                }
+                for (const text of V.digestMessages(snap, weeks, set.freq, from, to, keys, perTrove, redeemedInPeriod.get(from, to).v)) {
+                    const r = await telegram('sendMessage', { chat_id: chat, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
+                    if (r.ok) { sent++; delivered++; }
+                    else { failed++; if (r.error_code === 403) { await dropChat(chat); dropped = true; break; } }
+                }
+                // nothing delivered (a temporary Telegram error): leave the period open, so the next run tries again
+                if (dropped || !delivered) continue;
+                await kv('SET', `dstate:${chat}`, JSON.stringify(V.digestState(snap, weeks, keys)));
+            }
+            await kv('SET', `digest:${chat}`, JSON.stringify({ ...set, since: now }));
+        } catch (e) {
+            failed++;
+            console.warn(`Summary for chat ${chat} not sent: ${e.message}`);
+        }
+    }
+    return { digests: chats.length, due, sent, failed };
+}
+
+module.exports = { runAlerts, runDigests, lastScheduled, weekVolumes, buildModel, troveView, stateOf, detect, batchHits, troveHits, kv, telegram };
 
 if (require.main === module) {
     runAlerts().then(r => console.log('Telegram alerts:', JSON.stringify(r))).catch(e => { console.error(e.message); process.exit(1); });

@@ -8,7 +8,7 @@ const db = require('./db');
 const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
-const { runAlerts } = require('./alerts');
+const { runAlerts, runDigests, weekVolumes } = require('./alerts');
 
 const outDir = path.resolve(process.argv[2] || 'out');
 
@@ -27,6 +27,13 @@ async function main() {
     } catch (e) {
         console.warn(`Telegram alerts not sent: ${e.message}`);
     }
+    // Telegram summaries (/digest), due at 08:00 UTC; the same conditions as the alerts
+    try {
+        const r = await runDigests();
+        console.log(`Telegram summaries: ${JSON.stringify(r)}`);
+    } catch (e) {
+        console.warn(`Telegram summaries not sent: ${e.message}`);
+    }
 
     fs.mkdirSync(outDir, { recursive: true });
     const write = (name, data) => fs.writeFileSync(path.join(outDir, name), JSON.stringify(data));
@@ -37,7 +44,12 @@ async function main() {
     write('batches.json', queries.batchRows());
     write('addresses.json', queries.addresses());
     const troves = queries.troves();
-    if (troves) write('troves.json', troves);
+    if (troves) {
+        // the typical and busiest week of redemptions at the snapshot, so the bot's /status and /safe use the alerts' figures
+        const w = weekVolumes(troves.ts * 1000);
+        troves.weeks = { typical: w.weekVol, busiest: w.maxWeek };
+        write('troves.json', troves);
+    }
     write('trovehits.json', queries.troveHits());
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
     // One file per redemption transaction, loaded by the page when a feed row is expanded
