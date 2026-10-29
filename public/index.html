@@ -662,7 +662,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">REDEMPTION QUEUE</div>
                         <div class="font-semibold mt-1">Debt in front and system-wide distance</div>
-                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A branch is redeemed in a fixed order: its most recent zombie trove first, then troves from the lowest interest rate up, as read from Liquity's MultiTroveGetter. Debt in front is the debt of every trove ahead in that order.</p><p>Each redemption is split across branches in proportion to their unbacked debt (debt minus Stability Pool deposits), or by total debt if every branch is fully covered. The system-wide distance divides debt in front by the branch's current share: the BOLD that would have to be redeemed across all branches first, if nothing changed. A typical week is the average 7-day redemption volume of the last 180 days.</p></div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A branch is redeemed in a fixed order: its most recent zombie trove first, then troves from the lowest interest rate up, as read from Liquity's MultiTroveGetter. Debt in front is the debt of every trove ahead in that order.</p><p>Each redemption is split across branches in proportion to their unbacked debt (debt minus Stability Pool deposits), or by total debt if every branch is fully covered. The system-wide distance divides debt in front by the branch's current share: the BOLD that would have to be redeemed across all branches first, if nothing changed. A typical week is the average 7-day redemption volume of the last 180 days, and the busiest week the largest. They show how far a wave of redemptions would reach into the queue as it is now. They do not account for troves that borrow again after every redemption: such troves at the front can absorb all redemptions for long periods, so a wave may not reach the troves behind them at all.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">SAFER RATE AND BATCHES AHEAD</div>
@@ -763,7 +763,15 @@
         const fmt = (n, d = 0) => n == null ? '–' : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
         const pct = (n, d = 2) => n == null ? '–' : `${n > 0 ? '+' : ''}${n.toFixed(d)}%`;
         const usd = (n, d = 2) => n == null ? '–' : `${n < 0 ? '−' : ''}$${fmt(Math.abs(n), d)}`;
-        const compact = n => n == null ? '–' : Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 }).format(n);
+        // K, M and B in every language (the browser's own compact notation writes "Mio." or "Tsd." in some), with the local decimal separator
+        const compact = n => {
+            if (n == null) return '–';
+            const units = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+            let i = units.findIndex(([d]) => Math.abs(n) >= d);
+            if (i > 0 && Math.abs(n) / units[i][0] >= 999.995) i--;            // 999,999 reads 1M, not 1,000K
+            const [d, s] = i < 0 ? [1, ''] : units[i];
+            return Number(n / d).toLocaleString(undefined, { maximumFractionDigits: 2 }) + s;
+        };
         const signClass = n => n == null ? '' : n > 0 ? 'good' : n < 0 ? 'bad' : '';
         const short = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
         const date = ts => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
@@ -2609,7 +2617,7 @@
             renderTroveTable();
         }
 
-        const TV_COLS = [['branch', 'Trove'], ['owner', 'Owner'], ['debt', 'Debt', true], ['collUsd', 'Collateral', true], ['cr', 'CR', true],
+        const TV_COLS = [['position', '#', true], ['branch', 'Trove'], ['owner', 'Owner'], ['debt', 'Debt', true], ['collUsd', 'Collateral', true], ['cr', 'CR', true],
             ['rate', 'Rate', true], ['front', 'Debt in front', true], ['system', 'System-wide', true], ['mgmt', 'Management']];
 
         function tvFiltered() {
@@ -2621,9 +2629,10 @@
         function renderTroveTable() {
             const q = $('tvSearch').value.trim().toLowerCase();
             const rows = tvFiltered();
-            const val = (t, k) => k === 'owner' ? t.owner || '' : k === 'branch' ? t.b.name : k === 'mgmt' ? t.mgmt : t[k] ?? (k === 'front' || k === 'system' ? Infinity : -Infinity);
+            const val = (t, k) => k === 'owner' ? t.owner || '' : k === 'branch' ? t.b.name : k === 'mgmt' ? t.mgmt : t[k] ?? (k === 'front' || k === 'system' || k === 'position' ? Infinity : -Infinity);
             rows.sort((a, b) => { const x = val(a, tvSort.key), y = val(b, tvSort.key); return (x < y ? -1 : x > y ? 1 : 0) * tvSort.dir; });
-            const colHint = { system: 'BOLD that would have to be redeemed across all three branches before this trove is reached: its debt in front divided by its branch\'s current share of each redemption (the branch cards above). It makes troves on different branches comparable. Shown as ∞ when the branch takes no part of redemptions now.' };
+            const colHint = { position: 'Place in its branch\'s redemption queue: 1 is redeemed first. Troves are redeemed from the lowest interest rate up; a zombie trove that a redemption left with some debt goes ahead of them until that debt is gone. Each branch has its own queue, so with several branches shown the same number appears once per branch. Other zombie troves are not in the queue (–).',
+                system:'BOLD that would have to be redeemed across all three branches before this trove is reached: its debt in front divided by its branch\'s current share of each redemption (the branch cards above). It makes troves on different branches comparable. Shown as ∞ when the branch takes no part of redemptions now.' };
             $('tvHead').innerHTML = TV_COLS.map(([k, label, right]) => `<th class="px-3 py-2.5 font-medium ${right ? 'text-right' : ''}"><span class="inline-flex items-center ${right ? 'justify-end' : ''}">
                 <button class="sort-btn ${tvSort.key === k ? 'active' : ''}" data-tvsort="${k}">${label}${tvSort.key === k ? (tvSort.dir > 0 ? ' ▲' : ' ▼') : ''}</button>${colHint[k] ? infoTip(colHint[k], label) : ''}</span></th>`).join('');
             $('tvCount').innerText = `${fmt(rows.length)} of ${fmt(tv.troves.length)} troves`;
@@ -2652,6 +2661,7 @@
                     ? `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.14); color: #8bb8f0" data-tip="${t.mgr ? `Rate set by batch manager ${esc(t.mgr.address)}` : `Rate set by interest delegate ${esc(t.delegate.account)}`}">delegated</span>`
                     : '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(255,255,255,.06); color: var(--ink-2)" data-tip="Rate set by the owner">self-managed</span>';
                 return `<tr class="feed-row border-t border-white/5 ${open ? 'is-open' : ''}" data-tvkey="${esc(t.key)}">
+                    <td class="px-3 py-2 text-right" style="color: var(--muted)">${t.position == null ? '–' : fmt(t.position)}</td>
                     <td class="px-3 py-2"><span class="inline-flex items-center gap-2"><button class="row-toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} trove details">›</button>${branchIcon(t.b.name, 'w-4 h-4')}<span title="${esc(t.id)}">${esc(short(t.id))}</span>${flags}</span></td>
                     <td class="px-3 py-2">${t.owner ? `<span title="${esc(t.owner)}">${esc(short(t.owner))}</span>` : '–'}</td>
                     <td class="px-3 py-2 text-right">${fmt(t.debt, 0)}</td>
@@ -2722,7 +2732,7 @@
                     <div class="mono text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div></div>`;
                 const bandHint = 'The colour shows whether a week of redemptions could reach this trove, with the queue and the branch split as they are now: red if a typical week would (the average 7-day redemption volume of the last 180 days, '
                     + `${tv.weekVol ? compact(tv.weekVol) + ' BOLD' : '–'}), amber if only a week as busy as the busiest of the last 180 days would (${tv.maxWeek ? compact(tv.maxWeek) + ' BOLD' : '–'}), green if neither would. `
-                    + 'The queue changes over time, above all when batch managers reprice, so this is a picture of today, not a forecast.';
+                    + 'The queue changes over time, above all when batch managers reprice, so this is a picture of today, not a forecast. The typical and busiest week show how far a wave of redemptions would reach into the queue; they do not account for troves that borrow again after every redemption, which can absorb all redemptions at the front for long periods.';
                 const verdict = !B ? '' : !isFinite(t.system)
                     ? `The ${esc(b.name)} branch's Stability Pool covers its whole debt, so the branch takes no part of redemptions now: this trove cannot be reached until that changes.`
                     : t.front === 0 ? `<b style="color: ${B.ink}">This trove is first in line: the next redemption that reaches the ${esc(b.name)} branch starts with it.</b>
@@ -2797,7 +2807,7 @@
                         D, pB, busyTexts, front: t.front, debt: t.debt, share: b.share, mgr: t.batchManager || null });
                     bar = `<div class="pt-12 pb-4">
                         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-2">
-                            <div class="kicker flex items-center">${esc(b.name)} branch queue${infoTip(`Every trove of the ${b.name} branch in redemption order, the next in line on the left; the width of each block is its debt. Blue blocks are batches, steel-grey blocks single troves (small ones next to each other are grouped), dimmer once behind this trove. ▼ TW and ▲ BW mark how far a typical week and the busiest week of the last 180 days of redemptions would reach on this branch, with its current share of ${pctOf(b.share, 0)} of every redemption. The strip under the bar uses the colours of the tiles above. The bar zooms to each trove: it runs to a little beyond this trove or the busiest week, whichever is farther, so its scale differs from trove to trove.`, 'Branch queue')}</div>
+                            <div class="kicker flex items-center">${esc(b.name)} branch queue${infoTip(`Every trove of the ${b.name} branch in redemption order, the next in line on the left; the width of each block is its debt. Blue blocks are batches, steel-grey blocks single troves (small ones next to each other are grouped), dimmer once behind this trove. ▼ TW and ▲ BW mark how far a typical week and the busiest week of the last 180 days of redemptions would reach on this branch, with its current share of ${pctOf(b.share, 0)} of every redemption. The strip under the bar uses the colours of the tiles above. The bar zooms to each trove: it runs to a little beyond this trove or the busiest week, whichever is farther, so its scale differs from trove to trove. TW and BW show how far a wave of redemptions would reach; they do not account for troves that borrow again after every redemption, which can absorb all redemptions at the front for long periods.`, 'Branch queue')}</div>
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style="color: var(--ink-2)">
                                 <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('rgba(57,135,229,.75)')}batch</span>
                                 <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('#9ea6ae')}single troves</span>
@@ -2940,7 +2950,7 @@
                 ${line('Redeemed against', `${fmt(hits.length)} time${hits.length === 1 ? '' : 's'} · last ${ago(hits[hits.length - 1].ts)}`)}
                 ${line('Debt repaid · collateral removed', `${compact(sum(h => h.debt))} BOLD · ${fmt(sum(h => h.coll), 3)} ${esc(b.name)}`)}
                 ${line('Net cost at the time', `${usd(sum(lossOf), 0)}${sum(lossOf) < 0 ? ' <span style="color: var(--muted)">(fee more than compensated)</span>' : ''}`)}
-                ${line('Removed collateral, value change since', `${sum(missedOf) >= 0 ? '+' : ''}${usd(sum(missedOf), 0)} <span style="color: var(--muted)">(${sum(missedOf) >= 0 ? 'upside missed' : 'loss avoided'})</span>`)}</div>
+                ${line('<span class="inline-flex items-center">Removed collateral, value change since' + infoTip('A theoretical figure: what the collateral removed by redemptions would be worth today, against its value at the time, as if the borrower had never rebuilt the position (never bought the collateral back or borrowed again). A borrower who re-borrows after each redemption keeps the exposure, so for that trove the figure is neither a loss avoided nor an upside missed.', 'Value change since') + '</span>', `${sum(missedOf) >= 0 ? '+' : ''}${usd(sum(missedOf), 0)} <span style="color: var(--muted)">(${sum(missedOf) >= 0 ? 'upside missed' : 'loss avoided'})</span>`)}</div>
                 <div class="overflow-y-auto scroll mt-2 max-h-44 rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
                     ${hits.slice().reverse().map(h => `<div class="flex items-center justify-between gap-3 px-2.5 py-1 border-b border-white/5 last:border-0">
                         <a class="hover:underline shrink-0" style="color: #8bb8f0" target="_blank" rel="noopener" title="${esc(dateTime(h.ts))} · transaction ${esc(h.tx)}" href="https://etherscan.io/tx/${esc(h.tx)}">${date(h.ts)} ↗</a>
@@ -2948,7 +2958,7 @@
                     </div>`).join('')}
                 </div>`
                 : '<p style="color: var(--muted)">Never redeemed against.</p>',
-                'Net cost of a redemption: the collateral removed, at its market price at the time, minus the debt it repaid; the redemption fee stays in the trove and is already left out of the collateral removed. Value change since: what the removed collateral would be worth today minus what it was worth then; positive is upside the borrower missed, negative is a loss avoided. The list shows each redemption\'s date, the debt it repaid and the trove\'s rate at the time. A transaction counts as one redemption even when it makes several redemption calls that each reach the trove; the number of calls is then shown.');
+                'Net cost of a redemption: the collateral removed, at its market price at the time, minus the debt it repaid; the redemption fee stays in the trove and is already left out of the collateral removed. Value change since: what the removed collateral would be worth today minus what it was worth then; positive is upside the borrower missed, negative is a loss avoided, both as if the position had not been rebuilt afterwards. The list shows each redemption\'s date, the debt it repaid and the trove\'s rate at the time. A transaction counts as one redemption even when it makes several redemption calls that each reach the trove; the number of calls is then shown.');
 
             // 4. Batch manager
             let manager = '';
