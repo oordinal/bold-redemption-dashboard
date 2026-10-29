@@ -8,6 +8,7 @@ const db = require('./db');
 const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
+const { syncTroveOps, troveOpsExport } = require('./troveops');
 const { runAlerts, runDigests, weekVolumes } = require('./alerts');
 
 const outDir = path.resolve(process.argv[2] || 'out');
@@ -19,6 +20,13 @@ async function main() {
         await snapshotTroves();
     } catch (e) {
         console.warn(`Trove snapshot not updated: ${e.shortMessage || e.message}`);
+    }
+    // Borrowing record of each trove (Etherscan): a failure keeps the operations already stored
+    try {
+        const r = await syncTroveOps();
+        console.log(`Trove operations: ${JSON.stringify(r)}`);
+    } catch (e) {
+        console.warn(`Trove operations not updated: ${e.message}`);
     }
     // Telegram alerts for the watched troves (does nothing without the Upstash and Telegram settings; never stops the export)
     try {
@@ -51,6 +59,8 @@ async function main() {
         write('troves.json', troves);
     }
     write('trovehits.json', queries.troveHits());
+    const ops = troveOpsExport();
+    if (ops) write('troveops.json', ops);
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
     // One file per redemption transaction, loaded by the page when a feed row is expanded
     fs.mkdirSync(path.join(outDir, 'tx'), { recursive: true });

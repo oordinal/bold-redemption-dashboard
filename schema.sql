@@ -94,3 +94,21 @@ CREATE TABLE IF NOT EXISTS trove_snapshot (
     block INTEGER NOT NULL,          -- block the snapshot was read at
     data TEXT NOT NULL               -- JSON: branches, batch managers, troves (see troves.js)
 );
+
+-- Trove operations other than redemptions (troveops.js), from each TroveManager's TroveOperation events: opening, borrowing
+-- and repaying, collateral changes, closing, rate and batch changes, liquidations. Redemptions are in redemption_troves.
+CREATE TABLE IF NOT EXISTS trove_ops (
+    tx_hash TEXT NOT NULL,
+    log_index INTEGER NOT NULL,
+    block INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,      -- ms since epoch
+    branch TEXT NOT NULL,            -- collateral symbol, as in redemption_troves
+    trove_id TEXT NOT NULL,          -- uint256 trove ID as 0x-prefixed 32-byte hex
+    operation TEXT NOT NULL,         -- openTrove, adjustTrove, closeTrove, adjustTroveInterestRate, liquidate, …
+    interest_rate REAL,              -- annual interest rate after the operation, in %
+    debt_change REAL NOT NULL,       -- BOLD borrowed (+) or repaid (−) by the operation, upfront fee not included
+    upfront_fee REAL NOT NULL,       -- BOLD added to the debt as upfront fee
+    coll_change REAL NOT NULL,       -- collateral added (+) or withdrawn (−)
+    PRIMARY KEY (tx_hash, log_index)
+);
+CREATE INDEX IF NOT EXISTS idx_trove_ops_trove ON trove_ops(branch, trove_id);

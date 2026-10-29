@@ -30,6 +30,7 @@
             --surface: #0f131a;
             --series-1: #3987e5; /* Curve */
             --series-2: #d95926; /* Uniswap v3 */
+            --borrowed: #f2621f; /* BOLD borrowed, against the blue BOLD redeemed in the borrowing record */
             --series-3: #199e70; /* Uniswap v4 */
             --ink-1: #f0efec;
             --ink-2: #c3c2b7;
@@ -411,6 +412,8 @@
                     <b style="color: var(--ink-2)">Debt in front</b> BOLD the branch's redemptions must clear before reaching the trove ·
                     <b style="color: var(--ink-2)">System-wide</b> the same distance in BOLD redeemed across all branches, given the branch's current share ·
                     <b style="color: var(--ink-2)">CR</b> collateral ratio at Liquity's price ·
+                    <b style="color: var(--ink-2)">Leverage</b> collateral value over equity ·
+                    <b style="color: var(--ink-2)">refills</b> borrowed back most of what was redeemed in the last 30 days ·
                     <b style="color: var(--ink-2)">Management</b> delegated if a batch manager or an interest delegate sets the rate, self-managed if the owner does.
                 </p>
                 <div id="tvScroll" class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
@@ -672,7 +675,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">HEALTH AND RECORD</div>
                         <div class="font-semibold mt-1">Liquidation context and past redemptions</div>
-                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The collateral ratio and liquidation price use Liquity's own price for the branch, as liquidations do; collateral values use the market price (ETH on Uniswap times the LST's exchange rate). The historical liquidation chance is how often ETH fell as far as the liquidation price requires, counted from Coinbase 1-minute prices since May 2025 for every hourly start and the following 7 or 30 days; it is a record of the past, not a forecast; for wstETH and rETH it assumes the token follows ETH.</p><p>A redemption's net cost to the borrower is the collateral removed, at its market price at the time, minus the debt it repaid; the fee stays in the trove. The value change since compares that collateral with today's price.</p></div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The collateral ratio and liquidation price use Liquity's own price for the branch, as liquidations do; collateral values use the market price (ETH on Uniswap times the LST's exchange rate). The historical liquidation chance is how often ETH fell as far as the liquidation price requires, counted from Coinbase 1-minute prices since May 2025 for every hourly start and the following 7 or 30 days; it is a record of the past, not a forecast; for wstETH and rETH it assumes the token follows ETH.</p><p>A redemption's net cost to the borrower is the collateral removed, at its market price at the time, minus the debt it repaid; the fee stays in the trove. The value change since compares that collateral with today's price.</p><p>Leverage is collateral value over the trove's equity (collateral value minus debt): the collateral ratio read the other way, and a true leverage only if the borrowed BOLD bought more collateral. The borrowing record comes from every operation on the trove (Liquity's TroveOperation events, read through Etherscan): BOLD borrowed and repaid and collateral added and withdrawn per week, next to the BOLD redeemed from it. A trove is marked as refilling when it was redeemed for at least 10,000 BOLD in the last 30 days and borrowed back at least 80% of it.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">MANAGERS AND PERMISSIONS</div>
@@ -1964,7 +1967,7 @@
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
         const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses',
-            troves: '/api/troves', trovehits: '/api/trovehits' };
+            troves: '/api/troves', trovehits: '/api/trovehits', troveops: '/api/troveops' };
         let staticMode = false;
         let lastGenerated = null;
 
@@ -2340,16 +2343,18 @@
         // tvBranchSel: the selected branches by name; empty means all
         let tvBranchSel = new Set(), tvShowZombies = false, tvSort = { key: 'front', dir: 1 }, tvPage = 1;
         const TV_PAGE_SIZE = 30;
+        const REFILL_MIN = 10000, REFILL_SHARE = 0.8;      // "refills": redeemed for at least 10,000 BOLD in 30 days, at least 80% borrowed back
 
         async function loadTroves(force) {
             if (tv && !force && Date.now() - tv.loadedAt < 5 * 60 * 1000) return renderTroves();
             if (!tv) $('tvRows').innerHTML = '<tr><td class="px-3 py-6 text-xs" style="color: var(--muted)">Loading troves…</td></tr>';
             try {
-                const [snap, hits, drawdowns] = await Promise.all([
+                const [snap, hits, drawdowns, ops] = await Promise.all([
                     fetch(API.troves, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(r.status === 404 ? 'no trove snapshot published yet' : `HTTP ${r.status}`); return r.json(); }),
                     fetch(API.trovehits, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null),
-                    fetch('eth_drawdowns.json').then(r => r.ok ? r.json() : null).catch(() => null)]);
-                tv = buildTroveModel(snap, hits, drawdowns);
+                    fetch('eth_drawdowns.json').then(r => r.ok ? r.json() : null).catch(() => null),
+                    fetch(API.troveops, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)]);
+                tv = buildTroveModel(snap, hits, drawdowns, ops);
                 tv.loadedAt = Date.now();
             } catch (e) {
                 $('tvRows').innerHTML = `<tr><td class="px-3 py-6 text-xs" style="color: var(--bad)">Trove data could not be loaded (${esc(e.message)}).</td></tr>`;
@@ -2358,7 +2363,7 @@
             renderTroves();
         }
 
-        function buildTroveModel(snap, hits, drawdowns) {
+        function buildTroveModel(snap, hits, drawdowns, ops) {
             const branches = snap.branches.map(b => ({ ...b, unbacked: Math.max(b.debt - b.spDeposits, 0), tcr: b.debt ? b.coll * b.oraclePrice / b.debt : null }));
             const totalUnbacked = branches.reduce((a, b) => a + b.unbacked, 0), totalDebt = branches.reduce((a, b) => a + b.debt, 0);
             // Liquity splits a redemption by unbacked debt; by total debt if every branch is fully covered
@@ -2390,6 +2395,13 @@
                 // who sets the rate: a batch manager or an individual delegate (delegated), or the owner (self-managed)
                 t.mgmt = t.mgr || t.delegate ? 'delegated' : 'self-managed';
                 t.lastChange = t.mgr ? t.mgr.lastRateChange : t.lastRateChange;
+                // leverage: collateral value over equity (collateral value minus debt)
+                t.lev = t.debt > 0 && t.collUsd > t.debt ? t.collUsd / (t.collUsd - t.debt) : null;
+                t.levZapper = /Leverage/.test(KNOWN_MANAGERS[t.addManager] || KNOWN_MANAGERS[t.removeManager] || '');
+                // borrowing record (troveops.json): weekly borrowing and collateral, and the last 30 days; refilling when it was
+                // redeemed for at least 10,000 BOLD in 30 days and borrowed back at least 80% of it
+                t.ops = ops ? ops.troves[t.key] || { w: [], b30: 0, r30: 0, c30: 0, lastBorrow: null } : null;
+                t.refills = !!t.ops && t.ops.r30 >= REFILL_MIN && t.ops.b30 >= REFILL_SHARE * t.ops.r30;
             }
             // Redemption record: every hit, by trove and by batch manager (at the time of the hit). One hit is one
             // transaction: a transaction that makes several redemption calls can reach the same trove in each of them,
@@ -2409,7 +2421,7 @@
                 }
                 for (const list of byManager.values()) list.sort((a, b) => a.ts - b.ts);
             }
-            return { snap, branches, troves, managers, byTrove, byManager, drawdowns, weekVol: null, maxWeek: null, last7: null };
+            return { snap, branches, troves, managers, byTrove, byManager, drawdowns, ops: !!ops, weekVol: null, maxWeek: null, last7: null };
         }
 
         // Typical 7-day system-wide redemption volume over the 180 days before the snapshot, from the dashboard's redemption data
@@ -2618,7 +2630,7 @@
         }
 
         const TV_COLS = [['position', '#', true], ['branch', 'Trove'], ['owner', 'Owner'], ['debt', 'Debt', true], ['collUsd', 'Collateral', true], ['cr', 'CR', true],
-            ['rate', 'Rate', true], ['front', 'Debt in front', true], ['system', 'System-wide', true], ['mgmt', 'Management']];
+            ['lev', 'Leverage', true], ['rate', 'Rate', true], ['front', 'Debt in front', true], ['system', 'System-wide', true], ['mgmt', 'Management']];
 
         function tvFiltered() {
             const q = $('tvSearch').value.trim().toLowerCase();
@@ -2632,7 +2644,8 @@
             const val = (t, k) => k === 'owner' ? t.owner || '' : k === 'branch' ? t.b.name : k === 'mgmt' ? t.mgmt : t[k] ?? (k === 'front' || k === 'system' || k === 'position' ? Infinity : -Infinity);
             rows.sort((a, b) => { const x = val(a, tvSort.key), y = val(b, tvSort.key); return (x < y ? -1 : x > y ? 1 : 0) * tvSort.dir; });
             const colHint = { position: 'Place in its branch\'s redemption queue: 1 is redeemed first. Troves are redeemed from the lowest interest rate up; a zombie trove that a redemption left with some debt goes ahead of them until that debt is gone. Each branch has its own queue, so with several branches shown the same number appears once per branch. Other zombie troves are not in the queue (–).',
-                system:'BOLD that would have to be redeemed across all three branches before this trove is reached: its debt in front divided by its branch\'s current share of each redemption (the branch cards above). It makes troves on different branches comparable. Shown as ∞ when the branch takes no part of redemptions now.' };
+                lev: 'Collateral value over the trove\'s equity (collateral value minus debt): the collateral ratio read the other way. It is a true leverage only if the borrowed BOLD bought more collateral, as with Liquity\'s leverage zapper; a borrower who spent the BOLD elsewhere shows the same figure.',
+                system: 'BOLD that would have to be redeemed across all three branches before this trove is reached: its debt in front divided by its branch\'s current share of each redemption (the branch cards above). It makes troves on different branches comparable. Shown as ∞ when the branch takes no part of redemptions now.' };
             $('tvHead').innerHTML = TV_COLS.map(([k, label, right]) => `<th class="px-3 py-2.5 font-medium ${right ? 'text-right' : ''}"><span class="inline-flex items-center ${right ? 'justify-end' : ''}">
                 <button class="sort-btn ${tvSort.key === k ? 'active' : ''}" data-tvsort="${k}">${label}${tvSort.key === k ? (tvSort.dir > 0 ? ' ▲' : ' ▼') : ''}</button>${colHint[k] ? infoTip(colHint[k], label) : ''}</span></th>`).join('');
             $('tvCount').innerText = `${fmt(rows.length)} of ${fmt(tv.troves.length)} troves`;
@@ -2656,7 +2669,8 @@
             </section>` : (owner ? `<p class="text-xs mt-3" style="color: var(--muted)">No open trove is owned by this address.</p>` : '');
             const tbody = pageRows.map(t => {
                 const open = tvOpen === t.key;
-                const flags = t.status === 4 ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)">zombie</span>' : '';
+                const flags = (t.status === 4 ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)">zombie</span>' : '')
+                    + (t.refills ? `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(217,89,38,.16); color: #f0a07c" data-tip="Borrowed back ${compact(t.ops.b30)} of the ${compact(t.ops.r30)} BOLD redeemed from it in the last 30 days">refills</span>` : '');
                 const mgmt = t.mgmt === 'delegated'
                     ? `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.14); color: #8bb8f0" data-tip="${t.mgr ? `Rate set by batch manager ${esc(t.mgr.address)}` : `Rate set by interest delegate ${esc(t.delegate.account)}`}">delegated</span>`
                     : '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(255,255,255,.06); color: var(--ink-2)" data-tip="Rate set by the owner">self-managed</span>';
@@ -2667,6 +2681,7 @@
                     <td class="px-3 py-2 text-right">${fmt(t.debt, 0)}</td>
                     <td class="px-3 py-2 text-right">${usd(t.collUsd, 0)}</td>
                     <td class="px-3 py-2 text-right ${crClass(t)}">${pctOf(t.cr, 0)}</td>
+                    <td class="px-3 py-2 text-right">${t.lev == null ? '–' : `${fmt(t.lev, 2)}×`}</td>
                     <td class="px-3 py-2 text-right">${fmt(t.rate, 2)}%</td>
                     <td class="px-3 py-2 text-right">${t.front == null ? '<span style="color: var(--muted)">not queued</span>' : `${tvDist(t.front)}`}</td>
                     <td class="px-3 py-2 text-right">${t.system == null ? '–' : tvDist(t.system)}</td>
@@ -2675,6 +2690,41 @@
             }).join('');
             $('tvRows').innerHTML = tbody || `<tr><td colspan="${TV_COLS.length}" class="px-3 py-6 text-xs" style="color: var(--muted)">No trove matches.</td></tr>`;
             requestAnimationFrame(tvSnapLines);
+            drawTroveOpsChart();
+        }
+
+        // The open trove's weekly chart of BOLD redeemed and borrowed; the table is rebuilt on every render, so the chart is too
+        function drawTroveOpsChart() {
+            if (charts.tvOpsChart) { charts.tvOpsChart.destroy(); delete charts.tvOpsChart; }
+            const canvas = $('tvOpsChart'), t = canvas && tv.troves.find(x => x.key === canvas.dataset.key);
+            if (!t) return;
+            const redeemed = new Map(), borrowed = new Map(t.ops.w.map(w => [w[0], w[1]]));
+            for (const h of tvTroveHits(t)) redeemed.set(mondayOf(h.ts), (redeemed.get(mondayOf(h.ts)) || 0) + h.debt);
+            const first = Math.min(...redeemed.keys(), ...borrowed.keys()), last = mondayOf(tv.snap.ts * 1000);
+            const labels = [];
+            for (let w = first; w <= last; w += WEEK) labels.push(w);
+            charts.tvOpsChart = new Chart(canvas, {
+                type: 'bar',
+                data: { labels, datasets: [
+                    { label: 'BOLD redeemed', data: labels.map(w => redeemed.get(w) || 0), backgroundColor: css('--series-1'), borderRadius: 2, categoryPercentage: 0.8, barPercentage: 0.9 },
+                    { label: 'BOLD borrowed', data: labels.map(w => borrowed.get(w) || 0), backgroundColor: css('--borrowed'), borderRadius: 2, categoryPercentage: 0.8, barPercentage: 0.9 }] },
+                options: {
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                            label: item => ` ${item.dataset.label}: ${fmt(item.parsed.y)}`
+                        } }
+                    },
+                    scales: {
+                        x: { ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { ticks: { callback: v => compact(v) }, border: { display: false } }
+                    }
+                }
+            });
         }
 
         // Rate needed to have a given amount of the branch's debt in front, and what it would cost per year
@@ -2926,12 +2976,13 @@
                 : (p => `1 week: ${p(dd.d7[fall])} · 1 month: ${p(dd.d30[fall])}`)(v => !v || fall > 95 ? '0%' : v < 0.005 ? '&lt;1%' : pctOf(v, 0));
             const nextFree = (t.lastChange || 0) + RATE_COOLDOWN;
             const position = `<div class="space-y-1.5"><div class="text-sm font-semibold text-white flex items-center">Position${infoTip('Collateral is valued at the market price (ETH on Uniswap, times the LST\'s exchange rate). The collateral ratio and the liquidation price use Liquity\'s own price, which liquidations use.', 'Position')}</div>
-                ${mini([['Collateral', true], ['Debt', true], ['CR · LTV', true], ['Liquidation price', true, 'The collateral price at which the trove would fall to the branch\'s minimum collateral ratio and could be liquidated, and how far the price is from it now.'],
+                ${mini([['Collateral', true], ['Debt', true], ['CR · LTV', true, 'Collateral ratio at Liquity\'s price, loan-to-value, and leverage: collateral value over equity (collateral value minus debt). Leverage is a true leverage only if the borrowed BOLD bought more collateral, as with Liquity\'s leverage zapper (see the borrowing record).'], ['Liquidation price', true, 'The collateral price at which the trove would fall to the branch\'s minimum collateral ratio and could be liquidated, and how far the price is from it now.'],
                     ['Historical liquidation chance', true, `How often, since ${since}, ETH fell far enough within 1 week or within 1 month to reach this trove's liquidation price: the share of all 7-day and 30-day periods in which it happened, from Coinbase prices. A record of the past, not a forecast. For wstETH and rETH it assumes the token follows ETH.`],
                     ['Rate', true], ['Cost per year', true], [t.mgr ? 'Last rate change (manager)' : 'Last rate change', true]].concat(t.mgr ? [] : [['Free rate change', true, 'Changing the rate within 7 days of the last change costs an upfront fee of about 7 days of average interest. Available: the rate can be changed now without that fee. In ~N days: when the fee stops applying (hover for the exact time).']]),
                     [[`${fmt(t.coll, 4)} ${esc(b.name)}<div style="color: var(--muted)">${usd(t.collUsd, 0)}</div>`,
                       `${fmt(t.debt, 2)}<div style="color: var(--muted)">+${fmt(t.accruedInterest + (t.accruedBatchFee || 0), 2)} since last update</div>`,
-                      `<span class="${crClass(t)}">${pctOf(t.cr, 1)}</span><div style="color: var(--muted)">LTV ${t.cr ? pctOf(1 / t.cr, 1) : '–'}</div>`,
+                      `<span class="${crClass(t)}">${pctOf(t.cr, 1)}</span><div style="color: var(--muted)">LTV ${t.cr ? pctOf(1 / t.cr, 1) : '–'}</div>`
+                          + `<div style="color: var(--muted)">${t.lev == null ? 'no leverage' : `${fmt(t.lev, 2)}× leverage`}</div>`,
                       t.liqPrice ? `${usd(t.liqPrice, 2)}<div style="color: var(--muted)">${fmt(t.liqDrop * 100, 1)}% below now</div>` : (t.debt > 0 ? '–' : 'no debt'),
                       drops,
                       `${fmt(t.rate, 2)}%${t.fee ? `<div style="color: var(--muted)">+ ${fmt(t.fee, 2)}% manager fee</div>` : ''}`,
@@ -2965,6 +3016,10 @@
             if (t.mgr) {
                 const m = t.mgr, mh = tv.byManager.get(m.address) || [];
                 const inBatch = tv.troves.filter(x => x.mgr === m);
+                // this trove's own redemptions from before it joined this batch: in another batch, or outside any batch
+                const earlier = hits.filter(h => h.manager !== m.address), prev = [...new Set(earlier.map(h => h.manager))];
+                const earlierNote = !earlier.length ? '' : `<div style="color: var(--muted)">this trove's ${fmt(earlier.length)} redemption${earlier.length === 1 ? '' : 's'} came ${
+                    prev.length === 1 && prev[0] ? `in an earlier batch (${tvAddr(prev[0])})` : prev.every(x => !x) ? 'before it joined a batch' : 'before it joined this batch'}</div>`;
                 manager = box('Batch manager', `
                     ${line('Manager', tvAddr(m.address))}
                     ${line('Rate · annual management fee', `${fmt(m.rate, 2)}% · ${fmt(m.fee, 2)}%`)}
@@ -2973,7 +3028,7 @@
                     ${line('Minimum time between rate changes', m.minChangePeriod >= 86400 ? `${fmt(m.minChangePeriod / 86400, 1)} days` : `${fmt(m.minChangePeriod / 3600, 1)} hours`)}
                     ${line('Last rate change', daysAgo(m.lastRateChange))}
                     ${line('Troves and debt in the batch now', `${fmt(inBatch.length)} · ${compact(m.debt)} BOLD`)}
-                    ${line('Redemptions', mh.length ? `${fmt(mh.length)} hits on ${fmt(new Set(mh.map(h => h.trove)).size)} troves · ${compact(mh.reduce((a, h) => a + h.debt, 0))} BOLD repaid` : 'none recorded')}`,
+                    ${line('Redemptions', (mh.length ? `${fmt(mh.length)} hits on ${fmt(new Set(mh.map(h => h.trove)).size)} troves · ${compact(mh.reduce((a, h) => a + h.debt, 0))} BOLD repaid` : 'none while in this batch') + earlierNote)}`,
                     'A batch manager sets the interest rate of every trove in its batch and charges an annual fee on top. Redemptions counts, over all time, every redemption that hit one of its troves while the trove was in this batch; hits before a trove joined the batch are not included.');
             }
 
@@ -2986,6 +3041,37 @@
                 ${t.removeManager ? line('Withdrawals by that manager go to', t.receiver ? who(t.receiver) : 'the owner') : ''}
                 ${line('May change the interest rate', t.mgr ? `batch manager ${tvAddr(t.mgr.address)}` : t.delegate ? `owner and ${tvAddr(t.delegate.account)} (${fmt(t.delegate.minRate, 2)}–${fmt(t.delegate.maxRate, 2)}%)` : 'owner only')}`,
                 'Liquity lets a trove owner give other addresses limited rights. Adding collateral or repaying is open to anyone unless restricted. Troves opened through the Liquity app have one of Liquity\'s zapper contracts as manager and receiver: the zapper only acts for the owner and forwards withdrawals to them.');
+
+            // 6. Borrowing record: what the owner borrowed and added, against what redemptions took, per week (troveops.json)
+            let borrowing = '';
+            if (t.ops) {
+                const sumW = i => t.ops.w.reduce((a, w) => a + w[i], 0);
+                const share = t.ops.r30 ? t.ops.b30 / t.ops.r30 : null;
+                const hasWeeks = t.ops.w.length || hits.length;
+                borrowing = `<div class="rounded-xl p-4 text-xs min-w-0" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07)">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <div class="text-sm font-semibold text-white flex items-center">Borrowing record${infoTip('Every operation of the trove\'s owner (or of whoever the owner allowed) from Liquity\'s TroveOperation events: BOLD borrowed, including the debt taken when the trove was opened, BOLD repaid, including at closing, and collateral added and withdrawn. Upfront fees and liquidations are not counted. The chart sets the BOLD borrowed each week against the BOLD redeemed from the trove: a trove that borrows back what redemptions take keeps its position, and its debt returns to the market. Marked as refilling when it was redeemed for at least 10,000 BOLD in the last 30 days and borrowed back at least 80% of it.', 'Borrowing record')}</div>
+                        ${t.refills ? `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(217,89,38,.16); color: #f0a07c">refills</span>` : ''}
+                    </div>
+                    <div class="grid gap-x-8 md:grid-cols-2 mt-2">
+                        <div>${line('BOLD borrowed · repaid', `${compact(sumW(1))} · ${compact(sumW(2))} BOLD`)}
+                            ${line('Collateral added · withdrawn', `${fmt(sumW(3), 3)} · ${fmt(sumW(4), 3)} ${esc(b.name)}`)}
+                            ${line('Last borrowing', t.ops.lastBorrow ? `${date(t.ops.lastBorrow)} · ${ago(t.ops.lastBorrow)}` : 'none recorded')}
+                            ${line('<span class="inline-flex items-center">Leverage' + infoTip('Collateral value over equity (collateral value minus debt). It is a true leverage only if the borrowed BOLD bought more collateral.'
+                                + (t.levZapper ? ' Liquity\'s leverage zapper is this trove\'s manager: it was opened or adjusted as a leveraged position through the Liquity app.' : ''), 'Leverage') + '</span>',
+                                t.lev == null ? '–' : `${fmt(t.lev, 2)}×`)}</div>
+                        <div>${line('Redeemed, last 30 days', `${compact(t.ops.r30)} BOLD`)}
+                            ${line('Borrowed, last 30 days', `${compact(t.ops.b30)} BOLD${share != null ? ` <span style="color: var(--muted)">(${pctOf(share, 0)} of the redeemed)</span>` : ''}`)}
+                            ${line('Collateral added, last 30 days', `${fmt(t.ops.c30, 3)} ${esc(b.name)}`)}</div>
+                    </div>
+                    ${hasWeeks ? `<div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 text-[11px]" style="color: var(--ink-2)">
+                            <span class="inline-flex items-center gap-1.5"><span class="legend-swatch" style="background: ${css('--series-1')}"></span>BOLD redeemed from the trove</span>
+                            <span class="inline-flex items-center gap-1.5"><span class="legend-swatch" style="background: ${css('--borrowed')}"></span>BOLD borrowed by the owner</span>
+                            <span style="color: var(--muted)">per week (Monday to Sunday, UTC)</span>
+                        </div>
+                        <div class="relative h-48 mt-2"><canvas id="tvOpsChart" data-key="${esc(t.key)}"></canvas></div>` : ''}
+                </div>`;
+            }
 
             // Bottom cards in two columns of equal height, the last card of a column stretching to fill it:
             // batch manager and permissions | record; without redemptions, batch manager | permissions; without a manager, permissions | record
@@ -3005,6 +3091,7 @@
                 <div class="grid gap-3 lg:grid-cols-2">
                     ${cols.map(col => `<div class="flex flex-col gap-3 min-w-0">${col.map((c, i) => i === col.length - 1 ? c.replace('<div class="', '<div class="flex-1 ') : c).join('')}</div>`).join('')}
                 </div>
+                ${borrowing}
                 <p class="text-[11px]" style="color: var(--muted)">Snapshot at block ${fmt(tv.snap.block)} (${ago(tv.snap.ts * 1000)}). For information only, not financial advice.</p>
             </div>`;
         }

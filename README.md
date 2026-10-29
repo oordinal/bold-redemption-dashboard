@@ -21,6 +21,8 @@ syncs new blocks every 5 minutes and the **Sync now** button triggers one on dem
 
 An [Etherscan](https://etherscan.io/apis) API key (free) is optional: with `ETHERSCAN_API_KEY` set, the sync looks up who
 deployed each bot contract, which the Operators card uses to group contracts. Without it, deployers show as unknown.
+It is also what the Troves tab's borrowing record and "refills" tag are read with (one request per branch per sync); without
+it, that record is left out.
 
 ## How the hosted version works
 
@@ -50,7 +52,8 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 | `queries.js` | The queries behind the feed, the stats tiles and the data for the cards (trove rows, addresses) |
 | `index.js` | Local server: API, static files and the periodic sync |
 | `troves.js` | Troves tab: snapshot of every open trove, the branches and the batch managers, read at one block (about 8 bundled read-only calls), plus the number of active troves at the block about 30 days earlier (one more call, for the change shown on the tab), stored in the `trove_snapshot` table |
-| `export.js` | Sync, trove snapshot, Telegram alerts and summaries, then write the static JSON snapshot (used by the GitHub Action) |
+| `troveops.js` | Troves tab, borrowing record: every trove operation other than redemptions (borrowing, repaying, collateral changes, closing, rate and batch changes, liquidations), from the TroveManagers' `TroveOperation` events through Etherscan's log API, stored in the `trove_ops` table. One request per branch per sync; the first run reads the history since the V2 launch (about 20 requests) |
+| `export.js` | Sync, trove snapshot, trove operations, Telegram alerts and summaries, then write the static JSON snapshot (used by the GitHub Action) |
 | `alerts.js` | Telegram alerts for the troves people follow: compares each with the state last reported for it and sends what changed; also the daily, weekly or monthly summaries (`/digest`) |
 | `api/telegram.js` | Vercel function: the webhook of @BoldbotAlertsBot (follow a trove, `/status`, `/safe`, `/digest`, `/list`, `/stop`, `/help`) |
 | `api/_view.js` | Shared by the bot and the summaries: queue position, colour band, collateral ratio, liquidation price and the lowest rate to stay in the green (not an endpoint: the underscore keeps Vercel from serving it) |
@@ -60,7 +63,10 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 
 The trove snapshot runs after every sync, separately from it: if it fails, the redemption data is not affected and the
 previous snapshot is kept. It is published as `troves.json` (the snapshot) and `trovehits.json` (every redemption hit, for
-the troves' and managers' records), served at `/api/troves` and `/api/trovehits` by the local server.
+the troves' and managers' records), served at `/api/troves` and `/api/trovehits` by the local server. The trove operations
+follow, also separately (a failure keeps those already stored), and are published as `troveops.json`: for each trove of the
+snapshot, BOLD borrowed and repaid and collateral added and withdrawn per week, and the last 30 days, for the borrowing
+record, the weekly chart of BOLD redeemed against borrowed and the "refills" tag (served at `/api/troveops`).
 
 ## Telegram alerts
 
