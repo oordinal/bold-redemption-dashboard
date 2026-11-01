@@ -33,7 +33,12 @@ CREATE TABLE IF NOT EXISTS redemptions (
     bold_src_uni_v3 REAL,            -- ... from the Uniswap v3 BOLD/USDC pool
     bold_src_uni_v4 REAL,            -- ... from Uniswap v4 (PoolManager, any BOLD pool)
     bold_src_other REAL,             -- ... from any other address: other pools and DEXs, lending markets
-    bold_src_held REAL               -- BOLD not sourced in the tx: already held by the redeemer
+    bold_src_held REAL,              -- BOLD not sourced in the tx: already held by the redeemer
+    -- Measured result (actualResult in worker.js): the redeemer's own token and ETH flows in the tx, valued at Liquity's oracle price
+    oracle_eth_usd REAL,             -- ETH/USD used to value them: Liquity's WETH oracle price at the redemption (Chainlink ETH/USD)
+    actual_net_usd REAL,             -- what the redeemer kept: flows in - flows out (builder payments included) - gas; payouts to its own wallets count as kept
+    actual_gross_usd REAL,           -- actual_net_usd + gas + every builder payment in the tx
+    actual_status TEXT               -- measured | review (far from the modelled result without a price distortion) | unpriced (a token without a price) | NULL (not yet computed)
 );
 CREATE INDEX IF NOT EXISTS idx_redemptions_block ON redemptions(block);
 CREATE INDEX IF NOT EXISTS idx_redemptions_sender ON redemptions(sender);

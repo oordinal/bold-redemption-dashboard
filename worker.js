@@ -126,12 +126,14 @@ const insertRedemption = db.prepare(`INSERT OR REPLACE INTO redemptions
      price_curve, price_uni_v3, price_uni_v4, market_price, spread, oracle_gap, fee_pct, net_edge,
      gas_used, base_fee_eth, priority_fee_eth, coinbase_tip_eth, eth_usd,
      gross_profit_usd, gas_fee_usd, builder_tip_usd, net_profit_usd, net_margin,
-     flash_venue, bold_src_curve, bold_src_uni_v3, bold_src_uni_v4, bold_src_other, bold_src_held)
+     flash_venue, bold_src_curve, bold_src_uni_v3, bold_src_uni_v4, bold_src_other, bold_src_held,
+     oracle_eth_usd, actual_net_usd, actual_gross_usd, actual_status)
     VALUES (@tx_hash, @block, @timestamp, @sender, @to_address, @via_contract, @branches, @amount, @coll_value_usd, @fee_usd,
      @price_curve, @price_uni_v3, @price_uni_v4, @market_price, @spread, @oracle_gap, @fee_pct, @net_edge,
      @gas_used, @base_fee_eth, @priority_fee_eth, @coinbase_tip_eth, @eth_usd,
      @gross_profit_usd, @gas_fee_usd, @builder_tip_usd, @net_profit_usd, @net_margin,
-     @flash_venue, @bold_src_curve, @bold_src_uni_v3, @bold_src_uni_v4, @bold_src_other, @bold_src_held)`);
+     @flash_venue, @bold_src_curve, @bold_src_uni_v3, @bold_src_uni_v4, @bold_src_other, @bold_src_held,
+     @oracle_eth_usd, @actual_net_usd, @actual_gross_usd, @actual_status)`);
 
 const insertTrove = db.prepare(`INSERT OR REPLACE INTO redemption_troves
     (tx_hash, log_index, branch, trove_id, interest_rate, debt_redeemed, coll_redeemed, fee_coll, debt_after, coll_after, batch_manager)
@@ -403,37 +405,183 @@ async function* scanRedemptions(fromBlock, toBlock) {
     }
 }
 
-// ETH paid straight to the block's fee recipient (the builder) inside each tx, e.g. by a bot
-// contract calling block.coinbase.transfer(). Needs Alchemy's transfers API; null if unavailable.
-async function coinbaseTransfers(blockNumber, feeRecipient) {
-    const tips = new Map();
+// ---- Measured result of a redemption --------------------------------------------------------------------------------
+// Redeemers buy BOLD, redeem it and sell the collateral within one transaction, so what they keep is the sum of their own
+// flows in it: tokens and ETH in, minus what they paid out to pools, lenders, the block builder and in gas. Those flows are
+// exact; only their dollar value needs a price, and Liquity's own oracle (Chainlink ETH/USD) is used for it, so that a
+// mispriced pool cannot distort it. Payouts to the redeemer's own wallets count as kept: a recipient that only receives from
+// it in the transaction and is a plain wallet (an EIP-7702 account included) or a Safe. Any other contract counts as a cost,
+// so a redeemer paying itself into a contract of its own would show less than it made, never more.
+const WETH_ADDRESS = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
+const WSTETH_ADDRESS = '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0';
+const RETH_ADDRESS = '0xae78736cd615f374d3085123a210448e74fc6393';
+const STETH_ADDRESS = '0xae7ab96520de3a18e5e111b5eaab095312d7fe84';   // valued like ETH; its transfers often leave 1-2 wei of rounding
+const DUST = 1e-6;                                                     // amounts of a token without a price that are ignored
+const tokenDecimals = new Map();                                       // token address -> decimals, kept across transactions
+const WETH_DEPOSIT_TOPIC = ethers.id('Deposit(address,uint256)');
+const WETH_WITHDRAWAL_TOPIC = ethers.id('Withdrawal(address,uint256)');
+const SAFE_RECEIVED_TOPIC = ethers.id('SafeReceived(address,uint256)');
+const CHAINLINK_ETH_USD = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
+// US dollar stablecoins, valued at $1: address -> decimals
+const STABLES = {
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 6,  // USDC
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': 6,  // USDT
+    '0x6b175474e89094c44da98b954eedeac495271d0f': 18, // DAI
+    '0xdc035d45d973e3ec169d2276ddab16f1e407384f': 18, // USDS
+    '0xf939e0a03fb07f59a73314e73794be0e57ac1b4e': 18, // crvUSD
+    '0x853d955acef822db058eb8505911ed77f175b99e': 18, // FRAX
+    '0x5f98805a4e8be255a32880fdec7f6728c6568ba0': 18, // LUSD
+    '0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f': 18, // GHO
+    '0x4c9edd5852cd905f086c759e8383e09bff1e68b3': 18, // USDe
+    '0x6c3ea9036406852006290770bedfcaba0e23a0e8': 6   // PYUSD
+};
+// The estimate runs a little high (it leaves out pool fees and price impact, about 0.1-0.2% of the BOLD redeemed); a measured
+// result further from it than REVIEW_SHARE of the BOLD redeemed (and REVIEW_MIN_USD), without a distorted reference, is held for
+// review: errors in attributing flows show up far beyond that (tens of percent)
+const REVIEW_MIN_USD = 100, REVIEW_SHARE = 0.02, DISTORTED_REFERENCE = 0.03;
+// Exchange-rate calls of the LST tokens, by token address (the same functions as LST_RATE above)
+const LST_RATE_CALL = { [WSTETH_ADDRESS]: LST_RATE_IFACE.encodeFunctionData('stEthPerToken'), [RETH_ADDRESS]: LST_RATE_IFACE.encodeFunctionData('getExchangeRate') };
+// address -> true for a plain wallet, kept across transactions: no code, or only an EIP-7702 delegation (0xef0100 + the
+// delegate's address), which is still a key holder's account
+const isWallet = new Map();
+const EIP7702_PREFIX = '0xef0100';
+
+// Every internal ETH transfer of a block (value > 0), as { hash, from, to, wei }. Alchemy returns some transfers twice
+// (seen in June 2026): the copies share a uniqueId and are dropped
+async function internalTransfers(blockNumber) {
+    const out = [], seen = new Set();
     let pageKey;
-    try {
-        do {
-            const res = await withRetry(() => provider.send('alchemy_getAssetTransfers', [{
-                fromBlock: ethers.toQuantity(blockNumber),
-                toBlock: ethers.toQuantity(blockNumber),
-                toAddress: feeRecipient,
-                category: ['external', 'internal'],
-                excludeZeroValue: true,
-                maxCount: '0x3e8',
-                ...(pageKey && { pageKey })
-            }]));
-            for (const t of res.transfers) {
-                const wei = t.rawContract?.value ? BigInt(t.rawContract.value) : ethers.parseEther(t.value.toFixed(18));
-                tips.set(t.hash, (tips.get(t.hash) || 0n) + wei);
-            }
-            pageKey = res.pageKey;
-        } while (pageKey);
-    } catch (e) {
-        console.warn(`Builder tips unavailable for block ${blockNumber}: ${e.shortMessage || e.message}`);
-        return null;
-    }
-    return tips;
+    do {
+        const res = await withRetry(() => provider.send('alchemy_getAssetTransfers', [{
+            fromBlock: ethers.toQuantity(blockNumber), toBlock: ethers.toQuantity(blockNumber),
+            category: ['internal'], excludeZeroValue: true, maxCount: '0x3e8', ...(pageKey && { pageKey })
+        }]));
+        for (const t of res.transfers) if (!t.uniqueId || !seen.has(t.uniqueId)) seen.add(t.uniqueId), out.push({ hash: t.hash.toLowerCase(), from: t.from.toLowerCase(), to: (t.to || '').toLowerCase(),
+            wei: t.rawContract?.value ? BigInt(t.rawContract.value) : ethers.parseEther(t.value.toFixed(18)) });
+        pageKey = res.pageKey;
+    } while (pageKey);
+    return out;
 }
 
+// The internal ETH transfers of one transaction (value > 0). Alchemy's index misses the internal transfers of a few blocks
+// entirely; a gap shows as no internal transfer at all in the block, or as WETH unwrapped in the transaction without the ETH
+// leaving the WETH contract. Etherscan's trace of the transaction is used then (failed calls left out); without
+// ETHERSCAN_API_KEY, or if it fails, the measurement is left for the next sync.
+async function txInternals(receipt, caches) {
+    const txHash = receipt.hash.toLowerCase();
+    caches.txInternals ??= new Map();
+    return cached(caches.txInternals, txHash, async () => {
+        const block = await cached(caches.internals, receipt.blockNumber, () => internalTransfers(receipt.blockNumber));
+        const list = block.filter(t => t.hash === txHash);
+        const unwrapped = receipt.logs.some(l => l.address.toLowerCase() === WETH_ADDRESS && l.topics[0] === WETH_WITHDRAWAL_TOPIC && BigInt(l.data) > 0n);
+        if (block.length && (!unwrapped || list.some(t => t.from === WETH_ADDRESS))) return list;
+        const key = process.env.ETHERSCAN_API_KEY;
+        if (!key) throw new Error('internal transfers missing from Alchemy and ETHERSCAN_API_KEY is not set');
+        const res = await withRetry(async () => {
+            const r = await fetch(`https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlistinternal&txhash=${txHash}&apikey=${key}`).then(x => x.json());
+            if (r.status !== '1' && !/no transactions/i.test(r.message || '')) throw new Error(`Etherscan: ${r.result || r.message}`);
+            return Array.isArray(r.result) ? r.result : [];
+        }, 5);
+        return res.filter(t => t.isError === '0' && BigInt(t.value) > 0n)
+            .map(t => ({ hash: txHash, from: t.from.toLowerCase(), to: (t.to || '').toLowerCase(), wei: BigInt(t.value) }));
+    });
+}
+
+// Liquity's ETH price at the redemption: the WETH branch's oracle price when it was redeemed, else Chainlink ETH/USD (the
+// feed behind it) at the end of the previous block
+async function oracleEthUsd(events, blockNumber, caches) {
+    const weth = events.find(e => e.branch === 'WETH');
+    if (weth) return weth.coll_price;
+    return cached(caches.oracleEth, blockNumber, async () => {
+        const feed = new ethers.Contract(CHAINLINK_ETH_USD, ['function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)'], provider);
+        const [, answer] = await withRetry(() => feed.latestRoundData({ blockTag: blockNumber - 1 }));
+        return Number(answer) / 1e8;
+    });
+}
+
+async function actualResult(receipt, block, events, row, caches) {
+    const txHash = receipt.hash.toLowerCase(), blockNumber = receipt.blockNumber;
+    const miner = block.miner.toLowerCase(), from = receipt.from.toLowerCase(), to = (receipt.to || '').toLowerCase();
+    const S = new Set([from]);
+    if (row.via_contract) S.add(to);
+    const flows = [];                                            // { token: address or 'ETH', from, to, raw }
+    const topicAddr = t => ethers.dataSlice(t, 12).toLowerCase();
+    for (const l of receipt.logs) {
+        const addr = l.address.toLowerCase(), t0 = l.topics[0];
+        if (t0 === TRANSFER_TOPIC && l.topics.length === 3) flows.push({ token: addr, from: topicAddr(l.topics[1]), to: topicAddr(l.topics[2]), raw: BigInt(l.data) });
+        else if (addr === WETH_ADDRESS && t0 === WETH_DEPOSIT_TOPIC) flows.push({ token: WETH_ADDRESS, from: WETH_ADDRESS, to: topicAddr(l.topics[1]), raw: BigInt(l.data) });
+        else if (addr === WETH_ADDRESS && t0 === WETH_WITHDRAWAL_TOPIC) flows.push({ token: WETH_ADDRESS, from: topicAddr(l.topics[1]), to: WETH_ADDRESS, raw: BigInt(l.data) });
+    }
+    for (const t of await txInternals(receipt, caches)) flows.push({ token: 'ETH', from: t.from, to: t.to, raw: t.wei });
+    const tx = await withRetry(() => provider.getTransaction(receipt.hash));
+    if (tx.value > 0n && !S.has(to)) flows.push({ token: 'ETH', from, to, raw: tx.value });
+
+    // Counterparties send something back to the redeemer (pools, lenders, Liquity itself); payouts only receive
+    const counterparties = new Set(flows.filter(f => S.has(f.to) && !S.has(f.from)).map(f => f.from));
+    const safes = new Set(receipt.logs.filter(l => l.topics[0] === SAFE_RECEIVED_TOPIC).map(l => l.address.toLowerCase()));
+    const isPayout = async a => {
+        if (a === miner || a === ethers.ZeroAddress || counterparties.has(a)) return false;
+        if (!isWallet.has(a)) {
+            const code = (await withRetry(() => provider.getCode(a))).toLowerCase();
+            isWallet.set(a, code === '0x' || (code.startsWith(EIP7702_PREFIX) && code.length === 2 + 46));
+        }
+        return isWallet.get(a) || safes.has(a);
+    };
+    const net = new Map(), add = (k, v) => net.set(k, (net.get(k) || 0n) + v);
+    for (const f of flows) {
+        if (S.has(f.to) && !S.has(f.from)) add(f.token, f.raw);
+        else if (S.has(f.from) && !S.has(f.to)) {
+            if (await isPayout(f.to)) continue;                  // profit taken out to the redeemer's own wallet: kept
+            add(f.token, -f.raw);
+        }
+    }
+    // Gross profit adds back every payment to the builder in the transaction, as the tip of the estimate does: one made by a
+    // contract outside the redeemer's addresses (such as the bot contract an EIP-7702 account calls) is still paid out of the trade
+    const builderWei = flows.filter(f => f.token === 'ETH' && f.to === miner).reduce((s, f) => s + f.raw, 0n);
+    const gasWei = receipt.gasUsed * receipt.gasPrice;          // base fee + priority fee, paid by the sender
+    add('ETH', -gasWei);
+
+    const eth = await oracleEthUsd(events, blockNumber, caches);
+    const lstRate = token => cached(caches.lstRates, `${token}:${blockNumber}`, async () =>
+        Number(BigInt(await withRetry(() => provider.call({ to: token, data: LST_RATE_CALL[token], blockTag: blockNumber })))) / 1e18);
+    const unpriced = [];
+    let usd = 0;
+    for (const [token, raw] of net) {
+        if (raw === 0n) continue;
+        const amount18 = Number(raw) / 1e18;
+        if (token === 'ETH' || token === WETH_ADDRESS || token === STETH_ADDRESS) usd += amount18 * eth;
+        else if (LST_RATE_CALL[token]) usd += amount18 * eth * await lstRate(token);
+        else if (token === env('BOLD_TOKEN_ADDRESS').toLowerCase()) usd += amount18 * (row.market_price ?? 1);
+        else if (STABLES[token] != null) usd += Number(raw) / 10 ** STABLES[token];
+        else {
+            // decimals(); 18 if the token does not answer (a token without decimals() reverts, so no retries here)
+            if (!tokenDecimals.has(token)) tokenDecimals.set(token, await provider.call({ to: token, data: '0x313ce567' }).then(d => Number(BigInt(d)), () => 18));
+            if (Math.abs(Number(raw)) / 10 ** tokenDecimals.get(token) > DUST) unpriced.push(token);
+        }
+    }
+    const inclusionUsd = (Number(gasWei) + Number(builderWei)) / 1e18 * eth;
+    const deviation = row.eth_usd ? Math.abs(row.eth_usd / eth - 1) : 0;
+    const status = unpriced.length ? 'unpriced'
+        : row.net_profit_usd != null && deviation < DISTORTED_REFERENCE
+            && Math.abs(usd - row.net_profit_usd) > Math.max(REVIEW_MIN_USD, REVIEW_SHARE * row.amount) ? 'review' : 'measured';
+    return { oracle_eth_usd: eth, actual_net_usd: usd, actual_gross_usd: usd + inclusionUsd, actual_status: status };
+}
+
+// ETH paid straight to the block's fee recipient (the builder) inside a transaction, e.g. by a bot contract calling
+// block.coinbase.transfer(), from its internal transfers (txInternals); null if they cannot be read
+async function builderTip(receipt, block, caches) {
+    try {
+        const miner = block.miner.toLowerCase();
+        return (await txInternals(receipt, caches)).filter(t => t.to === miner).reduce((s, t) => s + t.wei, 0n);
+    } catch (e) {
+        console.warn(`Builder tip unavailable for ${receipt.hash}: ${e.shortMessage || e.message}`);
+        return null;
+    }
+}
+
+// A failed lookup is dropped from the cache, so the next transaction of the same block tries again
 function cached(cache, key, fn) {
-    if (!cache.has(key)) cache.set(key, fn());
+    if (!cache.has(key)) cache.set(key, Promise.resolve().then(fn).catch(e => { cache.delete(key); throw e; }));
     return cache.get(key);
 }
 
@@ -499,7 +647,6 @@ async function enrichTx(receipt, logs, caches) {
     // BOLD prices stay at the previous block (moves within the block are mostly the redeemer's own purchase);
     // ETH, and through it the collateral, is priced at the moment of the redemption
     if (ethNow != null) prices.eth_usd = ethNow;
-    const tips = await cached(caches.tips, blockNumber, () => coinbaseTransfers(blockNumber, block.miner));
 
     const events = logs.map(log => {
         const a = TROVE_MANAGER.parseLog(log).args;
@@ -539,7 +686,7 @@ async function enrichTx(receipt, logs, caches) {
     const usd = v => v == null || prices.eth_usd == null ? null : v * prices.eth_usd;
     const baseFeeWei = receipt.gasUsed * block.baseFeePerGas;
     const priorityFeeWei = receipt.gasUsed * receipt.gasPrice - baseFeeWei;
-    const coinbaseTipWei = tips ? (tips.get(txHash) ?? 0n) : null;
+    const coinbaseTipWei = await builderTip(receipt, block, caches);
     const gasFeeUsd = usd(eth(baseFeeWei));
     const builderTipUsd = coinbaseTipWei == null ? null : usd(eth(priorityFeeWei + coinbaseTipWei));
     const purchaseCost = market != null && priced ? amount * market : null;
@@ -548,10 +695,7 @@ async function enrichTx(receipt, logs, caches) {
         ? grossProfit - gasFeeUsd - builderTipUsd
         : null;
 
-    return {
-        events,
-        troves: redeemedTroves(receipt),
-        redemption: {
+    const redemption = {
             tx_hash: txHash,
             block: blockNumber,
             timestamp: block.timestamp * 1000,
@@ -583,8 +727,15 @@ async function enrichTx(receipt, logs, caches) {
             net_margin: netProfit != null ? netProfit / purchaseCost * 100 : null,
             flash_venue: flashVenues(receipt),
             ...boldSources(receipt, amount)
-        }
     };
+    // Measured result; left empty on failure, and then filled by backfillActual() at the next sync
+    let actual = { oracle_eth_usd: null, actual_net_usd: null, actual_gross_usd: null, actual_status: null };
+    try {
+        actual = await actualResult(receipt, block, events, redemption, caches);
+    } catch (e) {
+        console.warn(`Measured result not computed for ${txHash}: ${e.shortMessage || e.message}`);
+    }
+    return { events, troves: redeemedTroves(receipt), redemption: { ...redemption, ...actual } };
 }
 
 async function mapPool(items, limit, fn) {
@@ -681,6 +832,53 @@ async function backfillTroves() {
     setState.run('troves_backfilled', '1');
 }
 
+// Redemptions without a measured result (synced before it existed, or whose measurement failed): measure them from their
+// receipts. Runs at every sync until none is left; the modelled columns are not touched.
+const txsWithoutActual = db.prepare('SELECT * FROM redemptions WHERE actual_status IS NULL ORDER BY block');
+const eventsOfTx = db.prepare('SELECT * FROM redemption_events WHERE tx_hash = ?');
+const setActual = db.prepare(`UPDATE redemptions SET oracle_eth_usd = @oracle_eth_usd, actual_net_usd = @actual_net_usd,
+    actual_gross_usd = @actual_gross_usd, actual_status = @actual_status WHERE tx_hash = @tx_hash`);
+const setTip = db.prepare(`UPDATE redemptions SET coinbase_tip_eth = @coinbase_tip_eth, builder_tip_usd = @builder_tip_usd,
+    net_profit_usd = @net_profit_usd, net_margin = @net_margin WHERE tx_hash = @tx_hash`);
+const saveActual = db.transaction(rows => rows.forEach(r => { setActual.run(r); if (r.tip) setTip.run({ tx_hash: r.tx_hash, ...r.tip }); }));
+
+// The tip columns of a stored redemption, recomputed with a corrected builder payment (builderTip)
+function tipColumns(row, coinbaseTipWei) {
+    const coinbase = Number(ethers.formatEther(coinbaseTipWei));
+    const tipUsd = row.eth_usd == null ? null : (row.priority_fee_eth + coinbase) * row.eth_usd;
+    const net = row.gross_profit_usd != null && row.gas_fee_usd != null && tipUsd != null ? row.gross_profit_usd - row.gas_fee_usd - tipUsd : null;
+    return { coinbase_tip_eth: coinbase, builder_tip_usd: tipUsd, net_profit_usd: net,
+        net_margin: net != null && row.market_price ? net / (row.amount * row.market_price) * 100 : null };
+}
+
+async function backfillActual(caches) {
+    const rows = txsWithoutActual.all();
+    if (!rows.length) return;
+    console.log(`Measuring the result of ${rows.length} redemption tx…`);
+    let failed = 0;
+    for (let i = 0; i < rows.length; i += 50) {
+        const chunk = rows.slice(i, i + 50);
+        const done = await mapPool(chunk, ENRICH_CONCURRENCY, async row => {
+            try {
+                const receipt = await withRetry(() => provider.getTransactionReceipt(row.tx_hash));
+                const block = await cached(caches.blocks, receipt.blockNumber, () => withRetry(() => provider.getBlock(receipt.blockNumber)));
+                // Rows stored before the Etherscan fallback and the removal of Alchemy's duplicates can have a builder tip of 0
+                // or twice the real one: corrected first, so that the measured result is compared with the corrected estimate
+                const tipWei = await builderTip(receipt, block, caches);
+                const tip = tipWei != null && Math.abs(Number(ethers.formatEther(tipWei)) - (row.coinbase_tip_eth ?? -1)) > 1e-12 ? tipColumns(row, tipWei) : null;
+                return { tx_hash: row.tx_hash, tip, ...await actualResult(receipt, block, eventsOfTx.all(row.tx_hash), { ...row, ...tip }, caches) };
+            } catch (e) {
+                failed++;
+                console.warn(`Measured result not computed for ${row.tx_hash}: ${e.shortMessage || e.message}`);
+                return null;
+            }
+        });
+        saveActual(done.filter(Boolean));
+        state.phase = `measuring results ${Math.min(i + chunk.length, rows.length)}/${rows.length}`;
+    }
+    if (failed) console.warn(`${failed} measured results left for the next sync`);
+}
+
 async function syncData() {
     if (state.running) return getStatus();
     Object.assign(state, { running: true, phase: 'starting', found: 0, processed: 0, startedAt: Date.now(), lastError: null });
@@ -699,7 +897,7 @@ async function syncData() {
         Object.assign(state, { phase: 'scanning', fromBlock: from, targetBlock: target, scannedTo: from - 1 });
         console.log(`Sync: blocks ${from} → ${target} across ${Object.keys(config.branches).length} branches (${Object.values(config.branches).map(b => b.symbol).join(', ')})`);
 
-        const caches = { blocks: new Map(), tips: new Map(), ethSwaps: new Map() };
+        const caches = { blocks: new Map(), ethSwaps: new Map(), internals: new Map(), oracleEth: new Map(), lstRates: new Map() };
         for await (const { txs, toBlock } of scanRedemptions(from, target)) {
             state.found += txs.length;
             const rows = await mapPool(txs, ENRICH_CONCURRENCY, async ({ receipt, logs }) => {
@@ -713,6 +911,7 @@ async function syncData() {
         }
 
         await backfillTroves();
+        await backfillActual(caches);
         try {
             await refreshAddresses();
         } catch (e) {
@@ -733,8 +932,8 @@ function getStatus() {
     return { ...state, lastSyncedBlock: lastSyncedBlock() };
 }
 
-// flashVenues, boldSources and loadConfig are exposed for checks against individual transactions
-module.exports = { syncData, getStatus, flashVenues, boldSources, loadConfig };
+// flashVenues, boldSources, actualResult and loadConfig are exposed for checks against individual transactions
+module.exports = { syncData, getStatus, flashVenues, boldSources, actualResult, loadConfig, provider };
 
 if (require.main === module) {
     syncData()

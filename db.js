@@ -2,7 +2,8 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'database.sqlite'));
+// DB_PATH points the scripts at another copy of the database (tests); the default is database.sqlite next to this file
+const db = new Database(process.env.DB_PATH || path.join(__dirname, 'database.sqlite'));
 db.pragma('journal_mode = WAL');
 
 // Rebuild when the stored schema predates schema.sql (including the original mock-data
@@ -18,7 +19,8 @@ db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 // Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves existing tables as they are
 const have = new Set(db.prepare('PRAGMA table_info(redemptions)').all().map(c => c.name));
 for (const [name, type] of [['flash_venue', 'TEXT'], ['bold_src_curve', 'REAL'], ['bold_src_uni_v3', 'REAL'],
-    ['bold_src_uni_v4', 'REAL'], ['bold_src_other', 'REAL'], ['bold_src_held', 'REAL']]) {
+    ['bold_src_uni_v4', 'REAL'], ['bold_src_other', 'REAL'], ['bold_src_held', 'REAL'],
+    ['oracle_eth_usd', 'REAL'], ['actual_net_usd', 'REAL'], ['actual_gross_usd', 'REAL'], ['actual_status', 'TEXT']]) {
     if (!have.has(name)) db.exec(`ALTER TABLE redemptions ADD COLUMN ${name} ${type}`);
 }
 
