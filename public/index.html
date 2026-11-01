@@ -1821,17 +1821,20 @@
                 if (!c) return;
                 const { ctx, chartArea: a, scales: { x } } = chart;
                 ctx.save();
-                ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+                ctx.font = '600 10px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
                 ctx.textBaseline = 'middle';
+                // A pill in the style of the legend buttons: dark fill over the bar, faint outline, secondary ink
                 const mark = (i, text, y) => {
-                    const px = x.getPixelForValue(i), w = ctx.measureText(text).width + 10;
+                    const px = x.getPixelForValue(i), w = ctx.measureText(text).width + 12, h = 16;
                     const left = Math.min(Math.max(px - w / 2, a.left), a.right - w);
-                    ctx.fillStyle = 'rgba(7, 9, 13, .85)'; ctx.fillRect(left, y - 8, w, 16);
-                    ctx.strokeStyle = css('--muted'); ctx.lineWidth = 1; ctx.strokeRect(left + .5, y - 7.5, w - 1, 15);
-                    ctx.fillStyle = css('--ink-1'); ctx.fillText(text, left + 5, y);
+                    ctx.beginPath(); ctx.roundRect(left + .5, y - h / 2 + .5, w - 1, h - 1, 8);
+                    ctx.fillStyle = 'rgba(12, 15, 20, .94)'; ctx.fill();
+                    ctx.fillStyle = 'rgba(255, 255, 255, .04)'; ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, .14)'; ctx.lineWidth = 1; ctx.stroke();
+                    ctx.fillStyle = css('--ink-2'); ctx.fillText(text, left + 6, y + .5);
                 };
-                c.up.forEach((v, i) => { if (v > c.ymax) mark(i, `▲ ${usd(v, 0)}`, a.top + 10); });
-                c.down.forEach((v, i) => { if (v < c.ymin) mark(i, `▼ ${usd(v, 0)}`, a.bottom - 10); });
+                c.up.forEach((v, i) => { if (v > c.ymax) mark(i, `▲ ${usd(v, 0)}`, a.top + 11); });
+                c.down.forEach((v, i) => { if (v < c.ymin) mark(i, `▼ ${usd(v, 0)}`, a.bottom - 11); });
                 ctx.restore();
             }
         };
