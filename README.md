@@ -22,7 +22,8 @@ syncs new blocks every 5 minutes and the **Sync now** button triggers one on dem
 An [Etherscan](https://etherscan.io/apis) API key (free) is optional: with `ETHERSCAN_API_KEY` set, the sync looks up who
 deployed each bot contract, which the Operators card uses to group contracts. Without it, deployers show as unknown.
 It is also what the Troves tab's borrowing record and "refills" tag are read with (one request per branch per sync); without
-it, that record is left out.
+it, that record is left out. And it fills the rare gaps in Alchemy's internal ETH transfers when measuring profit; without it,
+those few redemptions keep their estimate.
 
 ## How the hosted version works
 
@@ -48,7 +49,7 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 
 | File | Role |
 |---|---|
-| `worker.js` | Scans `Redemption` events, enriches each tx with prices and costs, writes SQLite |
+| `worker.js` | Scans `Redemption` events, enriches each tx with prices and costs, measures each redeemer's result from its own transfers, writes SQLite |
 | `queries.js` | The queries behind the feed, the stats tiles and the data for the cards (trove rows, addresses) |
 | `index.js` | Local server: API, static files and the periodic sync |
 | `troves.js` | Troves tab: snapshot of every open trove, the branches and the batch managers, read at one block (about 8 bundled read-only calls), plus the number of active troves at the block about 30 days earlier (one more call, for the change shown on the tab), stored in the `trove_snapshot` table |
@@ -67,6 +68,38 @@ the troves' and managers' records), served at `/api/troves` and `/api/trovehits`
 follow, also separately (a failure keeps those already stored), and are published as `troveops.json`: for each trove of the
 snapshot, BOLD borrowed and repaid and collateral added and withdrawn per week, and the last 30 days, for the borrowing
 record, the weekly chart of BOLD redeemed against borrowed and the "refills" tag (served at `/api/troveops`).
+
+## How profit is measured
+
+Each redemption carries two results:
+
+- **Measured** (`actual_net_usd`, `actual_status = 'measured'`): what the redeemer kept. `actualResult()` in `worker.js` adds up the
+  redeemer's own flows in the transaction (the sending account and the contract it calls): ERC-20 transfers, WETH wraps and
+  unwraps, internal ETH transfers, the top-level ETH value and gas. Payouts to plain wallets (including EIP-7702 accounts) and Safes
+  count as kept; payouts to any other contract count as costs, so a result can only err low. Gross profit (`actual_gross_usd`) adds
+  back the gas and every payment to the builder in the transaction, as the tip columns do. Internal ETH transfers come from
+  Alchemy, with its duplicate entries (same `uniqueId`) dropped; where its index misses them (no internal transfer in the block,
+  or WETH unwrapped without the ETH leaving the WETH contract) that transaction's trace is read from Etherscan. The builder tip of
+  the estimate comes from the same transfers. Amounts are valued at Liquity's oracle ETH price (`oracle_eth_usd`:
+  the WETH branch's redemption price, or Chainlink ETH/USD at the previous block), wstETH and rETH at their exchange rates, BOLD at
+  its pool price, stablecoins at $1. Tokens without a price are ignored below 0.000001 units; above it the redemption is `unpriced`.
+- **Modelled** (`net_profit_usd`, `gross_profit_usd`): collateral at the Uniswap ETH/USDC price minus BOLD at its pool price, minus
+  gas and builder payments. It leaves out pool fees and price impact, so it runs about 0.1% of the BOLD redeemed high, and it fails
+  when the reference pool is mispriced (29 October 2026).
+
+`queries.js` publishes the measured result as net and gross profit where it exists, the modelled one otherwise (marked ~ on the page,
+also kept as `*_model_usd`), and values gas and builder payments at the oracle price. A redemption keeps the modelled result when it
+leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed without a distorted reference
+(`review`). The reference counts as distorted when Uniswap ETH/USDC strays more than 3% from the oracle price; such redemptions show no
+oracle gap and are left out of the averages. The methodology's decomposition sums the estimate's parts (`ref_discount_usd`,
+`ref_fee_usd`, `ref_gross_model_usd`) and the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions, the
+non-distorted ones with a profit figure, so that its steps reconcile exactly.
+
+Redemptions synced before this existed are measured by `backfillActual()` at the next sync (about 15 minutes for the whole history,
+one-off); the modelled columns are left as they are, except a builder tip that was
+stored wrong (0 in Alchemy's gaps, doubled by its duplicates) and the net profit computed from it.
+
+`DB_PATH` points `db.js` at another copy of the database, for testing changes without touching `database.sqlite`.
 
 ## Telegram alerts
 

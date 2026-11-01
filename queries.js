@@ -2,42 +2,83 @@ const db = require('./db');
 
 // A sender is flagged as a bot if it redeems through a contract or at least this often
 const BOT_MIN_REDEMPTIONS = 3;
+// The market reference (ETH/USDC on Uniswap) counts as distorted when it strays this far from Liquity's oracle price
+const DISTORTED_REFERENCE = 0.03;
+
+// The figures shown for each redemption: the measured result (worker.js, actualResult) where it is available, the modelled
+// one otherwise. Gas and builder payments are exact amounts of ETH, valued at Liquity's oracle price once it is recorded; the
+// gross profit is then net profit + gas + builder payments. Oracle gap and BOLD discount stay estimates against reference prices.
+// Where only the estimate exists, net profit is its gross profit less gas and builder payments at the same oracle price, so the
+// parts of the Weekly breakdown always add up to the net profit shown. Redemptions without an estimate (dust below 1 BOLD, or no
+// BOLD price at the time) show no profit either, as before.
+const SHOWN = `SELECT c.*,
+        CASE WHEN c.measured_s THEN c.actual_net_usd
+             WHEN c.gross_profit_usd IS NOT NULL AND c.gas_s IS NOT NULL AND c.tip_s IS NOT NULL THEN c.gross_profit_usd - c.gas_s - c.tip_s
+             ELSE c.net_profit_usd END AS net_s
+    FROM (SELECT r.*,
+        CASE WHEN r.oracle_eth_usd IS NOT NULL AND r.base_fee_eth IS NOT NULL THEN r.base_fee_eth * r.oracle_eth_usd ELSE r.gas_fee_usd END AS gas_s,
+        CASE WHEN r.oracle_eth_usd IS NOT NULL AND r.priority_fee_eth IS NOT NULL AND r.coinbase_tip_eth IS NOT NULL
+             THEN (r.priority_fee_eth + r.coinbase_tip_eth) * r.oracle_eth_usd ELSE r.builder_tip_usd END AS tip_s,
+        (r.oracle_eth_usd IS NOT NULL AND r.eth_usd IS NOT NULL AND ABS(r.eth_usd / r.oracle_eth_usd - 1) >= ${DISTORTED_REFERENCE}) AS distorted,
+        (r.actual_status = 'measured' AND r.net_profit_usd IS NOT NULL) AS measured_s
+        FROM redemptions r) c`;
+const GROSS_S = `CASE WHEN measured_s THEN net_s + COALESCE(gas_s, 0) + COALESCE(tip_s, 0) ELSE gross_profit_usd END`;
 
 const redemptionsQuery = db.prepare(`
-    WITH counts AS (SELECT sender, COUNT(*) AS n FROM redemptions GROUP BY sender)
+    WITH counts AS (SELECT sender, COUNT(*) AS n FROM redemptions GROUP BY sender), s AS (${SHOWN})
     SELECT r.*, (r.via_contract OR c.n >= ${BOT_MIN_REDEMPTIONS}) AS is_bot
-    FROM redemptions r JOIN counts c USING (sender)
+    FROM s r JOIN counts c USING (sender)
     ORDER BY r.block DESC, r.tx_hash
     LIMIT ?`);
 
 const botsQuery = db.prepare(`
+    WITH s AS (${SHOWN})
     SELECT sender AS address,
            COUNT(*) AS frequency,
            SUM(amount) AS total_bold,
-           AVG(net_edge) AS avg_edge,
-           SUM(net_profit_usd) AS net_profit_usd,
+           AVG(CASE WHEN NOT distorted THEN net_edge END) AS avg_edge,
+           SUM(net_s) AS net_profit_usd,
            MAX(via_contract) AS via_contract,
            MAX(timestamp) AS last_active
-    FROM redemptions
+    FROM s
     GROUP BY sender
     HAVING MAX(via_contract) = 1 OR COUNT(*) >= ${BOT_MIN_REDEMPTIONS}
     ORDER BY net_profit_usd DESC, frequency DESC`);
 
+// Averages of the reference-based estimates (discount, oracle gap, edge) leave out redemptions with a distorted reference
 const statsQuery = db.prepare(`
+    WITH s AS (${SHOWN})
     SELECT COUNT(*) AS tx_count,
            COALESCE(SUM(amount), 0) AS total_bold,
            COUNT(DISTINCT sender) AS senders,
-           SUM(spread * amount) / SUM(CASE WHEN spread IS NOT NULL THEN amount END) AS avg_spread,
-           SUM(oracle_gap * amount) / SUM(CASE WHEN oracle_gap IS NOT NULL THEN amount END) AS avg_oracle_gap,
-           SUM(net_edge * amount) / SUM(CASE WHEN net_edge IS NOT NULL THEN amount END) AS avg_edge,
+           SUM(CASE WHEN NOT distorted THEN spread * amount END) / SUM(CASE WHEN spread IS NOT NULL AND NOT distorted THEN amount END) AS avg_spread,
+           SUM(CASE WHEN NOT distorted THEN oracle_gap * amount END) / SUM(CASE WHEN oracle_gap IS NOT NULL AND NOT distorted THEN amount END) AS avg_oracle_gap,
+           SUM(CASE WHEN NOT distorted THEN net_edge * amount END) / SUM(CASE WHEN net_edge IS NOT NULL AND NOT distorted THEN amount END) AS avg_edge,
            SUM(fee_usd) * 100 / SUM(amount) AS avg_fee,
-           SUM(gross_profit_usd) AS gross_profit_usd,
-           SUM(net_profit_usd) AS net_profit_usd,
-           SUM(gas_fee_usd) AS gas_fee_usd,
-           SUM(builder_tip_usd) AS builder_tip_usd,
-           SUM(net_profit_usd) * 100 / SUM(CASE WHEN net_profit_usd IS NOT NULL THEN amount * market_price END) AS avg_margin,
+           SUM(${GROSS_S}) AS gross_profit_usd,
+           SUM(net_s) AS net_profit_usd,
+           SUM(gas_s) AS gas_fee_usd,
+           SUM(tip_s) AS builder_tip_usd,
+           SUM(net_s) * 100 / SUM(CASE WHEN net_s IS NOT NULL THEN amount * market_price END) AS avg_margin,
+           SUM(CASE WHEN measured_s THEN 1 ELSE 0 END) AS measured_count,
+           SUM(CASE WHEN distorted THEN 1 ELSE 0 END) AS distorted_count,
+           -- the same totals over the redemptions with a reliable reference only, for the methodology's decomposition (ref_*)
+           SUM(CASE WHEN net_s IS NOT NULL THEN 1 ELSE 0 END) AS priced_count,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN 1 ELSE 0 END) AS ref_count,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN amount END) AS ref_bold,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN fee_usd END) * 100 / SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN amount END) AS ref_avg_fee,
+           SUM(CASE WHEN NOT distorted THEN ${GROSS_S} END) AS ref_gross_usd,
+           SUM(CASE WHEN NOT distorted THEN net_s END) AS ref_net_usd,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN gas_s END) AS ref_gas_usd,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN tip_s END) AS ref_tip_usd,
+           -- the estimate's parts in USD over the same redemptions: BOLD discount, redemption fee and estimated gross profit (the
+           -- oracle-gap edge is what remains of it), so that the decomposition reconciles exactly with the measured gross profit
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN amount * (1 - market_price) END) AS ref_discount_usd,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN fee_usd END) AS ref_fee_usd,
+           SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN gross_profit_usd END) AS ref_gross_model_usd,
+           SUM(CASE WHEN NOT distorted THEN net_s END) * 100 / SUM(CASE WHEN NOT distorted AND net_s IS NOT NULL THEN amount * market_price END) AS ref_margin,
            MAX(timestamp) AS last_redemption
-    FROM redemptions`);
+    FROM s`);
 
 // Troves redeemed while a batch manager (interest-rate delegate) set their rate. A trove redeemed several times counts
 // as batch-managed if it was in a batch at any of those redemptions.
@@ -90,7 +131,9 @@ const allTrovesQuery = db.prepare('SELECT * FROM redemption_troves ORDER BY tx_h
 const troveSnapshotQuery = db.prepare('SELECT data FROM trove_snapshot WHERE id = 1');
 const troveHitsQuery = db.prepare(`
     SELECT r.timestamp, t.tx_hash, t.branch, t.trove_id, t.debt_redeemed, t.coll_redeemed, t.fee_coll, t.batch_manager, t.interest_rate,
-           (SELECT MAX(e.coll_market_price) FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS market_price
+           (SELECT CASE WHEN r.oracle_eth_usd IS NOT NULL AND r.eth_usd IS NOT NULL AND ABS(r.eth_usd / r.oracle_eth_usd - 1) >= ${DISTORTED_REFERENCE}
+                        THEN MAX(e.coll_price) ELSE MAX(e.coll_market_price) END
+            FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS market_price
     FROM redemption_troves t JOIN redemptions r USING (tx_hash)
     ORDER BY r.timestamp, t.tx_hash, t.log_index`);
 function troveHits() {
@@ -111,8 +154,19 @@ function groupByTx(rows) {
     return map;
 }
 
+// A redemption row as published: the shown figures under the usual names, the modelled ones kept as *_model_usd
+function shownRow(r) {
+    const measured = !!r.measured_s;
+    const { gas_s, tip_s, net_s, distorted, measured_s, ...row } = r;
+    const gross = measured ? net_s + (gas_s ?? 0) + (tip_s ?? 0) : r.gross_profit_usd;
+    return { ...row, net_profit_model_usd: r.net_profit_usd, gross_profit_model_usd: r.gross_profit_usd,
+        net_profit_usd: net_s, gross_profit_usd: gross, gas_fee_usd: gas_s, builder_tip_usd: tip_s,
+        net_margin: net_s != null && r.amount && r.market_price ? net_s / (r.amount * r.market_price) * 100 : r.net_margin,
+        measured: measured ? 1 : 0, ref_distorted: distorted ? 1 : 0 };
+}
+
 module.exports = {
-    redemptions: (limit = 5000) => redemptionsQuery.all(limit),
+    redemptions: (limit = 5000) => redemptionsQuery.all(limit).map(shownRow),
     bots: () => botsQuery.all(),
     stats: () => ({ ...statsQuery.get(), ...batchTotalsQuery.get(), batch_managers: batchManagersQuery.all() }),
     batchRows,
