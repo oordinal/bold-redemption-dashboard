@@ -74,22 +74,24 @@ record, the weekly chart of BOLD redeemed against borrowed and the "refills" tag
 Each redemption carries two results:
 
 - **Measured** (`actual_net_usd`, `actual_status = 'measured'`): what the redeemer kept. `actualResult()` in `worker.js` adds up the
-  redeemer's own flows in the transaction (the sending account and the contract it calls): ERC-20 transfers, WETH wraps and
-  unwraps, internal ETH transfers, the top-level ETH value and gas. Payouts to plain wallets (including EIP-7702 accounts) and Safes
-  count as kept; payouts to any other contract count as costs, so a result can only err low. Gross profit (`actual_gross_usd`) adds
+  redeemer's own flows in the transaction (the sending account, plus the contract it calls when that is not Liquity itself: `via_contract`): ERC-20 transfers, WETH wraps and
+  unwraps, internal ETH transfers, the top-level ETH value and gas. A payout counts as kept when its recipient sent nothing to the
+  redeemer in the transaction and is a plain wallet (EIP-7702 accounts included) or a Safe that received ETH there (`SafeReceived`);
+  any other payout counts as a cost, so a result can only err low. Gross profit (`actual_gross_usd`) adds
   back the gas and every payment to the builder in the transaction, as the tip columns do. Internal ETH transfers come from
   Alchemy, with its duplicate entries (same `uniqueId`) dropped; where its index misses them (no internal transfer in the block,
   or WETH unwrapped without the ETH leaving the WETH contract) that transaction's trace is read from Etherscan. The builder tip of
   the estimate comes from the same transfers. Amounts are valued at Liquity's oracle ETH price (`oracle_eth_usd`:
   the WETH branch's redemption price, or Chainlink ETH/USD at the previous block), wstETH and rETH at their exchange rates, BOLD at
-  its pool price, stablecoins at $1. Tokens without a price are ignored below 0.000001 units; above it the redemption is `unpriced`.
-- **Modelled** (`net_profit_usd`, `gross_profit_usd`): collateral at the Uniswap ETH/USDC price minus BOLD at its pool price, minus
-  gas and builder payments. It leaves out pool fees and price impact, so it runs about 0.1% of the BOLD redeemed high, and it fails
-  when the reference pool is mispriced (29 October 2026).
+  the Curve BOLD/USDC price of the block before, stablecoins at $1. At redemptions the oracle lags Uniswap ETH/USDC by a median
+  0.44%; since it only values the profit left over, that moves total profit by about 0.5%. Tokens without a price are ignored below 0.000001 units; above it the redemption is `unpriced`.
+- **Modelled** (`net_profit_usd`, `gross_profit_usd`): collateral at the Uniswap ETH/USDC price minus BOLD at the Curve BOLD/USDC
+  price (Uniswap v3, then v4, as fallbacks), minus gas and builder payments. It leaves out pool fees and price impact, so it runs about
+  0.1% of the BOLD redeemed high, and it fails when that single reference pool trades far from the wider ETH market (29 October 2026).
 
 `queries.js` publishes the measured result as net and gross profit where it exists, the modelled one otherwise (marked ~ on the page,
 also kept as `*_model_usd`), and values gas and builder payments at the oracle price. A redemption keeps the modelled result when it
-leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed without a distorted reference
+leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed (and $100) without a distorted reference
 (`review`). The reference counts as distorted when Uniswap ETH/USDC strays more than 3% from the oracle price; such redemptions show no
 oracle gap and are left out of the averages. The methodology's decomposition sums the estimate's parts (`ref_discount_usd`,
 `ref_fee_usd`, `ref_gross_model_usd`) and the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions, the
