@@ -249,7 +249,13 @@
             <div class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                     <h2 class="font-semibold">Weekly BOLD redeemed</h2>
-                    <span id="volumeTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                    <div class="flex items-center gap-5">
+                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="volumeChart">
+                            <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
+                            <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its total">Typical weeks</button>
+                        </div>
+                        <span id="volumeTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                    </div>
                 </div>
                 <p class="text-xs mb-4" style="color: var(--muted)">BOLD redeemed per week, Monday to Sunday (UTC)<br><span id="volumeScope"></span></p>
                 <div class="relative h-56"><canvas id="volumeChart"></canvas></div>
@@ -257,7 +263,13 @@
             <div class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                     <h2 class="font-semibold">Weekly net profit</h2>
-                    <span id="profitTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                    <div class="flex items-center gap-5">
+                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="profitChart">
+                            <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
+                            <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its total">Typical weeks</button>
+                        </div>
+                        <span id="profitTotal" class="text-xs mono" style="color: var(--muted)"></span>
+                    </div>
                 </div>
                 <p class="text-xs mb-4" style="color: var(--muted)">USD, after gas and builder tips<br><span id="profitScope"></span></p>
                 <div class="relative h-56"><canvas id="profitChart"></canvas></div>
@@ -268,7 +280,7 @@
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                 <h2 class="font-semibold flex items-center">Weekly breakdown<span id="breakdownInfo" class="inline-flex items-center"></span></h2>
                 <div class="flex items-center gap-5">
-                    <div id="breakdownScale" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale">
+                    <div id="breakdownScale" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="breakdownChart">
                         <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
                         <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its totals">Typical weeks</button>
                     </div>
@@ -1341,7 +1353,8 @@
         // A figure that is still the estimate (the redemption has no measured result) is marked ~
         const est = r => r.measured || r.net_profit_usd == null ? '' : '<span class="tip-target" style="color: var(--muted)" data-tip="Estimate: no measured result for this redemption">~</span>';
         const DISTORTED_TAG = '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" '
-            + 'data-tip="The market reference (Uniswap ETH/USDC) was more than 3% from Liquity\'s oracle price at this redemption, so the oracle gap cannot be estimated. '
+            + 'data-tip="The market reference (Uniswap ETH/USDC) was more than 3% from Liquity\'s oracle price at this redemption, so its oracle-gap estimate is set aside: '
+            + 'either on-chain prices had moved away from the wider market, or the oracle lagged sharply in a fast market, and the reference alone cannot tell which. '
             + 'Profit is measured from the redeemer\'s own transfers and is not affected.">distorted</span>';
 
         const GAS_NOTE = 'Gas used × the block\'s base fee, which is burned by the protocol. It is small because Ethereum base fees have mostly '
@@ -1807,23 +1820,49 @@
         // Both panels reserve the same width for their y axis, so their weeks line up exactly
         const Y_AXIS_WIDTH = 72;
         const hiddenParts = new Set();
-        // Scale of the Weekly breakdown: false shows every week at its real size, true zooms to the regular weeks. A week counts as
-        // outlying when its stack above or below zero is more than BREAKDOWN_OUTLIER times the 90th-percentile week (the second largest
-        // in ranges under 10 weeks); it is then cut
-        // at the edge of the chart and marked with its totals (the tooltip keeps the full values)
-        const BREAKDOWN_ZOOM_DEFAULT = true, BREAKDOWN_OUTLIER = 3;
-        let breakdownZoom = BREAKDOWN_ZOOM_DEFAULT;
-        let breakdownCut = null;                           // { up, down, ymin, ymax } while zoomed with an outlying week, else null
-        const breakdownCutMarks = {
-            id: 'breakdownCutMarks',
+        // "Typical weeks" scale of the weekly charts: each chart shows every week at its real size, or zooms to the regular weeks. On
+        // each side of zero the weeks are ranked by size; the weeks above the first jump among the three largest, where a week is more
+        // than SCALE_GAP times the next one, are outlying. They are cut at the edge of the chart and marked with their total (the
+        // tooltip keeps the full values); every other week keeps its real size
+        const SCALE_ZOOM_DEFAULT = true, SCALE_GAP = 3;
+        const scaleZoom = { breakdownChart: SCALE_ZOOM_DEFAULT, volumeChart: SCALE_ZOOM_DEFAULT, profitChart: SCALE_ZOOM_DEFAULT };
+        const scaleCuts = {};                              // chart id -> { up, down, ymin, ymax, label } while zoomed with an outlying week
+        // The zoomed axis for a chart's weekly stacks above (up) and below (down) zero, or null when no week stands out
+        function typicalScale(up, down) {
+            // the largest regular week on a side if some weeks stand out there, else null
+            const regular = vals => {
+                const s = vals.map(Math.abs).filter(v => v > 0).sort((a, b) => b - a);
+                for (let i = 0; i < Math.min(3, s.length - 1); i++) if (s[i] > SCALE_GAP * s[i + 1]) return s[i + 1];
+                return null;
+            };
+            const ru = regular(up), rd = regular(down);
+            if (ru == null && rd == null) return null;
+            // the axis ends on a round value a little beyond the largest week shown (1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 × a power of ten)
+            const nice = v => { if (!v) return 0; const p = 10 ** Math.floor(Math.log10(v)); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(m => m * p >= v) * p; };
+            const largest = vals => Math.max(0, ...vals.map(Math.abs));
+            return { up, down, ymax: nice((ru ?? largest(up)) * 1.08), ymin: -nice((rd ?? largest(down)) * 1.08) };
+        }
+        // The scope line's note on the scale; also sets the chart's switch
+        function scaleNote(id, labels) {
+            const c = scaleCuts[id];
+            document.querySelectorAll(`[data-scale-chart="${id}"] [data-scale]`).forEach(b => {
+                const on = (b.dataset.scale === 'zoom') === scaleZoom[id];
+                b.classList.toggle('seg-active', on); b.setAttribute('aria-pressed', on);
+            });
+            const n = c ? labels.filter((_, i) => c.up[i] > c.ymax || c.down[i] < c.ymin).length : 0;
+            return c ? ` · scaled to typical weeks: ${n} week${n === 1 ? '' : 's'} cut at the edge (▲ ▼)` : scaleZoom[id] ? ' · no week stands out in this range' : '';
+        }
+        // Marks on the weeks cut at the edge: a pill in the style of the legend buttons (dark fill over the bar, faint outline,
+        // secondary ink) with the week's total
+        const cutMarks = {
+            id: 'cutMarks',
             afterDatasetsDraw(chart) {
-                const c = breakdownCut;
+                const c = scaleCuts[chart.canvas.id];
                 if (!c) return;
                 const { ctx, chartArea: a, scales: { x } } = chart;
                 ctx.save();
                 ctx.font = '600 10px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
                 ctx.textBaseline = 'middle';
-                // A pill in the style of the legend buttons: dark fill over the bar, faint outline, secondary ink
                 const mark = (i, text, y) => {
                     const px = x.getPixelForValue(i), w = ctx.measureText(text).width + 12, h = 16;
                     const left = Math.min(Math.max(px - w / 2, a.left), a.right - w);
@@ -1833,10 +1872,21 @@
                     ctx.strokeStyle = 'rgba(255, 255, 255, .14)'; ctx.lineWidth = 1; ctx.stroke();
                     ctx.fillStyle = css('--ink-2'); ctx.fillText(text, left + 6, y + .5);
                 };
-                c.up.forEach((v, i) => { if (v > c.ymax) mark(i, `▲ ${usd(v, 0)}`, a.top + 11); });
-                c.down.forEach((v, i) => { if (v < c.ymin) mark(i, `▼ ${usd(v, 0)}`, a.bottom - 11); });
+                c.up.forEach((v, i) => { if (v > c.ymax) mark(i, `▲ ${c.label(v)}`, a.top + 11); });
+                c.down.forEach((v, i) => { if (v < c.ymin) mark(i, `▼ ${c.label(v)}`, a.bottom - 11); });
                 ctx.restore();
             }
+        };
+        // Weeks with an event the parts cannot show by themselves, explained in that week's tooltip (key: Monday 00:00 UTC). The
+        // function gets the week's oracle-gap part from redemptions with a reliable reference and from those with a distorted one.
+        // On 29 Oct 2026 every tagged redemption was an on-chain distortion; in other weeks the tag also marks real oracle lags
+        const BREAKDOWN_EVENTS = {
+            [Date.UTC(2026, 9, 26)]: (reliable, distorted) => [
+                `29 Oct: about $${compact(Math.round(distorted / 1e3) * 1e3)} of the oracle-gap part came from ETH`,
+                'sold into on-chain pools priced up to 21% above exchange prices',
+                'during heavy USDT selling; Liquity\'s oracle stayed within 1% of exchanges.',
+                `Real oracle gap this week: about $${compact(Math.round(reliable / 1e3) * 1e3)}.`
+            ]
         };
         const BREAKDOWN_NOTE = 'Net profit (white line), redemption fee, builder tips and gas are measured: the net profit from each redeemer\'s own '
             + 'transfers, the rest from the transactions themselves, valued at Liquity\'s oracle price. The two sources are estimates: the BOLD discount '
@@ -1858,31 +1908,21 @@
                 borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, tension: 0, order: 1 });
             const total = k => priced.reduce((t, r) => t + k(r), 0);
             $('breakdownTotal').innerText = `${usd(total(r => r.net_profit_usd), 0)} net`;
-            // Zoom: each week's stack of the parts shown, above and below zero; weeks beyond BREAKDOWN_OUTLIER × the 90th-percentile
-            // week on a side are left out of that side's range
+            // Typical weeks: each week's stack of the parts shown, above and below zero
             const shown = datasets.filter(d => d.type === 'bar' && !d.hidden);
             const up = labels.map((_, i) => shown.reduce((a, d) => a + Math.max(d.data[i], 0), 0));
             const down = labels.map((_, i) => shown.reduce((a, d) => a + Math.min(d.data[i], 0), 0));
-            const range = vals => {
-                const s = vals.map(Math.abs).filter(v => v > 0).sort((a, b) => a - b);
-                if (!s.length) return null;
-                if (s.length < 2) return null;
-                // the 90th-percentile week; in ranges under 10 weeks, the second largest
-                const cut = BREAKDOWN_OUTLIER * s[s.length >= 10 ? Math.floor((s.length - 1) * 0.9) : s.length - 2];
-                return { cut, max: Math.max(...s.filter(v => v <= cut)) };
+            const cut = scaleZoom.breakdownChart ? typicalScale(up, down) : null;
+            scaleCuts.breakdownChart = cut && { ...cut, label: v => usd(v, 0) };
+            $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote('breakdownChart', labels);
+            // The note of an annotated week, with its oracle-gap part split by reference quality
+            const eventNote = i => {
+                const event = BREAKDOWN_EVENTS[labels[i]];
+                if (!event) return [];
+                const gap = BREAKDOWN[0][2], week = priced.filter(r => mondayOf(r.timestamp) === labels[i]);
+                const sum = list => list.reduce((t, r) => t + gap(r), 0);
+                return event(sum(week.filter(r => !r.ref_distorted)), sum(week.filter(r => r.ref_distorted)));
             };
-            const ru = range(up), rd = range(down);
-            const outlying = (ru && up.some(v => v > ru.cut)) || (rd && down.some(v => -v > rd.cut));
-            // the zoomed axis ends on a round value a little beyond the largest regular week (1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 × a power of ten)
-            const nice = v => { if (!v) return 0; const p = 10 ** Math.floor(Math.log10(v)); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(m => m * p >= v) * p; };
-            breakdownCut = breakdownZoom && outlying ? { up, down, ymax: nice((ru ? ru.max : 0) * 1.08), ymin: -nice((rd ? rd.max : 0) * 1.08) } : null;
-            const cutWeeks = breakdownCut ? labels.filter((_, i) => up[i] > breakdownCut.ymax || down[i] < breakdownCut.ymin).length : 0;
-            $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}`
-                + (breakdownCut ? ` · scaled to typical weeks: ${cutWeeks} week${cutWeeks === 1 ? '' : 's'} cut at the edge (▲ ▼)` : breakdownZoom ? ' · no week stands out in this range' : '');
-            $('breakdownScale').querySelectorAll('[data-scale]').forEach(b => {
-                const on = (b.dataset.scale === 'zoom') === breakdownZoom;
-                b.classList.toggle('seg-active', on); b.setAttribute('aria-pressed', on);
-            });
             $('breakdownInfo').innerHTML = infoTip(BREAKDOWN_NOTE, 'Weekly breakdown').replace('class="info-tip"', 'class="info-tip below"');
             // Legend with each part's total in the range (they add up to the net total); each entry turns its series on and off
             const toggle = (label, swatch, extra = '') => {
@@ -1896,7 +1936,7 @@
             upsertChart('breakdownChart', {
                 type: 'bar',
                 data: { labels, datasets },
-                plugins: [breakdownCutMarks],
+                plugins: [cutMarks],
                 options: {
                     maintainAspectRatio: false,
                     animation: false,
@@ -1905,15 +1945,17 @@
                         legend: { display: false },
                         tooltip: {
                             itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // legend order, net profit (the last dataset) at the bottom
+                            footerFont: { weight: 'normal', size: 10 }, footerColor: css('--muted'), footerMarginTop: 8,
                             callbacks: {
                                 title: items => 'Week of ' + date(labels[items[0].dataIndex]),
-                                label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`
+                                label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`,
+                                footer: items => eventNote(items[0].dataIndex)
                             }
                         }
                     },
                     scales: {
                         x: { stacked: true, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 10, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
-                        y: { stacked: true, ...(breakdownCut ? { min: breakdownCut.ymin, max: breakdownCut.ymax } : {}), ticks: { callback: v => usd(v, 0) },
+                        y: { stacked: true, ...(cut ? { min: cut.ymin, max: cut.ymax } : {}), ticks: { callback: v => usd(v, 0) },
                             border: { display: false }, afterFit: a => { a.width = Y_AXIS_WIDTH; },
                             grid: { color: ctx => ctx.tick.value === 0 ? css('--muted') : css('--grid'), drawTicks: false } }
                     }
@@ -1947,13 +1989,14 @@
             });
         }
 
-        $('breakdownScale').addEventListener('click', e => {
-            const scale = e.target.closest('[data-scale]')?.dataset.scale;
-            if (!scale || (scale === 'zoom') === breakdownZoom) return;
-            breakdownZoom = scale === 'zoom';
-            const [from, to] = rangeBounds();
-            renderBreakdown(chartRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
-        });
+        // Scale switches of the weekly charts, one per chart
+        document.querySelectorAll('[data-scale-chart]').forEach(group => group.addEventListener('click', e => {
+            const scale = e.target.closest('[data-scale]')?.dataset.scale, id = group.dataset.scaleChart;
+            if (!scale || (scale === 'zoom') === scaleZoom[id]) return;
+            scaleZoom[id] = scale === 'zoom';
+            const [from, to] = rangeBounds(), rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
+            if (id === 'breakdownChart') renderBreakdown(rows, from, to); else renderWeeklyChart(id, rows, from, to);
+        }));
 
         $('breakdownLegend').addEventListener('click', e => {
             const part = e.target.closest('[data-part]')?.dataset.part;
@@ -1963,14 +2006,24 @@
             renderBreakdown(chartRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
         });
 
-        function renderWeeklyChart(id, rows, value, color, unitLabel, from, to) {
-            const { labels, data } = weekly(rows, value, from, to);
+        // The two weekly bar charts: value per redemption, colour, tooltip label, label of a week cut at the edge, scope line
+        const WEEKLY_CHARTS = {
+            volumeChart: { value: r => r.amount, color: '--series-1', tip: v => `${fmt(v)} BOLD`, mark: v => `${compact(v)} BOLD`, scope: 'volumeScope' },
+            profitChart: { value: r => r.net_profit_usd, color: '--series-3', tip: v => usd(v), mark: v => usd(v, 0), scope: 'profitScope' }
+        };
+        function renderWeeklyChart(id, rows, from, to) {
+            const cfg = WEEKLY_CHARTS[id];
+            const { labels, data } = weekly(rows, cfg.value, from, to);
+            const cut = scaleZoom[id] ? typicalScale(data.map(v => Math.max(v, 0)), data.map(v => Math.min(v, 0))) : null;
+            scaleCuts[id] = cut && { ...cut, label: cfg.mark };
+            $(cfg.scope).innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote(id, labels);
             upsertChart(id, {
                 type: 'bar',
                 data: {
                     labels,
-                    datasets: [{ data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9 }]
+                    datasets: [{ data, backgroundColor: css(cfg.color), borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9 }]
                 },
+                plugins: [cutMarks],
                 options: {
                     maintainAspectRatio: false,
                     animation: false,
@@ -1978,12 +2031,12 @@
                         legend: { display: false },
                         tooltip: { callbacks: {
                             title: items => 'Week of ' + date(labels[items[0].dataIndex]),
-                            label: item => ' ' + unitLabel(item.parsed.y)
+                            label: item => ' ' + cfg.tip(item.parsed.y)
                         } }
                     },
                     scales: {
                         x: { ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
-                        y: { ticks: { callback: v => compact(v) }, border: { display: false } }
+                        y: { ...(cut ? { min: cut.ymin, max: cut.ymax } : {}), ticks: { callback: v => compact(v) }, border: { display: false } }
                     }
                 }
             });
@@ -2008,14 +2061,13 @@
             const [from, to] = rangeBounds();
             const rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
             renderPriceChart(rows, from, to);
-            renderWeeklyChart('volumeChart', rows, r => r.amount, css('--series-1'), v => `${fmt(v)} BOLD`, from, to);
-            renderWeeklyChart('profitChart', rows, r => r.net_profit_usd, css('--series-3'), v => usd(v), from, to);
+            renderWeeklyChart('volumeChart', rows, from, to);
+            renderWeeklyChart('profitChart', rows, from, to);
             renderBreakdown(rows, from, to);
             // Totals of exactly what the two charts plot (rows without a value are left out, as in the bars)
             const sumOf = key => rows.reduce((t, r) => t + (r[key] ?? 0), 0);
             $('volumeTotal').innerText = `${compact(sumOf('amount'))} BOLD`;
             $('profitTotal').innerText = `${usd(sumOf('net_profit_usd'), 0)} total`;
-            $('volumeScope').innerText = $('profitScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
             renderBots(rows, from, to);
             renderAnatomy(rows, from, to);
             renderBatches();
@@ -2371,7 +2423,7 @@
             ['Data sources and verification.', 'Token transfers come from each transaction\'s receipt, and ETH moved inside it from Alchemy\'s transfer index, with the duplicate entries that index sometimes returns removed. Where the index misses a transaction\'s internal transfers, they are read from Etherscan. In October 2026 every measured result was recomputed independently from Etherscan\'s transaction traces, with no difference.'],
             ['When the estimate is shown.', 'A redemption keeps the estimate, marked ~, when it leaves a token without a price, or when its measured result differs from the estimate by more than 2% of the BOLD redeemed (and by more than $100) with a reliable price reference, which would point to a flow attributed wrongly. Both are rare. Redemptions below 1 BOLD, whose collateral payout rounds to zero, and those from before a BOLD pool price existed have no estimate and show no profit.'],
             ['Estimates at reference prices.', 'The BOLD discount and the oracle gap are estimates. BOLD is priced at the Curve BOLD/USDC pool\'s mid price in the block before (Uniswap v3, then v4, when Curve has none), so price moves earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured. Collateral is valued at the Uniswap ETH/USDC price at the moment of the redemption (the pool\'s last trade earlier in the block that was not the redeemer\'s own, otherwise its price at the end of the previous block) times the exchange rate of wstETH or rETH, which these tokens can also trade below. Mid prices leave out pool fees (0.04% on Curve, 0.05% on Uniswap v3) and price impact, so the estimated gross profit runs above the measured one, by about 0.1% of the BOLD redeemed in the median; the decomposition shows this difference as its own step. In the Weekly breakdown, the oracle-gap part is the rest of the measured gross profit after the discount and the fee, so it carries this difference too; the oracle gap shown per redemption is the reference estimate itself.'],
-            ['Distorted references.', 'The estimates rely on a single pool, Uniswap ETH/USDC, as the market reference, and that pool can trade far from the wider ETH market for a while, as on 29 October 2026, when large stablecoin sales moved it sharply. When it strays more than 3% from Liquity\'s oracle price, the oracle gap is shown as distorted and the redemption is left out of the average discount, oracle gap and edge and of the decomposition. Its measured profit does not depend on the reference and is included in all totals.'],
+            ['Distorted references.', 'The estimates use Uniswap ETH/USDC as the market price of ETH. When it differs from Liquity\'s oracle price by more than 3%, the redemption is tagged distorted: its oracle gap is not shown, and it is left out of the average discount, oracle gap and edge and of the decomposition. Two different situations trigger the tag, and the reference alone cannot tell them apart. On-chain ETH prices can move away from the wider market: on 29 October 2026, heavy USDT selling pushed on-chain ETH prices up to 21% above exchange prices (13% in the median at the redemptions) for about 35 minutes, while the oracle stayed within 1% of exchange prices. Or the oracle can lag sharply in a fast market: on 23 March, 7 June and 19 August 2026, exchange prices confirmed gaps of 2–4%. Leaving out the second kind makes the average oracle gap conservative: about 0.92% instead of about 1.0% (redemptions to October 2026). The measured profit of a tagged redemption does not depend on the reference and is included in all totals.'],
             ['Attribution by originating account.', 'Operators running multiple accounts appear as separate entities. The bot classification is heuristic: redemption through a contract, or at least three redemptions.'],
             ['Transaction-level costs.', 'Gas and builder payments cover the entire transaction, including the arbitrageur\'s swaps and builder payments made by contracts outside its own addresses. This is appropriate for profitability analysis but over-attributes costs where a transaction bundles unrelated strategies.'],
             ['Costs outside the redemption.', 'Only successful redemption transactions are recorded. Gas spent on attempts that reverted, for example after losing a race to another bot, and costs outside the chain (capital, infrastructure, payments to builders in separate transactions) are not deducted, so the combined profit of redeemers is an upper bound on what they earned overall. BOLD a redeemer already held is valued at the Curve BOLD/USDC price at the time, not at what it paid for it.']

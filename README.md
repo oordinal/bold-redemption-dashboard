@@ -87,13 +87,14 @@ Each redemption carries two results:
   0.44%; since it only values the profit left over, that moves total profit by about 0.5%. Tokens without a price are ignored below 0.000001 units; above it the redemption is `unpriced`.
 - **Modelled** (`net_profit_usd`, `gross_profit_usd`): collateral at the Uniswap ETH/USDC price minus BOLD at the Curve BOLD/USDC
   price (Uniswap v3, then v4, as fallbacks), minus gas and builder payments. It leaves out pool fees and price impact, so it runs about
-  0.1% of the BOLD redeemed high, and it fails when that single reference pool trades far from the wider ETH market (29 October 2026).
+  0.1% of the BOLD redeemed high, and it fails when on-chain ETH prices move away from the wider market (29 October 2026, during heavy USDT selling).
 
 `queries.js` publishes the measured result as net and gross profit where it exists, the modelled one otherwise (marked ~ on the page,
 also kept as `*_model_usd`), and values gas and builder payments at the oracle price. A redemption keeps the modelled result when it
 leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed (and $100) without a distorted reference
-(`review`). The reference counts as distorted when Uniswap ETH/USDC strays more than 3% from the oracle price; such redemptions show no
-oracle gap and are left out of the averages. The methodology's decomposition sums the estimate's parts (`ref_discount_usd`,
+(`review`). The reference counts as distorted when Uniswap ETH/USDC strays more than 3% from the oracle price, which happens both when on-chain
+prices leave the wider market (29 Oct 2026) and when the oracle lags sharply in a fast market (23 Mar, 7 Jun, 19 Aug 2026, confirmed
+against Coinbase); such redemptions show no oracle gap and are left out of the averages. The methodology's decomposition sums the estimate's parts (`ref_discount_usd`,
 `ref_fee_usd`, `ref_gross_model_usd`) and the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions, the
 non-distorted ones with a profit figure, so that its steps reconcile exactly.
 
