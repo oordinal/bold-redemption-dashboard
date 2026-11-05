@@ -242,56 +242,42 @@
                 <span aria-hidden="true">→</span>
                 <input id="rangeTo" type="date" class="date-in" aria-label="Chart range end">
             </div>
-            <span class="text-xs lg:ml-auto" style="color: var(--muted)">Applies to the charts, the bot leaderboard and the cards below. Tiles and feed cover every redemption.</span>
+            <div id="scaleSwitch" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale of the weekly charts">
+                <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
+                <button class="seg" data-scale="zoom" data-tip="The weekly charts scaled to the regular weeks; a week far larger than the rest runs up to a dotted line marking the chart's highest week, with a break mark">Typical weeks</button>
+            </div>
+            <span class="text-xs lg:ml-auto" style="color: var(--muted)">Applies to the charts, the bot leaderboard and the cards below.</span>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <div class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                     <h2 class="font-semibold">Weekly BOLD redeemed</h2>
-                    <div class="flex items-center gap-5">
-                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="volumeChart">
-                            <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
-                            <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its total">Typical weeks</button>
-                        </div>
-                        <span id="volumeTotal" class="text-xs mono" style="color: var(--muted)"></span>
-                    </div>
+                    <span id="volumeTotal" class="text-xs mono" style="color: var(--muted)"></span>
                 </div>
                 <p class="text-xs mb-4" style="color: var(--muted)">BOLD redeemed per week, Monday to Sunday (UTC)<br><span id="volumeScope"></span></p>
-                <div class="relative h-56"><canvas id="volumeChart"></canvas></div>
+                <div class="relative h-64"><canvas id="volumeChart"></canvas></div>
             </div>
             <div class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                     <h2 class="font-semibold">Weekly net profit</h2>
-                    <div class="flex items-center gap-5">
-                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="profitChart">
-                            <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
-                            <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its total">Typical weeks</button>
-                        </div>
-                        <span id="profitTotal" class="text-xs mono" style="color: var(--muted)"></span>
-                    </div>
+                    <span id="profitTotal" class="text-xs mono" style="color: var(--muted)"></span>
                 </div>
                 <p class="text-xs mb-4" style="color: var(--muted)">USD, after gas and builder tips<br><span id="profitScope"></span></p>
-                <div class="relative h-56"><canvas id="profitChart"></canvas></div>
+                <div class="relative h-64"><canvas id="profitChart"></canvas></div>
             </div>
         </div>
 
         <div class="card p-5 md:p-6 mt-6">
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                 <h2 class="font-semibold flex items-center">Weekly breakdown<span id="breakdownInfo" class="inline-flex items-center"></span></h2>
-                <div class="flex items-center gap-5">
-                    <div id="breakdownScale" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Scale" data-scale-chart="breakdownChart">
-                        <button class="seg" data-scale="full" data-tip="Every week at its real size">Full scale</button>
-                        <button class="seg" data-scale="zoom" data-tip="Scaled to the regular weeks; a week far larger than the rest is cut at the edge and marked with its totals">Typical weeks</button>
-                    </div>
-                    <span id="breakdownTotal" class="text-xs mono" style="color: var(--muted)"></span>
-                </div>
+                <span id="breakdownTotal" class="text-xs mono" style="color: var(--muted)"></span>
             </div>
             <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 mb-4">
                 <p class="text-xs" style="color: var(--muted)">USD per week: sources of profit above zero, costs below, and the net profit that remains<br><span id="breakdownScope"></span></p>
                 <div id="breakdownLegend" class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs" style="color: var(--ink-2)"></div>
             </div>
-            <div class="relative h-72"><canvas id="breakdownChart"></canvas></div>
+            <div class="relative h-80"><canvas id="breakdownChart"></canvas></div>
             <div class="mt-12 pt-8" style="border-top: 1px solid rgba(255,255,255,.06)">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
                     <span class="kicker">Net profit per BOLD redeemed</span>
@@ -1820,13 +1806,14 @@
         // Both panels reserve the same width for their y axis, so their weeks line up exactly
         const Y_AXIS_WIDTH = 72;
         const hiddenParts = new Set();
-        // "Typical weeks" scale of the weekly charts: each chart shows every week at its real size, or zooms to the regular weeks. On
-        // each side of zero the weeks are ranked by size; the weeks above the first jump among the three largest, where a week is more
-        // than SCALE_GAP times the next one, are outlying. They are cut at the edge of the chart and marked with their total (the
-        // tooltip keeps the full values); every other week keeps its real size
+        // "Typical weeks" scale of the weekly charts, switched for all three in the chart range bar: each chart shows every week at its
+        // real size, or zooms to the regular weeks. On each side of zero the weeks are ranked by size; the weeks above the first jump
+        // among the three largest, where a week is more than SCALE_GAP times the next one, are outlying. The axis then covers the
+        // regular weeks, with guides at a round step, plus one more step to a dotted line that stands for the chart's highest (or
+        // lowest) week; outlying bars run up to that line with a break mark (the tooltip keeps the full values)
         const SCALE_ZOOM_DEFAULT = true, SCALE_GAP = 3;
-        const scaleZoom = { breakdownChart: SCALE_ZOOM_DEFAULT, volumeChart: SCALE_ZOOM_DEFAULT, profitChart: SCALE_ZOOM_DEFAULT };
-        const scaleCuts = {};                              // chart id -> { up, down, ymin, ymax, label } while zoomed with an outlying week
+        let scaleZoom = SCALE_ZOOM_DEFAULT;
+        const scaleCuts = {};                              // chart id -> zoomed axis (typicalScale) and its labels, while a week stands out
         // The zoomed axis for a chart's weekly stacks above (up) and below (down) zero, or null when no week stands out
         function typicalScale(up, down) {
             // the largest regular week on a side if some weeks stand out there, else null
@@ -1837,43 +1824,93 @@
             };
             const ru = regular(up), rd = regular(down);
             if (ru == null && rd == null) return null;
-            // the axis ends on a round value a little beyond the largest week shown (1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 × a power of ten)
+            // the regular range ends on a round value a little beyond the largest week shown (1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 × a power of ten)
             const nice = v => { if (!v) return 0; const p = 10 ** Math.floor(Math.log10(v)); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(m => m * p >= v) * p; };
             const largest = vals => Math.max(0, ...vals.map(Math.abs));
-            return { up, down, ymax: nice((ru ?? largest(up)) * 1.08), ymin: -nice((rd ?? largest(down)) * 1.08) };
+            const ymax = nice((ru ?? largest(up)) * 1.08), ymin = -nice((rd ?? largest(down)) * 1.08);
+            // guides: the largest step of 1, 2, 2.5 or 5 × a power of ten that divides both ends of the range and gives at least four
+            // guides on the larger side; the dotted line lies one step beyond the last guide
+            const span = Math.max(ymax, -ymin), divides = (v, st) => Math.abs(v / st - Math.round(v / st)) < 1e-9;
+            let step = null;
+            for (let p = 10 ** Math.floor(Math.log10(span)); !step && p > 1e-6; p /= 10)
+                step = [5, 2.5, 2, 1].map(m => m * p).find(st => span / st >= 4 - 1e-9 && divides(ymax, st) && divides(ymin, st)) ?? null;
+            const ticks = [];
+            for (let i = Math.round(ymin / step); i <= Math.round(ymax / step); i++) ticks.push({ value: i * step || 0 });
+            return { up, down, ymax, ymin, ticks, top: ru == null ? ymax : ymax + step, bottom: rd == null ? ymin : ymin - step,
+                highest: Math.max(...up), lowest: Math.min(...down) };
         }
-        // The scope line's note on the scale; also sets the chart's switch
+        // The y axis while zoomed: the regular range, with its guides, plus one step to the dotted line
+        function scaleAxis(cut, tickLabel, fitLabel = true) {
+            if (!cut) return { ticks: { callback: tickLabel } };
+            // widen the axis if the dotted line's value is wider than its tick labels
+            const afterFit = axis => {
+                const o = axis.options, ctx = axis.ctx, labels = [];
+                if (cut.top > cut.ymax) labels.push(tickLabel(roughly(cut.highest)));
+                if (cut.bottom < cut.ymin) labels.push(tickLabel(roughly(cut.lowest)));
+                ctx.save(); ctx.font = Chart.helpers?.toFont ? Chart.helpers.toFont(o.ticks.font).string : `${Chart.defaults.font.size}px ${Chart.defaults.font.family}`;
+                const w = Math.max(...labels.map(t => ctx.measureText(t).width)); ctx.restore();
+                axis.width = Math.max(axis.width, w + (o.grid.drawTicks === false ? 0 : o.grid.tickLength) + o.ticks.padding + 4);
+            };
+            return { min: cut.bottom, max: cut.top, ticks: { callback: tickLabel }, afterBuildTicks: axis => { axis.ticks = cut.ticks.map(t => ({ ...t })); },
+                ...(fitLabel ? { afterFit } : {}) };
+        }
+        // A value written on the axis for the dotted line: rounded to two significant digits (the tooltip has the exact one)
+        const roughly = v => { if (!v) return 0; const p = 10 ** (Math.floor(Math.log10(Math.abs(v))) - 1); return Math.round(v / p) * p; };
+        // The scope line's note on the scale
         function scaleNote(id, labels) {
             const c = scaleCuts[id];
-            document.querySelectorAll(`[data-scale-chart="${id}"] [data-scale]`).forEach(b => {
-                const on = (b.dataset.scale === 'zoom') === scaleZoom[id];
-                b.classList.toggle('seg-active', on); b.setAttribute('aria-pressed', on);
-            });
-            const n = c ? labels.filter((_, i) => c.up[i] > c.ymax || c.down[i] < c.ymin).length : 0;
-            return c ? ` · scaled to typical weeks: ${n} week${n === 1 ? '' : 's'} cut at the edge (▲ ▼)` : scaleZoom[id] ? ' · no week stands out in this range' : '';
+            return c ? '' : scaleZoom ? ' · no week stands out in this range' : '';
         }
-        // Marks on the weeks cut at the edge: a pill in the style of the legend buttons (dark fill over the bar, faint outline,
-        // secondary ink) with the week's total
+        // The dotted line at the chart's highest (lowest) week with its value on the axis, a break mark on each bar that runs off the
+        // scale, and, when several do, a pill with the total of those short of the line
         const cutMarks = {
             id: 'cutMarks',
+            // the dotted line, in the grid's colour and width, and its value placed and set like the axis's tick labels: before the bars
+            beforeDatasetsDraw(chart) {
+                const c = scaleCuts[chart.canvas.id];
+                if (!c) return;
+                const { ctx, chartArea: a, scales: { y } } = chart;
+                const yo = y.options, tickLength = yo.grid.drawTicks === false ? 0 : yo.grid.tickLength;
+                ctx.save();
+                const line = (edge, value) => {
+                    ctx.setLineDash([3, 3]); ctx.lineWidth = 1; ctx.strokeStyle = css('--grid');
+                    ctx.beginPath(); ctx.moveTo(a.left, edge); ctx.lineTo(a.right, edge); ctx.stroke(); ctx.setLineDash([]);
+                    ctx.font = Chart.helpers?.toFont ? Chart.helpers.toFont(yo.ticks.font).string : `${Chart.defaults.font.size}px ${Chart.defaults.font.family}`;
+                    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = yo.ticks.color;
+                    ctx.fillText(c.axis(roughly(value)), y.right - tickLength - yo.ticks.padding, edge);
+                };
+                if (c.top > c.ymax) line(a.top + .5, c.highest);
+                if (c.bottom < c.ymin) line(a.bottom - .5, c.lowest);
+                ctx.restore();
+            },
+            // a break mark on each bar that runs off the scale and, when several do, a pill with the total of those short of the line
             afterDatasetsDraw(chart) {
                 const c = scaleCuts[chart.canvas.id];
                 if (!c) return;
-                const { ctx, chartArea: a, scales: { x } } = chart;
+                const { ctx, chartArea: a, scales: { x, y } } = chart;
+                const meta = chart.data.datasets.map((_, k) => chart.getDatasetMeta(k)).find(m => m.type === 'bar' && !m.hidden);
+                const bar = i => { const el = meta?.data[i]; return el ? { cx: el.x, w: el.width } : { cx: x.getPixelForValue(i), w: 12 }; };
+                const card = '#101318';
                 ctx.save();
-                ctx.font = '600 10px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
-                ctx.textBaseline = 'middle';
-                const mark = (i, text, y) => {
-                    const px = x.getPixelForValue(i), w = ctx.measureText(text).width + 12, h = 16;
-                    const left = Math.min(Math.max(px - w / 2, a.left), a.right - w);
-                    ctx.beginPath(); ctx.roundRect(left + .5, y - h / 2 + .5, w - 1, h - 1, 8);
-                    ctx.fillStyle = 'rgba(12, 15, 20, .94)'; ctx.fill();
-                    ctx.fillStyle = 'rgba(255, 255, 255, .04)'; ctx.fill();
-                    ctx.strokeStyle = 'rgba(255, 255, 255, .14)'; ctx.lineWidth = 1; ctx.stroke();
-                    ctx.fillStyle = css('--ink-2'); ctx.fillText(text, left + 6, y + .5);
+                const side = (top, extreme, values, isCut) => {
+                    const edge = top ? a.top + .5 : a.bottom - .5;
+                    const mid = (y.getPixelForValue(top ? c.ymax : c.ymin) + edge) / 2;          // halfway through the band
+                    values.forEach((v, i) => {
+                        if (!isCut(v)) return;
+                        const { cx, w } = bar(i), half = w / 2 + 2;
+                        ctx.strokeStyle = card; ctx.lineWidth = 2.5;
+                        for (const off of [-3, 3]) { ctx.beginPath(); ctx.moveTo(cx - half, mid + off + 2.5); ctx.lineTo(cx + half, mid + off - 2.5); ctx.stroke(); }
+                        if (v === extreme) return;
+                        const text = `${top ? '▲' : '▼'} ${c.label(v)}`;
+                        ctx.font = '600 10px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                        const tw = ctx.measureText(text).width + 12, h = 16, left = Math.min(Math.max(cx - tw / 2, a.left), a.right - tw), py = top ? edge + 13 : edge - 13;
+                        ctx.beginPath(); ctx.roundRect(left + .5, py - h / 2 + .5, tw - 1, h - 1, 8);
+                        ctx.fillStyle = 'rgba(12, 15, 20, .94)'; ctx.fill(); ctx.strokeStyle = 'rgba(255, 255, 255, .14)'; ctx.lineWidth = 1; ctx.stroke();
+                        ctx.fillStyle = css('--ink-2'); ctx.fillText(text, left + 6, py + .5);
+                    });
                 };
-                c.up.forEach((v, i) => { if (v > c.ymax) mark(i, `▲ ${c.label(v)}`, a.top + 11); });
-                c.down.forEach((v, i) => { if (v < c.ymin) mark(i, `▼ ${c.label(v)}`, a.bottom - 11); });
+                if (c.top > c.ymax) side(true, c.highest, c.up, v => v > c.ymax);
+                if (c.bottom < c.ymin) side(false, c.lowest, c.down, v => v < c.ymin);
                 ctx.restore();
             }
         };
@@ -1893,8 +1930,9 @@
             + 'at the Curve BOLD/USDC price in the block before, and the oracle gap as the rest of the measured gross profit, so it also carries how much better or '
             + 'worse a bot traded than those reference prices. The parts add up to the net profit. When BOLD traded above $1 the discount is negative. '
             + 'Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
-            + 'week; weeks without redemptions are bridged. "Typical weeks" scales the chart to the regular weeks: a week far larger than the '
-            + 'rest is cut at the edge and marked with its totals above and below zero; hover over it for its full values.';
+            + 'week; weeks without redemptions are bridged. "Typical weeks" (switch in the chart range bar) scales the weekly charts to the regular '
+            + 'weeks: a week far larger than the rest runs up to a dotted line that marks the chart\'s highest week (and, below zero, its lowest), '
+            + 'with that value on the axis and a break mark on the bar; hover over it for its full values.';
         function renderBreakdown(rows, from, to) {
             const priced = rows.filter(r => r.net_profit_usd != null);
             const datasets = BREAKDOWN.map(([label, color, value]) => ({
@@ -1912,8 +1950,8 @@
             const shown = datasets.filter(d => d.type === 'bar' && !d.hidden);
             const up = labels.map((_, i) => shown.reduce((a, d) => a + Math.max(d.data[i], 0), 0));
             const down = labels.map((_, i) => shown.reduce((a, d) => a + Math.min(d.data[i], 0), 0));
-            const cut = scaleZoom.breakdownChart ? typicalScale(up, down) : null;
-            scaleCuts.breakdownChart = cut && { ...cut, label: v => usd(v, 0) };
+            const cut = scaleZoom ? typicalScale(up, down) : null;
+            scaleCuts.breakdownChart = cut && { ...cut, label: v => usd(v, 0), axis: v => usd(v, 0) };
             $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote('breakdownChart', labels);
             // The note of an annotated week, with its oracle-gap part split by reference quality
             const eventNote = i => {
@@ -1954,10 +1992,12 @@
                         }
                     },
                     scales: {
-                        x: { stacked: true, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 10, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
-                        y: { stacked: true, ...(cut ? { min: cut.ymin, max: cut.ymax } : {}), ticks: { callback: v => usd(v, 0) },
-                            border: { display: false }, afterFit: a => { a.width = Y_AXIS_WIDTH; },
-                            grid: { color: ctx => ctx.tick.value === 0 ? css('--muted') : css('--grid'), drawTicks: false } }
+                        // when the chart is cut below zero its lower edge is the dotted line, so the axis line is left out
+                        x: { stacked: true, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 10, autoSkip: true }, grid: { display: false },
+                            border: { color: css('--grid'), display: !(cut && cut.bottom < cut.ymin) } },
+                        y: { stacked: true, border: { display: false }, afterFit: a => { a.width = Y_AXIS_WIDTH; },
+                            grid: { color: ctx => ctx.tick.value === 0 ? css('--muted') : css('--grid'), drawTicks: false },
+                            ...scaleAxis(cut, v => usd(v, 0), false) }
                     }
                 }
             });
@@ -1989,14 +2029,24 @@
             });
         }
 
-        // Scale switches of the weekly charts, one per chart
-        document.querySelectorAll('[data-scale-chart]').forEach(group => group.addEventListener('click', e => {
-            const scale = e.target.closest('[data-scale]')?.dataset.scale, id = group.dataset.scaleChart;
-            if (!scale || (scale === 'zoom') === scaleZoom[id]) return;
-            scaleZoom[id] = scale === 'zoom';
+        // Scale switch in the chart range bar, applied to the three weekly charts
+        function setScaleButtons() {
+            $('scaleSwitch').querySelectorAll('[data-scale]').forEach(b => {
+                const on = (b.dataset.scale === 'zoom') === scaleZoom;
+                b.classList.toggle('seg-active', on); b.setAttribute('aria-pressed', on);
+            });
+        }
+        setScaleButtons();
+        $('scaleSwitch').addEventListener('click', e => {
+            const scale = e.target.closest('[data-scale]')?.dataset.scale;
+            if (!scale || (scale === 'zoom') === scaleZoom) return;
+            scaleZoom = scale === 'zoom';
+            setScaleButtons();
             const [from, to] = rangeBounds(), rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
-            if (id === 'breakdownChart') renderBreakdown(rows, from, to); else renderWeeklyChart(id, rows, from, to);
-        }));
+            renderWeeklyChart('volumeChart', rows, from, to);
+            renderWeeklyChart('profitChart', rows, from, to);
+            renderBreakdown(rows, from, to);
+        });
 
         $('breakdownLegend').addEventListener('click', e => {
             const part = e.target.closest('[data-part]')?.dataset.part;
@@ -2014,8 +2064,8 @@
         function renderWeeklyChart(id, rows, from, to) {
             const cfg = WEEKLY_CHARTS[id];
             const { labels, data } = weekly(rows, cfg.value, from, to);
-            const cut = scaleZoom[id] ? typicalScale(data.map(v => Math.max(v, 0)), data.map(v => Math.min(v, 0))) : null;
-            scaleCuts[id] = cut && { ...cut, label: cfg.mark };
+            const cut = scaleZoom ? typicalScale(data.map(v => Math.max(v, 0)), data.map(v => Math.min(v, 0))) : null;
+            scaleCuts[id] = cut && { ...cut, label: cfg.mark, axis: v => compact(v) };
             $(cfg.scope).innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote(id, labels);
             upsertChart(id, {
                 type: 'bar',
@@ -2036,7 +2086,7 @@
                     },
                     scales: {
                         x: { ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
-                        y: { ...(cut ? { min: cut.ymin, max: cut.ymax } : {}), ticks: { callback: v => compact(v) }, border: { display: false } }
+                        y: { border: { display: false }, ...scaleAxis(cut, v => compact(v)) }
                     }
                 }
             });
