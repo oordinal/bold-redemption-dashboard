@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS redemptions (
     oracle_eth_usd REAL,             -- ETH/USD used to value them: Liquity's WETH oracle price at the redemption (Chainlink ETH/USD)
     actual_net_usd REAL,             -- what the redeemer kept: flows in - flows out (builder payments included) - gas; payouts to its own wallets count as kept
     actual_gross_usd REAL,           -- actual_net_usd + gas + every builder payment in the tx
-    actual_status TEXT               -- measured | review (far from the modelled result without a price distortion) | unpriced (a token without a price) | NULL (not yet computed)
+    actual_status TEXT,              -- measured | review (far from the modelled result without a price distortion) | unpriced (a token without a price) | NULL (not yet computed)
+    cex_eth_usd REAL                 -- ETH/USD on the exchanges at the redemption (exchange.js: Coinbase and Bitstamp, 1-minute candles); NULL until filled
 );
 CREATE INDEX IF NOT EXISTS idx_redemptions_block ON redemptions(block);
 CREATE INDEX IF NOT EXISTS idx_redemptions_sender ON redemptions(sender);

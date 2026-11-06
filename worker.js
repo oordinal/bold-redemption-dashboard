@@ -3,6 +3,7 @@ const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const db = require('./db');
+const { fillExchangePrices } = require('./exchange');
 
 // Verified Liquity V2 (relaunch) mainnet addresses; any of them can be overridden in .env
 const DEFAULTS = {
@@ -912,6 +913,14 @@ async function syncData() {
 
         await backfillTroves();
         await backfillActual(caches);
+        // Exchange price of ETH at each redemption (exchange.js); a failure keeps the Uniswap reference for those redemptions
+        try {
+            state.phase = 'reading exchange prices';
+            const r = await fillExchangePrices();
+            if (r.filled || r.left) console.log(`Exchange prices: ${JSON.stringify(r)}`);
+        } catch (e) {
+            console.warn(`Exchange prices not read: ${e.message}`);
+        }
         try {
             await refreshAddresses();
         } catch (e) {

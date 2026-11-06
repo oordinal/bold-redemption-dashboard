@@ -20,7 +20,8 @@ db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 const have = new Set(db.prepare('PRAGMA table_info(redemptions)').all().map(c => c.name));
 for (const [name, type] of [['flash_venue', 'TEXT'], ['bold_src_curve', 'REAL'], ['bold_src_uni_v3', 'REAL'],
     ['bold_src_uni_v4', 'REAL'], ['bold_src_other', 'REAL'], ['bold_src_held', 'REAL'],
-    ['oracle_eth_usd', 'REAL'], ['actual_net_usd', 'REAL'], ['actual_gross_usd', 'REAL'], ['actual_status', 'TEXT']]) {
+    ['oracle_eth_usd', 'REAL'], ['actual_net_usd', 'REAL'], ['actual_gross_usd', 'REAL'], ['actual_status', 'TEXT'],
+    ['cex_eth_usd', 'REAL']]) {
     if (!have.has(name)) db.exec(`ALTER TABLE redemptions ADD COLUMN ${name} ${type}`);
 }
 
