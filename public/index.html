@@ -573,7 +573,7 @@
                         transaction executed by its own contract. The trade is undertaken when the following condition holds:
                     </p>
                     <p class="mono text-white text-[13px] rounded-lg px-4 py-3 inline-block" style="background: rgba(57,135,229,.08); border: 1px solid rgba(57,135,229,.25)">
-                        BOLD discount + oracle gap &gt; redemption fee + pool fees &amp; price impact + gas + builder tip
+                        BOLD discount + oracle gap &gt; redemption fee + trading costs + gas + builder tip
                     </p>
                     <p class="text-xs" style="color: var(--muted)">Percentages in the diagram are shares of the BOLD redeemed, summed over the redemptions with a reliable price reference (section 5); the net margin is the measured net profit over the capital deployed. The oracle-gap edge is earned on the collateral paid out, which is net of the fee, so it runs slightly below the average oracle gap quoted below.</p>
                 </div>
@@ -625,14 +625,14 @@
                     Gross and net profit are measured: for each redemption, from the redeemer's own transfers in the transaction, valued at
                     Liquity's oracle price. The bars before them show where that profit comes from. The redemption fee, gas and builder payments
                     are exact amounts from the transactions. The BOLD discount and the oracle gap are estimates at reference prices: the discount
-                    is the BOLD bought below $1 at the Curve BOLD/USDC price in the block before, and the oracle gap is the collateral's value at its market
-                    price above what Liquity's redemption price paid for it. Together, less the fee, they make the estimated gross profit;
-                    <i>Pool fees &amp; price impact</i> is the measured gross profit minus that estimate, which is what redeemers pay in trading costs that
-                    reference prices do not show. Every step is a sum over the same redemptions, so the steps add up exactly. Green bars are
+                    is the BOLD bought below $1 at the Curve BOLD/USDC price in the block before, and the oracle gap is the collateral's value at ETH's
+                    exchange price (Coinbase and Bitstamp) above what Liquity's redemption price paid for it. Together, less the fee, they make the estimated
+                    gross profit; <i>On-chain vs exchange price</i> is the measured gross profit minus that estimate: what redeemers got on-chain against the
+                    exchange price, which on normal days is their trading costs (pool fees and price impact). Every step is a sum over the same redemptions, so the steps add up exactly. Green bars are
                     sources of profit, red bars costs, blue bars totals, all in USD per 10,000 BOLD redeemed.
                 </p>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramWaterfall" class="min-w-[680px] max-w-[1100px] mx-auto"></div></div>
-                <p class="text-xs mt-3" style="color: var(--muted)">Sums over the redemptions with a reliable price reference, scaled to 10,000 BOLD: those where the market reference stayed within 3% of Liquity's oracle price (<span id="howRefCount">–</span>). Redemptions with a distorted reference, such as those of 29 October 2026, are left out of this decomposition and of the averages above, but included in all profit totals on the dashboard; its margin can therefore differ from the average margin shown on the dashboard.</p>
+                <p class="text-xs mt-3" style="color: var(--muted)">Sums over the redemptions at normal on-chain prices, scaled to 10,000 BOLD: those where Uniswap ETH/USDC stayed within 3% of the exchange price (<span id="howRefCount">–</span>). Redemptions at distorted on-chain prices, such as those of 29 October 2026, are left out of this decomposition and of the averages above, but included in all profit totals on the dashboard, where the Weekly breakdown shows their gain as on-chain vs exchange price; this margin can therefore differ from the average margin shown on the dashboard.</p>
             </section>
 
             <section class="card p-5 md:p-8">
@@ -685,7 +685,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">HEALTH AND RECORD</div>
                         <div class="font-semibold mt-1">Liquidation context and past redemptions</div>
-                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The collateral ratio and liquidation price use Liquity's own price for the branch, as liquidations do; collateral values use the market price (ETH on Uniswap times the LST's exchange rate). The historical liquidation chance is how often ETH fell as far as the liquidation price requires, counted from Coinbase 1-minute prices since May 2025 for every hourly start and the following 7 or 30 days; it is a record of the past, not a forecast; for wstETH and rETH it assumes the token follows ETH.</p><p>A redemption's net cost to the borrower is the collateral removed, at its market price at the time (Liquity's oracle price where the market reference was distorted), minus the debt it repaid; the fee stays in the trove. The value change since compares that collateral with today's price.</p><p>Leverage is collateral value over the trove's equity (collateral value minus debt): the collateral ratio read the other way, and a true leverage only if the borrowed BOLD bought more collateral. The borrowing record comes from every operation on the trove (Liquity's TroveOperation events, read through Etherscan): BOLD borrowed and repaid and collateral added and withdrawn per week, next to the BOLD redeemed from it. A trove is marked as refilling when it was redeemed for at least 10,000 BOLD in the last 30 days and borrowed back at least 80% of it.</p></div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>The collateral ratio and liquidation price use Liquity's own price for the branch, as liquidations do; collateral values use the market price (ETH on Uniswap times the LST's exchange rate). The historical liquidation chance is how often ETH fell as far as the liquidation price requires, counted from Coinbase 1-minute prices since May 2025 for every hourly start and the following 7 or 30 days; it is a record of the past, not a forecast; for wstETH and rETH it assumes the token follows ETH.</p><p>A redemption's net cost to the borrower is the collateral removed, at its exchange price at the time (ETH on Coinbase and Bitstamp × the LST rate; the Uniswap price where none is available), minus the debt it repaid; the fee stays in the trove. The value change since compares that collateral with today's price.</p><p>Leverage is collateral value over the trove's equity (collateral value minus debt): the collateral ratio read the other way, and a true leverage only if the borrowed BOLD bought more collateral. The borrowing record comes from every operation on the trove (Liquity's TroveOperation events, read through Etherscan): BOLD borrowed and repaid and collateral added and withdrawn per week, next to the BOLD redeemed from it. A trove is marked as refilling when it was redeemed for at least 10,000 BOLD in the last 30 days and borrowed back at least 80% of it.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">MANAGERS AND PERMISSIONS</div>
@@ -712,7 +712,7 @@
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">03 · ENRICH</div>
                         <div class="font-semibold mt-1">Pricing and costs</div>
-                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, the Uniswap ETH/USDC trades earlier in block N (for the reference ETH price at the moment of the redemption), and the block's internal ETH transfers (builder payments and the redeemer's ETH flows; read from Etherscan for the rare transaction Alchemy's index misses). The receipt's token transfers and events give the measured profit, the BOLD sources and the flash financing. Newly seen bot contracts are looked up on Etherscan for their deployer, and redeemer addresses on ENS for a name.</p>
+                        <p class="text-xs mt-2 leading-relaxed" style="color: var(--ink-2)">Per transaction: the receipt (sender, gas used, effective gas price), the block (timestamp, base fee, fee recipient), a single Multicall3 call returning all pool prices at block N−1, the Uniswap ETH/USDC trades earlier in block N (the on-chain ETH price at the moment of the redemption), ETH's exchange price from Coinbase and Bitstamp 1-minute candles (the reference for the oracle gap), and the block's internal ETH transfers (builder payments and the redeemer's ETH flows; read from Etherscan for the rare transaction Alchemy's index misses). The receipt's token transfers and events give the measured profit, the BOLD sources and the flash financing. Newly seen bot contracts are looked up on Etherscan for their deployer, and redeemer addresses on ENS for a name.</p>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">04 · SERVE</div>
@@ -749,7 +749,7 @@
         </main>
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
-            <p>Data sources: Curve and Uniswap BOLD/USDC prices from the block preceding each redemption; Uniswap v3 ETH/USDC price at the moment of the redemption (the pool's last trade earlier in the same block), for the estimated discount and oracle gap.</p>
+            <p>Data sources: Curve and Uniswap BOLD/USDC prices from the block preceding each redemption, for the estimated discount; ETH/USD on Coinbase and Bitstamp at the moment of the redemption (1-minute candles), for the estimated oracle gap; Uniswap v3 ETH/USDC at the same moment, for on-chain prices.</p>
             <p class="mt-1">Measured profit from each redemption's own token and ETH transfers, valued at Liquity's oracle price; internal ETH transfers and builder payments from Alchemy, with Etherscan where Alchemy's index misses them; flash financing and BOLD sources from each transaction's own records; contract deployers from Etherscan; names from ENS; trove state from Liquity's contracts after every update; ETH drawdowns from Coinbase. The full methodology is described under “Methodology”.</p>
             <div class="mt-6 pt-5 mx-auto max-w-4xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
                 <span class="kicker">Disclaimer</span><br>
@@ -906,11 +906,11 @@
             if (!$('view-how').classList.contains('hidden')) renderHow();
             const tiles = [
                 ['BOLD redeemed', compact(s.total_bold), `${fmt(s.tx_count)} txs · ${fmt(s.senders)} senders`],
-                ['Net profit', usd(s.net_profit_usd, 0), `${pct(s.avg_margin, 3)} avg margin · measured`, signClass(s.net_profit_usd)],
-                ['Gross profit', usd(s.gross_profit_usd, 0), 'before gas and tips · measured'],
-                ['Gas + builder tips', usd((s.gas_fee_usd || 0) + (s.builder_tip_usd || 0), 0), `${usd(s.gas_fee_usd, 0)} gas · ${usd(s.builder_tip_usd, 0)} tips`],
+                ['Bots\' net profit', usd(s.net_profit_usd, 0), `${pct(s.avg_margin, 3)} avg margin · measured`, signClass(s.net_profit_usd)],
+                ['Bots\' gross profit', usd(s.gross_profit_usd, 0), 'before gas and tips · measured'],
+                ['Bots\' gas + builder tips', usd((s.gas_fee_usd || 0) + (s.builder_tip_usd || 0), 0), `${usd(s.gas_fee_usd, 0)} gas · ${usd(s.builder_tip_usd, 0)} tips`],
                 ['Avg. BOLD discount', pct(s.avg_spread, 3), 'below $1 at redemption · estimate'],
-                ['Avg. oracle gap', pct(s.avg_oracle_gap, 3), 'collateral market vs. oracle · estimate'],
+                ['Avg. oracle gap', pct(s.avg_oracle_gap, 3), 'exchange price vs. oracle · estimate'],
                 ['Avg. redemption fee', pct(s.avg_fee, 3), 'paid in collateral'],
                 ['Last redemption', s.last_redemption ? ago(s.last_redemption) : '–', s.last_redemption ? dateTime(s.last_redemption) : '']
             ];
@@ -1244,7 +1244,7 @@
         const FEED_COLUMNS = [
             ['Tx', null], ['Time', 'timestamp'], ['BOLD', 'amount', true], ['Branches', 'branches'], ['Sender', 'sender'],
             ['Price', 'market_price', true], ['Discount', 'spread', true, 'Estimate: the BOLD discount to $1 at the Curve BOLD/USDC price in the block before'],
-            ['Oracle gap', 'oracle_gap', true, 'Estimate: how far the collateral\'s market price (Uniswap ETH/USDC) sat above Liquity\'s redemption price. Marked "distorted" when that market price strayed more than 3% from Liquity\'s oracle price, so no reliable estimate exists.'],
+            ['Oracle gap', 'oracle_gap', true, 'Estimate: how far the collateral\'s value at ETH\'s exchange price (Coinbase and Bitstamp) sat above Liquity\'s redemption price. Marked "distorted" when on-chain prices strayed more than 3% from the exchanges; such redemptions are left out of the averages.'],
             ['Fee', 'fee_pct', true],
             ['Gross', 'gross_profit_usd', true, 'Measured: net profit plus gas and builder payments. Marked ~ where only the estimate is available.'],
             ['Gas', 'gas_fee_usd', true], ['Tip', 'builder_tip_usd', true],
@@ -1319,7 +1319,7 @@
                     <td class="px-3 py-2" style="color: var(--ink-2)">${etherscan('address', r.sender, short(r.sender))}${r.is_bot ? '<span class="ml-1.5 px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.15); color: #8bb8f0">bot</span>' : ''}</td>
                     <td class="px-3 py-2 text-right">${r.market_price == null ? '–' : '$' + r.market_price.toFixed(4)}</td>
                     <td class="px-3 py-2 text-right">${pct(r.spread, 3)}</td>
-                    <td class="px-3 py-2 text-right">${r.ref_distorted ? DISTORTED_TAG : pct(r.oracle_gap, 3)}</td>
+                    <td class="px-3 py-2 text-right">${r.gap_x_usd == null && r.ref_distorted ? DISTORTED_TAG : pct(r.oracle_gap, 3) + (r.ref_distorted ? ' ' + DISTORTED_TAG : '')}</td>
                     <td class="px-3 py-2 text-right">${pct(r.fee_pct, 3)}</td>
                     <td class="px-3 py-2 text-right">${est(r)}${usd(r.gross_profit_usd)}</td>
                     <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.gas_fee_usd)}</td>
@@ -1339,9 +1339,9 @@
         // A figure that is still the estimate (the redemption has no measured result) is marked ~
         const est = r => r.measured || r.net_profit_usd == null ? '' : '<span class="tip-target" style="color: var(--muted)" data-tip="Estimate: no measured result for this redemption">~</span>';
         const DISTORTED_TAG = '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" '
-            + 'data-tip="The market reference (Uniswap ETH/USDC) was more than 3% from Liquity\'s oracle price at this redemption, so its oracle-gap estimate is set aside: '
-            + 'either on-chain prices had moved away from the wider market, or the oracle lagged sharply in a fast market, and the reference alone cannot tell which. '
-            + 'Profit is measured from the redeemer\'s own transfers and is not affected.">distorted</span>';
+            + 'data-tip="On-chain ETH prices (Uniswap ETH/USDC) were more than 3% from exchange prices at this redemption. The oracle gap is measured against '
+            + 'the exchanges; what the redeemer earned from the on-chain prices shows as &quot;On-chain vs exchange price&quot; in its breakdown. The redemption is '
+            + 'left out of the averages. Profit is measured from the redeemer\'s own transfers and is not affected.">distorted</span>';
 
         const GAS_NOTE = 'Gas used × the block\'s base fee, which is burned by the protocol. It is small because Ethereum base fees have mostly '
             + 'been below 1 gwei since 2025. What the block builder receives is shown separately: the priority fee and any direct ETH payment '
@@ -1524,10 +1524,11 @@
                     <div class="num text-sm text-white mt-0.5">${main}</div>
                     <div class="num text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div>
                 </div>`;
-            // Where this redemption's result came from: the five parts of the Weekly breakdown on one scale. The top bar is the
+            // Where this redemption's result came from: the six parts of the Weekly breakdown on one scale. The top bar is the
             // trade's edge, the bottom bar its costs; the net result fills the shorter bar, so both end at the same point
             const parts = r.net_profit_usd == null || r.market_price == null ? [] : BREAKDOWN.map(([label, color, value]) => ({ label, color, v: value(r) }));
-            const NEGATIVE_LABEL = { 'Oracle gap (est.)': 'Oracle gap (negative, est.)', 'BOLD discount (est.)': 'BOLD premium (above $1, est.)' };
+            const NEGATIVE_LABEL = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)',
+                'On-chain vs exchange price': 'Trading costs vs exchange price' };
             const earned = parts.filter(p => p.v > 0);
             const paid = parts.filter(p => p.v < 0).map(p => ({ ...p, v: -p.v, label: NEGATIVE_LABEL[p.label] || p.label }));
             const sumParts = list => list.reduce((t, p) => t + p.v, 0);
@@ -1790,15 +1791,23 @@
             return { labels, data };
         }
 
-        // Weekly profit breakdown. Per redemption, gross profit = oracle-gap edge + BOLD-discount edge − redemption fee, exactly:
-        // the collateral at the redemption price equals the BOLD redeemed minus the fee, so the discount edge is BOLD × (1 − price)
-        // and the gap edge is the rest. Gas and builder tips then leave the net profit. Only priced redemptions are included.
-        // Five distinct hues, ordered so the segments that touch in the stack (discount on gap, gap against fee across zero,
-        // fee, tips, gas below) stay distinct for every viewer (validated against the card surface). Segments are plain
-        // rectangles, so every join between them is flat.
+        // Weekly profit breakdown. Per redemption, gross profit = oracle-gap edge + on-chain vs exchange price + BOLD-discount edge −
+        // redemption fee, exactly. The discount edge is BOLD × (1 − its pool price); the oracle-gap edge is the collateral at ETH's
+        // exchange price (× the LST rate) minus its value at Liquity's redemption price (gap_x_usd, queries.js); what remains of the
+        // measured gross profit is the difference between the prices the redeemer got on-chain and the exchange price: its trading
+        // costs, or a gain when on-chain prices run above the exchanges. Without an exchange price the oracle-gap part takes the whole
+        // rest and the on-chain part is 0. Gas and builder tips then leave the net profit. Only priced redemptions are included.
+        // Six distinct hues, ordered so the segments that touch in the stack (gap, on-chain and discount above zero; on-chain, fee,
+        // tips and gas below) stay distinct for every viewer (checked under simulated colour blindness against the card surface).
+        // Segments are plain rectangles, so every join between them is flat.
+        const restOfGross = r => r.gross_profit_usd + r.fee_usd - r.amount * (1 - r.market_price);
         const BREAKDOWN = [
-            ['Oracle gap (est.)', '#00b4ff', r => r.gross_profit_usd + r.fee_usd - r.amount * (1 - r.market_price)],
-            ['BOLD discount (est.)', '#2ee59d', r => r.amount * (1 - r.market_price)],
+            ['Oracle gap', '#00b4ff', r => r.gap_x_usd ?? restOfGross(r),
+                'Estimate: the collateral at ETH\'s exchange price (Coinbase and Bitstamp) against what Liquity\'s redemption price paid for it'],
+            ['On-chain vs exchange price', '#ffe14d', r => r.gap_x_usd == null ? 0 : restOfGross(r) - r.gap_x_usd,
+                'Estimate: the rest of the measured gross profit, what redeemers got on-chain against the exchange price; normally their trading costs, a gain when on-chain prices run above the exchanges'],
+            ['BOLD discount', '#2ee59d', r => r.amount * (1 - r.market_price),
+                'Estimate: BOLD bought below $1, at the Curve BOLD/USDC price in the block before'],
             ['Redemption fee', '#ff4f8b', r => -r.fee_usd],
             ['Builder tips', '#8f6bff', r => -r.builder_tip_usd],
             ['Gas', '#ff9f1c', r => -r.gas_fee_usd]
@@ -1914,21 +1923,12 @@
                 ctx.restore();
             }
         };
-        // Weeks with an event the parts cannot show by themselves, explained in that week's tooltip (key: Monday 00:00 UTC). The
-        // function gets the week's oracle-gap part from redemptions with a reliable reference and from those with a distorted one.
-        // On 29 Oct 2026 every tagged redemption was an on-chain distortion; in other weeks the tag also marks real oracle lags
-        const BREAKDOWN_EVENTS = {
-            [Date.UTC(2026, 9, 26)]: (reliable, distorted) => [
-                `29 Oct: about $${compact(Math.round(distorted / 1e3) * 1e3)} of the oracle-gap part came from ETH`,
-                'sold into on-chain pools priced up to 21% above exchange prices',
-                'during heavy USDT selling; Liquity\'s oracle stayed within 1% of exchanges.',
-                `Real oracle gap this week: about $${compact(Math.round(reliable / 1e3) * 1e3)}.`
-            ]
-        };
         const BREAKDOWN_NOTE = 'Net profit (white line), redemption fee, builder tips and gas are measured: the net profit from each redeemer\'s own '
-            + 'transfers, the rest from the transactions themselves, valued at Liquity\'s oracle price. The two sources are estimates: the BOLD discount '
-            + 'at the Curve BOLD/USDC price in the block before, and the oracle gap as the rest of the measured gross profit, so it also carries how much better or '
-            + 'worse a bot traded than those reference prices. The parts add up to the net profit. When BOLD traded above $1 the discount is negative. '
+            + 'transfers, the rest from the transactions themselves, valued at Liquity\'s oracle price. The three sources are estimates: the BOLD discount '
+            + 'at the Curve BOLD/USDC price in the block before; the oracle gap, the collateral at ETH\'s exchange price (Coinbase and Bitstamp) against '
+            + 'Liquity\'s redemption price; and "on-chain vs exchange price", the rest of the measured gross profit: what redeemers got on-chain above or '
+            + 'below the exchange price, normally their trading costs (negative), but a gain when on-chain prices run far above the exchanges, as on '
+            + '29 October 2026. The parts add up to the net profit. When BOLD traded above $1 the discount is negative. '
             + 'Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
             + 'week; weeks without redemptions are bridged. "Typical weeks" (switch in the chart range bar) scales the weekly charts to the regular '
             + 'weeks: a week far larger than the rest runs up to a dotted line that marks the chart\'s highest week (and, below zero, its lowest), '
@@ -1953,23 +1953,16 @@
             const cut = scaleZoom ? typicalScale(up, down) : null;
             scaleCuts.breakdownChart = cut && { ...cut, label: v => usd(v, 0), axis: v => usd(v, 0) };
             $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote('breakdownChart', labels);
-            // The note of an annotated week, with its oracle-gap part split by reference quality
-            const eventNote = i => {
-                const event = BREAKDOWN_EVENTS[labels[i]];
-                if (!event) return [];
-                const gap = BREAKDOWN[0][2], week = priced.filter(r => mondayOf(r.timestamp) === labels[i]);
-                const sum = list => list.reduce((t, r) => t + gap(r), 0);
-                return event(sum(week.filter(r => !r.ref_distorted)), sum(week.filter(r => r.ref_distorted)));
-            };
             $('breakdownInfo').innerHTML = infoTip(BREAKDOWN_NOTE, 'Weekly breakdown').replace('class="info-tip"', 'class="info-tip below"');
             // Legend with each part's total in the range (they add up to the net total); each entry turns its series on and off
-            const toggle = (label, swatch, extra = '') => {
+            const toggle = (label, swatch, extra = '', tip = '') => {
                 const off = hiddenParts.has(label);
-                return `<button class="legend-btn ${off ? 'off' : ''}" data-part="${label}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}">${swatch}${label}${extra}</button>`;
+                return `<button class="legend-btn ${off ? 'off' : ''}" data-part="${label}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}"`
+                    + `${tip ? ` data-tip="${esc(tip)}"` : ''}>${swatch}${label}${extra}</button>`;
             };
-            $('breakdownLegend').innerHTML = BREAKDOWN.map(([label, color, value]) =>
+            $('breakdownLegend').innerHTML = BREAKDOWN.map(([label, color, value, tip]) =>
                 toggle(label, `<span class="legend-swatch" style="background:${color}"></span>`,
-                    ` <span class="mono" style="color: var(--muted)">${usd(total(value), 0)}</span>`)).join('')
+                    ` <span class="mono" style="color: var(--muted)">${usd(total(value), 0)}</span>`, tip)).join('')
                 + toggle('Net profit', `<span class="legend-swatch" style="width:14px;height:2px;border-radius:0;background:${css('--ink-1')}"></span>`);
             upsertChart('breakdownChart', {
                 type: 'bar',
@@ -1983,11 +1976,9 @@
                         legend: { display: false },
                         tooltip: {
                             itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // legend order, net profit (the last dataset) at the bottom
-                            footerFont: { weight: 'normal', size: 10 }, footerColor: css('--muted'), footerMarginTop: 8,
                             callbacks: {
                                 title: items => 'Week of ' + date(labels[items[0].dataIndex]),
-                                label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`,
-                                footer: items => eventNote(items[0].dataIndex)
+                                label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`
                             }
                         }
                     },
@@ -2350,9 +2341,9 @@
             return s + '</svg>';
         }
 
-        // The average redemption in USD per 10,000 BOLD redeemed, over the redemptions with a reliable price reference (ref_*): the
-        // estimate's parts (BOLD discount, oracle-gap edge, redemption fee) add up to its gross profit, and pool fees and price impact
-        // are what separates that from the measured gross profit, so every step reconciles exactly
+        // The average redemption in USD per 10,000 BOLD redeemed, over the redemptions at normal on-chain prices (ref_*): the
+        // estimate's parts (BOLD discount, oracle-gap edge at the exchange price, redemption fee) add up to its gross profit, and the
+        // on-chain vs exchange price step separates that from the measured gross profit, so every step reconciles exactly
         function refParts(st) {
             if (!st.ref_bold) return null;
             const per = v => (v || 0) / st.ref_bold * 1e4;
@@ -2383,7 +2374,7 @@
                 + T(836, 182, `− fee ${share(p?.fee, '')}`, { size: 12, fill: bad, anchor: 'end', mono: true });
             s += T(500, 254, '③ Sell collateral at market', { size: 13, fill: 'var(--ink-1)', anchor: 'middle' })
                 + T(500, 290, `+ oracle gap ${share(p?.gap, '')}`, { size: 12, fill: good, anchor: 'middle', mono: true })
-                + T(500, 310, `${p && p.trade > 0 ? '+' : '−'} pool fees &amp; price impact ${share(p?.trade, '')}`, { size: 12, fill: p && p.trade > 0 ? good : bad, anchor: 'middle', mono: true });
+                + T(500, 310, `${p && p.trade > 0 ? '+' : '−'} on-chain vs exchange price ${share(p?.trade, '')}`, { size: 12, fill: p && p.trade > 0 ? good : bad, anchor: 'middle', mono: true });
             s += T(164, 162, '④ Repeat while profitable', { size: 13, fill: 'var(--ink-1)' })
                 + T(164, 182, `− gas &amp; tip ${share(p && p.gas + p.tip, '')}`, { size: 12, fill: bad, mono: true });
             s += `<rect x="390" y="146" width="220" height="48" rx="24" fill="rgba(57,135,229,.12)" stroke="rgba(57,135,229,.45)"/>`
@@ -2403,7 +2394,7 @@
                 ['BOLD discount', 0, d, good, money(d)],
                 ['Oracle gap', d, d + g, good, money(g)],
                 ['Redemption fee', d + g, d + g - f, bad, money(-f)],
-                ['Pool fees &\nprice impact', d + g - f, gross, trade < 0 ? bad : good, money(trade)],
+                ['On-chain vs\nexchange price', d + g - f, gross, trade < 0 ? bad : good, money(trade)],
                 ['Gross profit', 0, gross, blue, `$${gross.toFixed(2)}`],
                 ['Gas (base fee)', gross, gross - gas, bad, `−$${gas.toFixed(2)}`],
                 ['Builder tip', gross - gas, gross - gas - tip, bad, `−$${tip.toFixed(2)}`],
@@ -2458,7 +2449,7 @@
             ['Sender', 'Transaction originator; flagged BOT if it redeemed through a contract or at least three times', '<span class="mono">tx.from</span>'],
             ['Price', 'BOLD mid price prior to the block', 'Curve BOLD/USDC <span class="mono">1 / get_p(0)</span> at block N−1; falls back to Uniswap v3, then v4'],
             ['Discount', 'BOLD discount to par (estimate)', '<span class="mono">(1 − price) × 100</span>'],
-            ['Oracle gap', 'Collateral market price relative to the redemption price (estimate)', '<span class="mono">(market ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; market = Uniswap v3 ETH/USDC at the moment of the redemption × LST canonical rate. Shown as distorted, and left out of averages, when market and Liquity\'s oracle price differ by more than 3%'],
+            ['Oracle gap', 'Collateral exchange price relative to the redemption price (estimate)', '<span class="mono">(exchange price ÷ redemption price − 1) × 100</span>, weighted by BOLD across branches; exchange price = ETH/USD averaged over Coinbase and Bitstamp at the block\'s time (1-minute candles, interpolated within the minute) × LST canonical rate; Uniswap ETH/USDC where no exchange price is available. Tagged distorted, and left out of averages, when Uniswap ETH/USDC differs from the exchange price by more than 3%'],
             ['Fee', 'Redemption fee as a percentage of BOLD redeemed', '<span class="mono">Σ collFee × redemption price ÷ BOLD</span>'],
             ['Gross', 'Profit before inclusion costs (measured)', '<span class="mono">Net + Gas + Tip</span>. Where only the estimate exists: <span class="mono">Σ collateral × market price − BOLD × price</span>, marked ~'],
             ['Gas', 'Base fee burned', '<span class="mono">gasUsed × baseFee × ETH/USD</span>, ETH/USD = Liquity\'s oracle price'],
@@ -2470,10 +2461,10 @@
         const LIMITATIONS = [
             ['What the measured profit covers.', 'Net profit is what the redeemer kept, measured from its own transfers in the transaction: those of its sending account and, when it redeems through a contract of its own, of that contract. Practically every redemption buys BOLD, redeems it and sells the collateral within one transaction, so the balance of these transfers at its end is the profit: tokens and WETH in and out, ETH moved inside the transaction, the transaction\'s own ETH value and the gas paid. A payout counts as kept when it goes to an address that sent nothing to the redeemer in the transaction and is a plain wallet (an EIP-7702 account included) or a Safe that received ETH there; any other payout counts as a cost, so a redeemer that keeps profit in a contract of its own, or sends tokens to a Safe, shows less than it made, never more. Gross profit adds back the gas and every payment to the block builder in the transaction.'],
             ['Valuation.', 'The measurement gives each redeemer\'s profit in tokens, mostly ETH. ETH, WETH and stETH are valued at Liquity\'s own ETH price at the redemption: the WETH branch\'s price when it was redeemed, otherwise Chainlink ETH/USD, the feed behind it, at the end of the previous block. wstETH and rETH are valued at that price times their exchange rate, stablecoins at $1, and BOLD at the Curve BOLD/USDC price in the block before (Uniswap when Curve has none). Gas and builder payments use the same ETH price, so every result reconciles. The feed draws on many exchanges, so no single trade in an on-chain pool moves it, but it lags the market: when redemptions happen, by 0.44% in the median and by more than 0.9% one time in ten (redemptions to October 2026), as that lag is part of what makes them profitable. The lag applies only to the profit left over, not to the size of the trade: it moves the median result by less than a cent, and all results together by about 0.5% of total profit.'],
-            ['Data sources and verification.', 'Token transfers come from each transaction\'s receipt, and ETH moved inside it from Alchemy\'s transfer index, with the duplicate entries that index sometimes returns removed. Where the index misses a transaction\'s internal transfers, they are read from Etherscan. In October 2026 every measured result was recomputed independently from Etherscan\'s transaction traces, with no difference.'],
+            ['Data sources and verification.', 'Token transfers come from each transaction\'s receipt, and ETH moved inside it from Alchemy\'s transfer index, with the duplicate entries that index sometimes returns removed. Where the index misses a transaction\'s internal transfers, they are read from Etherscan. In October 2026 every measured result was recomputed independently from Etherscan\'s transaction traces, with no difference. ETH\'s exchange price comes from Coinbase and Bitstamp public 1-minute candles (no API key); at the redemptions the two agree to 0.01% in the median and to within 0.1% for 99% of them.'],
             ['When the estimate is shown.', 'A redemption keeps the estimate, marked ~, when it leaves a token without a price, or when its measured result differs from the estimate by more than 2% of the BOLD redeemed (and by more than $100) with a reliable price reference, which would point to a flow attributed wrongly. Both are rare. Redemptions below 1 BOLD, whose collateral payout rounds to zero, and those from before a BOLD pool price existed have no estimate and show no profit.'],
-            ['Estimates at reference prices.', 'The BOLD discount and the oracle gap are estimates. BOLD is priced at the Curve BOLD/USDC pool\'s mid price in the block before (Uniswap v3, then v4, when Curve has none), so price moves earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured. Collateral is valued at the Uniswap ETH/USDC price at the moment of the redemption (the pool\'s last trade earlier in the block that was not the redeemer\'s own, otherwise its price at the end of the previous block) times the exchange rate of wstETH or rETH, which these tokens can also trade below. Mid prices leave out pool fees (0.04% on Curve, 0.05% on Uniswap v3) and price impact, so the estimated gross profit runs above the measured one, by about 0.1% of the BOLD redeemed in the median; the decomposition shows this difference as its own step. In the Weekly breakdown, the oracle-gap part is the rest of the measured gross profit after the discount and the fee, so it carries this difference too; the oracle gap shown per redemption is the reference estimate itself.'],
-            ['Distorted references.', 'The estimates use Uniswap ETH/USDC as the market price of ETH. When it differs from Liquity\'s oracle price by more than 3%, the redemption is tagged distorted: its oracle gap is not shown, and it is left out of the average discount, oracle gap and edge and of the decomposition. Two different situations trigger the tag, and the reference alone cannot tell them apart. On-chain ETH prices can move away from the wider market: on 29 October 2026, heavy USDT selling pushed on-chain ETH prices up to 21% above exchange prices (13% in the median at the redemptions) for about 35 minutes, while the oracle stayed within 1% of exchange prices. Or the oracle can lag sharply in a fast market: on 23 March, 7 June and 19 August 2026, exchange prices confirmed gaps of 2–4%. Leaving out the second kind makes the average oracle gap conservative: about 0.92% instead of about 1.0% (redemptions to October 2026). The measured profit of a tagged redemption does not depend on the reference and is included in all totals.'],
+            ['Estimates at reference prices.', 'The BOLD discount and the oracle gap are estimates. BOLD is priced at the Curve BOLD/USDC pool\'s mid price in the block before (Uniswap v3, then v4, when Curve has none), so price moves earlier in the same block, such as a large BOLD sale that the redemption back-runs, are not captured. Collateral is valued at ETH\'s exchange price at the block\'s time, the average of Coinbase and Bitstamp 1-minute candles interpolated within the minute, times the exchange rate of wstETH or rETH, which these tokens can also trade below (on average by about 0.07% for wstETH and 0.2% for rETH, so the oracle gap reads slightly high). Minute candles cannot follow price moves within the minute: each redemption\'s split between oracle gap and on-chain vs exchange price is uncertain by about $12 in the median, more in fast markets, and for about 1% of redemptions even the sign of the oracle gap is within that uncertainty. Together the two parts are measured exactly, so profit totals are not affected, and in weekly totals these errors largely cancel. Where no exchange price is available, the Uniswap ETH/USDC price at the moment of the redemption is used. Reference prices leave out the pool fees (0.04% on Curve, 0.05% on Uniswap v3) and price impact a redeemer pays, so the estimated gross profit runs above the measured one, by about 0.08% of the BOLD redeemed in the median; the Weekly breakdown and the decomposition show this difference as on-chain vs exchange price.'],
+            ['Distorted on-chain prices.', 'On-chain ETH prices can move away from the exchanges for a while. On 29 October 2026, heavy USDT selling pushed on-chain ETH prices up to 21% above exchange prices (13% in the median at the redemptions) for about 35 minutes, while Liquity\'s oracle stayed within 1% of exchange prices; redeemers sold collateral at those prices. A redemption is tagged distorted when Uniswap ETH/USDC differs from the exchange price by more than 3% (from Liquity\'s oracle price where no exchange price is available). Its oracle gap is still measured against the exchanges, and what it earned from the on-chain prices shows as on-chain vs exchange price; it is left out of the average discount, oracle gap and edge and of the decomposition, so that they describe normal conditions, but its measured profit is included in all totals. Fast markets alone do not trigger the tag: when the oracle lags sharply, as on 23 March, 7 June and 19 August 2026, on-chain and exchange prices move together.'],
             ['Attribution by originating account.', 'Operators running multiple accounts appear as separate entities. The bot classification is heuristic: redemption through a contract, or at least three redemptions.'],
             ['Transaction-level costs.', 'Gas and builder payments cover the entire transaction, including the arbitrageur\'s swaps and builder payments made by contracts outside its own addresses. This is appropriate for profitability analysis but over-attributes costs where a transaction bundles unrelated strategies.'],
             ['Costs outside the redemption.', 'Only successful redemption transactions are recorded. Gas spent on attempts that reverted, for example after losing a race to another bot, and costs outside the chain (capital, infrastructure, payments to builders in separate transactions) are not deducted, so the combined profit of redeemers is an upper bound on what they earned overall. BOLD a redeemer already held is valued at the Curve BOLD/USDC price at the time, not at what it paid for it.']
@@ -2515,7 +2506,7 @@
                 $('howBurned').innerText = `${compact(lastStats.total_bold)} BOLD`;
                 $('howDiscount').innerText = pct(lastStats.avg_spread, 2);
                 $('howGap').innerText = pct(lastStats.avg_oracle_gap, 2);
-                const priced = chartRows.filter(r => r.spread != null && r.oracle_gap != null && !r.ref_distorted);
+                const priced = chartRows.filter(r => r.spread != null && r.oracle_gap != null && r.ref_reliable);
                 const vol = priced.reduce((a, r) => a + r.amount, 0);
                 if (vol) {
                     const gapLed = priced.filter(r => r.oracle_gap > r.spread).reduce((a, r) => a + r.amount, 0);

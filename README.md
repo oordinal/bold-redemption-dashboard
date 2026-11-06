@@ -51,6 +51,7 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 |---|---|
 | `worker.js` | Scans `Redemption` events, enriches each tx with prices and costs, measures each redeemer's result from its own transfers, writes SQLite |
 | `queries.js` | The queries behind the feed, the stats tiles and the data for the cards (trove rows, addresses) |
+| `exchange.js` | ETH's exchange price at each redemption (`cex_eth_usd`): Coinbase and Bitstamp public 1-minute candles, averaged and interpolated within the minute; no API key. Run by the sync after the measured results; the whole history takes about 6 minutes once, then one or two requests per sync |
 | `index.js` | Local server: API, static files and the periodic sync |
 | `troves.js` | Troves tab: snapshot of every open trove, the branches and the batch managers, read at one block (about 8 bundled read-only calls), plus the number of active troves at the block about 30 days earlier (one more call, for the change shown on the tab), stored in the `trove_snapshot` table |
 | `troveops.js` | Troves tab, borrowing record: every trove operation other than redemptions (borrowing, repaying, collateral changes, closing, rate and batch changes, liquidations), from the TroveManagers' `TroveOperation` events through Etherscan's log API, stored in the `trove_ops` table. One request per branch per sync; the first run reads the history since the V2 launch (about 20 requests) |
@@ -91,12 +92,19 @@ Each redemption carries two results:
 
 `queries.js` publishes the measured result as net and gross profit where it exists, the modelled one otherwise (marked ~ on the page,
 also kept as `*_model_usd`), and values gas and builder payments at the oracle price. A redemption keeps the modelled result when it
-leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed (and $100) without a distorted reference
-(`review`). The reference counts as distorted when Uniswap ETH/USDC strays more than 3% from the oracle price, which happens both when on-chain
-prices leave the wider market (29 Oct 2026) and when the oracle lags sharply in a fast market (23 Mar, 7 Jun, 19 Aug 2026, confirmed
-against Coinbase); such redemptions show no oracle gap and are left out of the averages. The methodology's decomposition sums the estimate's parts (`ref_discount_usd`,
-`ref_fee_usd`, `ref_gross_model_usd`) and the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions, the
-non-distorted ones with a profit figure, so that its steps reconcile exactly.
+leaves a token without a price (`unpriced`) or differs from it by more than 2% of the BOLD redeemed (and $100) while Uniswap ETH/USDC is
+within 3% of the oracle price (`review`).
+
+The market reference for the estimated parts is ETH's exchange price (`cex_eth_usd`, from `exchange.js`) times each LST's rate:
+`queries.js` scales the collateral's Uniswap value (`coll_market_price`) by exchange / Uniswap ETH price. That gives each redemption's
+oracle gap in % and in USD (`gap_x_usd`: collateral at the exchange price minus at Liquity's redemption price) and its edge. The Weekly
+breakdown and the transaction detail split gross profit into the BOLD discount, that oracle gap, and **on-chain vs exchange price**, the
+rest of the measured gross profit: normally the redeemers' trading costs (about 0.08% of the BOLD redeemed in the median), and a gain when
+on-chain prices run far above the exchanges (+$725k in the week of 26 October 2026). A redemption is tagged distorted when Uniswap
+ETH/USDC differs from the exchange price by more than 3% (only 29 October 2026 so far); tagged redemptions are left out of the averages
+and of the methodology's decomposition, which sums the estimate's parts (`ref_discount_usd`, `ref_fee_usd`, `ref_gross_model_usd`) and
+the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions so that its steps reconcile exactly. Without an
+exchange price the Uniswap-based estimates stand, and the tag compares Uniswap with the oracle price.
 
 Redemptions synced before this existed are measured by `backfillActual()` at the next sync (about 15 minutes for the whole history,
 one-off); the modelled columns are left as they are, except a builder tip that was
