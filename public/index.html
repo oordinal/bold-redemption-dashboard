@@ -100,6 +100,10 @@
         .tab { padding: 7px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
         .tab:hover { color: var(--ink-1); }
         .tab-active { color: var(--ink-1); background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+        #diagramQueue [data-q-from], #diagramQueue [data-q-step] { transition: opacity .5s ease; }
+        #diagramQueue [data-q-wave] { transition: width 1.4s ease-in-out; }
+        #diagramQueue [data-q-self] { transition: background-color .5s ease, color .5s ease; }
+        @media (prefers-reduced-motion: reduce) { #diagramQueue * { transition: none !important; } }
         .seg { padding: 4px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--muted); transition: color .15s, background .15s; }
         .seg:hover { color: var(--ink-1); }
         .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--muted); transition: color .15s; }
@@ -575,7 +579,7 @@
                     <p class="mono text-white text-[13px] rounded-lg px-4 py-3 inline-block" style="background: rgba(57,135,229,.08); border: 1px solid rgba(57,135,229,.25)">
                         BOLD discount + oracle gap &gt; redemption fee + trading costs + gas + builder tip
                     </p>
-                    <p class="text-xs" style="color: var(--muted)">Percentages in the diagram are shares of the BOLD redeemed, summed over the redemptions with a reliable price reference (section 5); the net margin is the measured net profit over the capital deployed. The oracle-gap edge is earned on the collateral paid out, which is net of the fee, so it runs slightly below the average oracle gap quoted below.</p>
+                    <p class="text-xs" style="color: var(--muted)">Percentages in the diagram are shares of the BOLD redeemed, summed over the redemptions at normal on-chain prices (section 5); the net margin is the measured net profit over the capital deployed. The oracle-gap edge is earned on the collateral paid out, which is net of the fee, so it runs slightly below the average oracle gap quoted below.</p>
                 </div>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramLoop" class="min-w-[760px] max-w-[1100px] mx-auto"></div></div>
                 <div class="grid lg:grid-cols-5 gap-6 mt-8">
@@ -633,6 +637,24 @@
                 </p>
                 <div class="overflow-x-auto scroll mt-6"><div id="diagramWaterfall" class="min-w-[680px] max-w-[1100px] mx-auto"></div></div>
                 <p class="text-xs mt-3" style="color: var(--muted)">Sums over the redemptions at normal on-chain prices, scaled to 10,000 BOLD: those where Uniswap ETH/USDC stayed within 3% of the exchange price (<span id="howRefCount">–</span>). Redemptions at distorted on-chain prices, such as those of 29 October 2026, are left out of this decomposition and of the averages above, but included in all profit totals on the dashboard, where the Weekly breakdown shows their gain as on-chain vs exchange price; this margin can therefore differ from the average margin shown on the dashboard.</p>
+                <h4 class="font-semibold mt-10 mb-1">Reading a redemption's breakdown</h4>
+                <p class="text-sm max-w-3xl leading-relaxed" style="color: var(--ink-2)">
+                    Every redemption in the feed opens a breakdown of its result into the same six components as the Weekly breakdown, on two bars at
+                    one scale. The <b class="text-white">Edge</b> bar collects what the trade earned, the <b class="text-white">Cost</b> bar what it
+                    gave up; the net profit (hatched) fills the shorter bar, so both end at the same point. A component that turns negative moves to the
+                    other bar under its own name, such as a BOLD premium when BOLD traded above $1. Hover over a segment for its share of its bar.
+                </p>
+                <div class="overflow-x-auto scroll rounded-lg mt-5" style="border: 1px solid rgba(255,255,255,.06)">
+                    <table class="w-full text-sm">
+                        <thead><tr class="kicker text-left">
+                            <th class="px-4 py-2.5 font-semibold">Component</th>
+                            <th class="px-4 py-2.5 font-semibold">What it is</th>
+                            <th class="px-4 py-2.5 font-semibold">Basis</th>
+                        </tr></thead>
+                        <tbody id="componentTable" style="color: var(--ink-2)"></tbody>
+                    </table>
+                </div>
+                <div id="componentExamples" class="grid lg:grid-cols-2 gap-4 mt-6"></div>
             </section>
 
             <section class="card p-5 md:p-8">
@@ -671,11 +693,21 @@
                 <div class="kicker">7 · Troves</div>
                 <h3 class="text-xl font-semibold mt-1">How the trove figures are computed</h3>
                 <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">After every data update, every open trove and every zombie trove is read from Liquity V2's contracts at a single block, together with each branch's debt, Stability Pool deposits, prices and collateral thresholds, and every batch manager's settings. The change in active troves compares that count with the redemption queues read at the block about 30 days earlier; the median trove size is the median debt of the active troves. Redemption records come from this dashboard's redemption history.</p>
+                <div class="rounded-xl p-4 md:p-5 mt-6" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div class="text-sm font-semibold text-white">Reading a trove's queue bar</div>
+                            <div class="text-xs mt-0.5" style="color: var(--muted)">The bar that opens with each trove on the Troves tab, here with illustrative figures</div>
+                        </div>
+                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)"><button id="queuePlay" class="seg" style="color: var(--ink-1)">▶ Play</button></div>
+                    </div>
+                    <div id="diagramQueue" class="mt-5"></div>
+                </div>
                 <div class="grid md:grid-cols-2 gap-3 mt-6">
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">REDEMPTION QUEUE</div>
                         <div class="font-semibold mt-1">Debt in front and system-wide distance</div>
-                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A branch is redeemed in a fixed order: its most recent zombie trove first, then troves from the lowest interest rate up, as read from Liquity's MultiTroveGetter. Debt in front is the debt of every trove ahead in that order.</p><p>Each redemption is split across branches in proportion to their unbacked debt (debt minus Stability Pool deposits), or by total debt if every branch is fully covered. The system-wide distance divides debt in front by the branch's current share: the BOLD that would have to be redeemed across all branches first, if nothing changed. A typical week is the average 7-day redemption volume of the last 180 days, and the busiest week the largest. They show how far a wave of redemptions would reach into the queue as it is now. They do not account for troves that borrow again after every redemption: such troves at the front can absorb all redemptions for long periods, so a wave may not reach the troves behind them at all.</p></div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A branch is redeemed in a fixed order: its most recent zombie trove first, then troves from the lowest interest rate up, as read from Liquity's MultiTroveGetter. Debt in front is the debt of every trove ahead in that order.</p><p>Each redemption is split across branches in proportion to their unbacked debt (debt minus Stability Pool deposits), or by total debt if every branch is fully covered. The system-wide distance divides debt in front by the branch's current share: the BOLD that would have to be redeemed across all branches first, if nothing changed. A typical week is the average 7-day redemption volume of the last 180 days, and the busiest week the largest. The schema above shows how the queue bar reads them, and what they do not account for.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">SAFER RATE AND BATCHES AHEAD</div>
@@ -745,13 +777,63 @@
 
                 <h4 class="font-semibold mt-10 mb-3">Measurement rules and limitations</h4>
                 <ol id="limitations" class="grid md:grid-cols-2 gap-3 text-sm leading-relaxed" style="color: var(--ink-2)"></ol>
+
+                <h4 class="font-semibold mt-10 mb-3">Data sources</h4>
+                <div class="overflow-x-auto scroll rounded-lg" style="border: 1px solid rgba(255,255,255,.06)">
+                    <table class="w-full text-sm">
+                        <thead><tr class="kicker text-left">
+                            <th class="px-4 py-2.5 font-semibold">Data</th>
+                            <th class="px-4 py-2.5 font-semibold">Source</th>
+                        </tr></thead>
+                        <tbody style="color: var(--ink-2)">
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Redemptions and their troves</td>
+                                <td class="px-4 py-2.5">Each redemption transaction's receipt: Liquity's events, token transfers and gas; BOLD burns found through Alchemy's asset-transfers API</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">ETH moved inside a transaction</td>
+                                <td class="px-4 py-2.5">Alchemy's internal-transfer index, with Etherscan where Alchemy's index misses a transaction; builder payments from the same records</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Measured profit</td>
+                                <td class="px-4 py-2.5">Each redemption's own token and ETH transfers, valued at Liquity's oracle price</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">BOLD price, for the estimated discount</td>
+                                <td class="px-4 py-2.5">Curve BOLD/USDC mid price in the block before each redemption; Uniswap v3, then v4, when Curve has none</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">ETH exchange price, for the estimated oracle gap</td>
+                                <td class="px-4 py-2.5">Coinbase ETH-USD and Bitstamp ETH/USD public 1-minute candles at the moment of the redemption</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">On-chain ETH price</td>
+                                <td class="px-4 py-2.5">Uniswap v3 ETH/USDC at the moment of the redemption</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Flash financing and BOLD sources</td>
+                                <td class="px-4 py-2.5">Each transaction's own transfers and events</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Operators and names</td>
+                                <td class="px-4 py-2.5">Contract deployers from Etherscan; names from ENS</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Troves</td>
+                                <td class="px-4 py-2.5">Liquity's contracts, read after every data update; each trove's operations from Etherscan</td>
+                            </tr>
+                            <tr class="border-t border-white/5 align-top">
+                                <td class="px-4 py-2.5 font-medium text-white">Historical liquidation chance</td>
+                                <td class="px-4 py-2.5">Coinbase ETH-USD 1-minute prices since May 2025</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </section>
         </main>
 
         <footer class="mt-8 mb-2 text-xs text-center" style="color: var(--muted)">
-            <p>Data sources: Curve and Uniswap BOLD/USDC prices from the block preceding each redemption, for the estimated discount; ETH/USD on Coinbase and Bitstamp at the moment of the redemption (1-minute candles), for the estimated oracle gap; Uniswap v3 ETH/USDC at the same moment, for on-chain prices.</p>
-            <p class="mt-1">Measured profit from each redemption's own token and ETH transfers, valued at Liquity's oracle price; internal ETH transfers and builder payments from Alchemy, with Etherscan where Alchemy's index misses them; flash financing and BOLD sources from each transaction's own records; contract deployers from Etherscan; names from ENS; trove state from Liquity's contracts after every update; ETH drawdowns from Coinbase. The full methodology is described under “Methodology”.</p>
-            <div class="mt-6 pt-5 mx-auto max-w-4xl leading-relaxed" style="border-top: 1px solid rgba(255,255,255,.06)">
+            <div class="mx-auto max-w-4xl leading-relaxed">
                 <span class="kicker">Disclaimer</span><br>
                 This dashboard is an independent project. It is not affiliated with, endorsed by, sponsored by or otherwise associated with
                 Liquity AG or the Liquity protocol. References to Liquity and BOLD serve solely to identify the protocol whose public on-chain
@@ -1338,6 +1420,13 @@
             + 'measurement is not available, the estimate is shown instead and marked ~.';
         // A figure that is still the estimate (the redemption has no measured result) is marked ~
         const est = r => r.measured || r.net_profit_usd == null ? '' : '<span class="tip-target" style="color: var(--muted)" data-tip="Estimate: no measured result for this redemption">~</span>';
+        // Whether a redemption's profit is measured or the estimate, as a pill in the style of the distorted tag: blue when measured,
+        // neutral grey for the estimate (the net profit tile already carries green or red)
+        const basisTag = r => r.net_profit_usd == null ? '' : r.measured
+            ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.16); color: #8bb8f0" '
+                + 'data-tip="Measured from the redeemer\'s own transfers in the transaction, valued at Liquity\'s oracle price">measured</span>'
+            : '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(158,166,174,.16); color: var(--ink-2)" '
+                + 'data-tip="Estimate at reference prices: no measured result for this redemption, see Methodology">estimate</span>';
         const DISTORTED_TAG = '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" '
             + 'data-tip="On-chain ETH prices (Uniswap ETH/USDC) were more than 3% from exchange prices at this redemption. The oracle gap is measured against '
             + 'the exchanges; what the redeemer earned from the on-chain prices shows as &quot;On-chain vs exchange price&quot; in its breakdown. The redemption is '
@@ -1518,50 +1607,16 @@
             const inUsd = v => v == null || ethPx == null ? null : v * ethPx;
             const minus = v => v == null ? '–' : usd(-v);
             const totalCost = r.gas_fee_usd == null || r.builder_tip_usd == null ? null : r.gas_fee_usd + r.builder_tip_usd;
-            const tile = (label, main, sub, info) => `
+            const tile = (label, main, sub, info, tag = '') => `
                 <div class="rounded-lg px-3 py-2.5" style="background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06)">
-                    <div class="flex items-center text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}${info ? infoTip(info, label) : ''}</div>
+                    <div class="flex flex-wrap items-center gap-y-1 text-[10px] uppercase tracking-wider" style="color: var(--muted)"><span class="inline-flex items-center mr-1.5">${label}${info ? infoTip(info, label) : ''}</span>${tag}</div>
                     <div class="num text-sm text-white mt-0.5">${main}</div>
                     <div class="num text-[11px] mt-0.5" style="color: var(--muted)">${sub}</div>
                 </div>`;
             // Where this redemption's result came from: the six parts of the Weekly breakdown on one scale. The top bar is the
             // trade's edge, the bottom bar its costs; the net result fills the shorter bar, so both end at the same point
             const parts = r.net_profit_usd == null || r.market_price == null ? [] : BREAKDOWN.map(([label, color, value]) => ({ label, color, v: value(r) }));
-            const NEGATIVE_LABEL = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)',
-                'On-chain vs exchange price': 'Trading costs vs exchange price' };
-            const earned = parts.filter(p => p.v > 0);
-            const paid = parts.filter(p => p.v < 0).map(p => ({ ...p, v: -p.v, label: NEGATIVE_LABEL[p.label] || p.label }));
-            const sumParts = list => list.reduce((t, p) => t + p.v, 0);
-            const net = r.net_profit_usd;
-            if (net > 0) paid.push({ label: 'Net profit', v: net, net: true });
-            if (net < 0) earned.push({ label: 'Net loss', v: -net, net: true });
-            const scale = Math.max(sumParts(earned), sumParts(paid)) || 1;
-            // Hover shows each part's share of its own bar (the dollar amounts are in the legend): edge parts of the total edge,
-            // cost parts of the total cost; a net profit as the share of the edge kept, a net loss as the share of the cost not covered
-            const edgeTotal = sumParts(earned.filter(p => !p.net)), costTotal = sumParts(paid.filter(p => !p.net));
-            const share = (v, total) => { const x = total ? v / total * 100 : 0; return x > 0 && x < 0.1 ? '<0.1%' : `${x.toFixed(1)}%`; };
-            const shareTip = (p, bar) => p.net
-                ? (net > 0 ? `${share(p.v, edgeTotal)} of the edge kept` : `${share(p.v, costTotal)} of the cost not covered by the edge`)
-                : bar === 'edge' ? `${share(p.v, edgeTotal)} of the edge` : `${share(p.v, costTotal)} of the cost`;
-            const segment = bar => (p, i, list) => `<div class="h-full" style="width:${p.v / scale * 100}%; ${i < list.length - 1 ? 'border-right: 2px solid transparent; ' : ''}background-clip: padding-box;
-                ${p.net ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px)` : `background-color: ${p.color}`}"
-                data-tip-title="${p.label}" data-tip="${shareTip(p, bar)}"></div>`;
-            const barRow = (label, list) => `
-                <div class="flex items-center gap-3">
-                    <span class="w-14 shrink-0 text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</span>
-                    <div class="flex-1 flex h-4 rounded-sm overflow-hidden">${list.map(segment(label.toLowerCase())).join('')}</div>
-                </div>`;
-            const key = p => `<span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="legend-swatch" style="${p.net
-                ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}` : `background:${p.color}`}"></span>${p.label}
-                <span class="num" style="color: ${p.net ? (net > 0 ? 'var(--good)' : 'var(--bad)') : 'var(--ink-1)'}">${usd(p.v)}</span></span>`;
-            const profitBar = parts.length ? `
-                <div class="space-y-1.5 mb-4">
-                    ${barRow('Edge', earned)}
-                    ${barRow('Cost', paid)}
-                    <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1.5 text-[11px] sm:pl-[68px]" style="color: var(--ink-2)">
-                        ${[...earned.filter(p => !p.net), ...paid.filter(p => !p.net), ...earned.filter(p => p.net), ...paid.filter(p => p.net)].map(key).join('')}
-                    </div>
-                </div>` : '';
+            const profitBar = parts.length ? profitBarHtml(parts, r.net_profit_usd) : '';
             const positive = r.net_profit_usd == null ? null : r.net_profit_usd >= 0;
             const netStyle = positive == null ? 'background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08)'
                 : positive ? 'background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.4)'
@@ -1574,12 +1629,12 @@
                     </div>
                     ${profitBar}
                     <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
-                        ${tile('Gross profit', `${est(r)}${usd(r.gross_profit_usd)}`, `${r.measured ? 'measured' : r.net_profit_usd == null ? '' : 'estimate'} · before inclusion costs`.replace(/^ · /, ''), GROSS_NOTE)}
+                        ${tile('Gross profit', `${est(r)}${usd(r.gross_profit_usd)}`, 'before inclusion costs', GROSS_NOTE, basisTag(r))}
                         ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth), GAS_NOTE)}
                         ${tile('Priority fee', minus(inUsd(r.priority_fee_eth)), eth(r.priority_fee_eth))}
                         ${tile('Direct builder payment', minus(inUsd(r.coinbase_tip_eth)), eth(r.coinbase_tip_eth))}
                         <div class="rounded-lg px-3 py-2.5" style="${netStyle}">
-                            <div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">Net profit${r.measured ? ' · measured' : r.net_profit_usd == null ? '' : ' · estimate'}</div>
+                            <div class="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wider" style="color: var(--muted)">Net profit${basisTag(r)}</div>
                             <div class="num text-xl font-semibold mt-0.5 ${signClass(r.net_profit_usd)}">${est(r)}${usd(r.net_profit_usd)}</div>
                             <div class="num text-[11px] mt-0.5 ${signClass(r.net_margin)}">${pct(r.net_margin, 3)} margin</div>
                         </div>
@@ -1812,6 +1867,46 @@
             ['Builder tips', '#8f6bff', r => -r.builder_tip_usd],
             ['Gas', '#ff9f1c', r => -r.gas_fee_usd]
         ];
+        // The two bars of a redemption's result, as in its detail panel and the methodology: the top bar is the trade's edge, the
+        // bottom bar its costs (the six parts of the Weekly breakdown, a negative part moving to the other bar under its own name);
+        // the net result fills the shorter bar, so both end at the same point. parts: [{ label, color, v }], net: the net profit
+        function profitBarHtml(parts, net) {
+            const NEGATIVE_LABEL = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)',
+                'On-chain vs exchange price': 'Trading costs vs exchange price' };
+            const earned = parts.filter(p => p.v > 0);
+            const paid = parts.filter(p => p.v < 0).map(p => ({ ...p, v: -p.v, label: NEGATIVE_LABEL[p.label] || p.label }));
+            const sumParts = list => list.reduce((t, p) => t + p.v, 0);
+            if (net > 0) paid.push({ label: 'Net profit', v: net, net: true });
+            if (net < 0) earned.push({ label: 'Net loss', v: -net, net: true });
+            const scale = Math.max(sumParts(earned), sumParts(paid)) || 1;
+            // Hover shows each part's share of its own bar (the dollar amounts are in the legend): edge parts of the total edge,
+            // cost parts of the total cost; a net profit as the share of the edge kept, a net loss as the share of the cost not covered
+            const edgeTotal = sumParts(earned.filter(p => !p.net)), costTotal = sumParts(paid.filter(p => !p.net));
+            const share = (v, total) => { const x = total ? v / total * 100 : 0; return x > 0 && x < 0.1 ? '<0.1%' : `${x.toFixed(1)}%`; };
+            const shareTip = (p, bar) => p.net
+                ? (net > 0 ? `${share(p.v, edgeTotal)} of the edge kept` : `${share(p.v, costTotal)} of the cost not covered by the edge`)
+                : bar === 'edge' ? `${share(p.v, edgeTotal)} of the edge` : `${share(p.v, costTotal)} of the cost`;
+            const segment = bar => (p, i, list) => `<div class="h-full" style="width:${p.v / scale * 100}%; ${i < list.length - 1 ? 'border-right: 2px solid transparent; ' : ''}background-clip: padding-box;
+                ${p.net ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px)` : `background-color: ${p.color}`}"
+                data-tip-title="${p.label}" data-tip="${shareTip(p, bar)}"></div>`;
+            const barRow = (label, list) => `
+                <div class="flex items-center gap-3">
+                    <span class="w-14 shrink-0 text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</span>
+                    <div class="flex-1 flex h-4 rounded-sm overflow-hidden">${list.map(segment(label.toLowerCase())).join('')}</div>
+                </div>`;
+            const key = p => `<span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="legend-swatch" style="${p.net
+                ? `box-shadow: inset 0 0 0 1px ${net > 0 ? 'var(--ink-1)' : 'var(--bad)'}` : `background:${p.color}`}"></span>${p.label}
+                <span class="num" style="color: ${p.net ? (net > 0 ? 'var(--good)' : 'var(--bad)') : 'var(--ink-1)'}">${usd(p.v)}</span></span>`;
+            return `
+                <div class="space-y-1.5 mb-4">
+                    ${barRow('Edge', earned)}
+                    ${barRow('Cost', paid)}
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1.5 text-[11px] sm:pl-[68px]" style="color: var(--ink-2)">
+                        ${[...earned.filter(p => !p.net), ...paid.filter(p => !p.net), ...earned.filter(p => p.net), ...paid.filter(p => p.net)].map(key).join('')}
+                    </div>
+                </div>`;
+        }
+
         // Both panels reserve the same width for their y axis, so their weeks line up exactly
         const Y_AXIS_WIDTH = 72;
         const hiddenParts = new Set();
@@ -1928,7 +2023,7 @@
             + 'at the Curve BOLD/USDC price in the block before; the oracle gap, the collateral at ETH\'s exchange price (Coinbase and Bitstamp) against '
             + 'Liquity\'s redemption price; and "on-chain vs exchange price", the rest of the measured gross profit: what redeemers got on-chain above or '
             + 'below the exchange price, normally their trading costs (negative), but a gain when on-chain prices run far above the exchanges, as on '
-            + '29 October 2026. The parts add up to the net profit. When BOLD traded above $1 the discount is negative. '
+            + '29 October 2026. The components add up to the net profit. When BOLD traded above $1 the discount is negative. '
             + 'Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
             + 'week; weeks without redemptions are bridged. "Typical weeks" (switch in the chart range bar) scales the weekly charts to the regular '
             + 'weeks: a week far larger than the rest runs up to a dotted line that marks the chart\'s highest week (and, below zero, its lowest), '
@@ -2334,11 +2429,102 @@
                     + T(X(t) + 10, Y(f) - 6, label, { size: 11, fill: 'var(--ink-2)' });
             };
             s += tag(3, 'redemption of 0.6% of supply') + tag(12, '0.45% of supply');
-            // Half-life marker: 3h → 9h halves the base rate
-            const fA = pts.find(([pt]) => pt > 3)[1], fB = pts.find(([pt]) => pt >= 9)[1];
-            s += `<line x1="${X(9)}" x2="${X(9)}" y1="${Y(fB) - 2}" y2="${Y(0.5)}" stroke="var(--muted)" stroke-width="1"/>`
-                + T(X(9) + 6, Y((fB + 0.5) / 2) + 4, `6h later: base rate halved`, { size: 11, fill: 'var(--muted)' });
+            // Half-life: from the first redemption (3h) to 6 hours later (9h) the base rate (the height above the floor) halves. Both
+            // ends get a dashed line down to the floor and the span between them is marked as 6 hours, so the line at 9h is not read as
+            // the 6h tick
+            const fA = pts.find(([pt]) => pt > 3)[1], fB = pts.find(([pt]) => pt >= 9)[1], ySpan = Y(0.5) - 14;
+            s += [[3, fA], [9, fB]].map(([t, f]) => `<line x1="${X(t)}" x2="${X(t)}" y1="${Y(f) + 5}" y2="${Y(0.5)}" stroke="var(--ink-2)" stroke-width="1" stroke-dasharray="3 3"/>`).join('')
+                + `<line x1="${X(3) + 4}" x2="${X(9) - 4}" y1="${ySpan}" y2="${ySpan}" stroke="var(--ink-2)" stroke-width="1"/>`
+                + `<path d="M${X(3) + 4} ${ySpan} l6 -3.5 v7 Z M${X(9) - 4} ${ySpan} l-6 -3.5 v7 Z" fill="var(--ink-2)"/>`
+                + T((X(3) + X(9)) / 2, ySpan - 7, '6h half-life', { size: 11, fill: 'var(--ink-1)', anchor: 'middle' })
+                + T(X(9) + 8, Y((fB + 0.5) / 2) + 4, 'base rate halved', { size: 11, fill: 'var(--muted)' });
             return s + '</svg>';
+        }
+
+        // A trove's queue bar as on the Troves tab, with illustrative figures (in thousands of BOLD): one branch's troves in redemption
+        // order, a trove with 1.6M in front, the branch taking 40% of each redemption, a typical week of 2.5M and a busiest week of 6M
+        // across all branches. Play builds it up step by step: debt in front, the branch's share, how far a typical and the busiest
+        // week reach on this branch; without playing, the finished picture shows
+        const QUEUE_DEMO = {
+            troves: [['single', 120], ['batch', 450], ['single', 80], ['single', 60], ['batch', 600], ['batch', 290], ['self', 300],
+                ['batch', 500], ['single', 150], ['single', 100], ['batch', 350]],
+            share: 0.4, typical: 2500, busiest: 6000
+        };
+        function diagramQueue() {
+            const { troves, share, typical, busiest } = QUEUE_DEMO;
+            const total = troves.reduce((t, [, d]) => t + d, 0), X = v => v / total * 100;
+            const k = v => `${fmt(v / 1000, 1)}M`;
+            let acc = 0, front = 0;
+            const segs = troves.map(([kind, debt]) => {
+                if (kind === 'self') front = acc;
+                const behind = front && kind !== 'self', s = { kind, x0: acc, debt, behind };
+                acc += debt;
+                return s;
+            });
+            const selfDebt = troves.find(([kind]) => kind === 'self')[1], pT = X(typical * share), pB = X(busiest * share);
+            const fill = g => g.kind === 'self' ? '' : g.kind === 'batch' ? (g.behind ? 'rgba(57,135,229,.22)' : 'rgba(57,135,229,.6)') : (g.behind ? 'rgba(158,166,174,.33)' : '#9ea6ae');
+            const segHtml = segs.map(g => `<div class="absolute inset-y-0"${g.kind === 'self' ? ' data-q-self' : ''} style="left: ${X(g.x0)}%; width: ${X(g.debt)}%; background: ${fill(g)}; box-shadow: inset -1px 0 0 #12161d"></div>`).join('');
+            const from = n => `data-q-from="${n}"`;
+            const vline = (p, top, bottom, color, n) => `<div class="absolute" ${from(n)} style="left: calc(${p}% - 1px); width: 2px; top: ${top}px; height: ${bottom - top}px; background: ${color}; box-shadow: 0 0 0 1px rgba(7,9,13,.75); z-index: 2"></div>`;
+            const tri = (p, top, sym, color, attrs = '') => `<div class="absolute text-[13px] leading-none" ${attrs} style="left: ${p}%; top: ${top}px; transform: translateX(-50%); color: ${color}; z-index: 3">${sym}</div>`;
+            const label = (p, top, side, text, attrs = '') => `<div class="absolute text-[10px] leading-none mono whitespace-nowrap" ${attrs} style="top: ${top + 2}px; ${side === 'right' ? `left: calc(${p}% + 10px)` : `right: calc(${100 - p}% + 10px)`}; color: var(--ink-2)">${text}</div>`;
+            const zone = (a, z, key, n) => `<div class="absolute inset-y-0" ${from(n)} style="left: ${a}%; width: ${z - a}%; background: ${TV_BANDS[key].ink}; opacity: .85"></div>`;
+            const pSelf = X(front + selfDebt / 2), TW = 'var(--bad)', BW = 'var(--warn)';
+            const dot = c => `<span class="legend-swatch" style="background: ${c}"></span>`;
+            const steps = [
+                ['Debt in front.', `The branch's troves in redemption order: its most recent zombie trove first, then from the lowest interest rate up, each block as wide as its debt. Everything ahead of the trove, ${k(front)} BOLD here, is redeemed before it.`],
+                ['Branch share.', `Each redemption is split across the three branches in proportion to their debt not covered by their Stability Pool, and this branch takes ${Math.round(share * 100)}% now. Reaching the trove therefore takes about ${k(front)} ÷ ${Math.round(share * 100)}% = ${k(front / share)} BOLD redeemed across all branches: the system-wide distance.`],
+                [`<span style="color: ${TW}">▼</span> TW, typical week.`, `The average 7-day redemption volume of the last 180 days, ${k(typical)} BOLD here, of which ${k(typical * share)} falls on this branch. It stops short of the trove; troves it reaches are marked red.`],
+                [`<span style="color: ${BW}">▲</span> BW, busiest week.`, `The largest 7-day redemption volume of the last 180 days, ${k(busiest)} BOLD here, ${k(busiest * share)} on this branch. It reaches past the trove, which is therefore marked amber; troves beyond it are green.`]
+            ];
+            return `<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] mb-2" style="color: var(--ink-2)">
+                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('rgba(57,135,229,.75)')}batch</span>
+                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap">${dot('#9ea6ae')}single troves</span>
+                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="legend-swatch" data-q-self></span>the trove</span>
+                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="legend-swatch" style="background: repeating-linear-gradient(135deg, rgba(7,9,13,.7) 0 2px, rgba(255,255,255,.35) 2px 4px)"></span>redeemed</span>
+                </div>
+                <div class="relative" style="height: 68px">
+                    ${tri(pT, 0, '▼', TW, from(3))}${label(pT, 0, 'right', `TW ${k(typical * share)}`, from(3))}
+                    ${vline(pT, 12, 46, TW, 3)}
+                    <div class="absolute inset-x-0 rounded overflow-hidden" style="top: 16px; height: 22px; background: rgba(255,255,255,.04)">${segHtml}
+                        <div class="absolute inset-y-0 left-0" data-q-wave style="width: ${pB}%; background: repeating-linear-gradient(135deg, rgba(7,9,13,.62) 0 3px, rgba(7,9,13,.12) 3px 7px); box-shadow: inset -2px 0 0 rgba(240,239,236,.85); z-index: 1"></div>
+                    </div>
+                    <div class="absolute inset-x-0 rounded-full overflow-hidden" style="top: 42px; height: 4px; background: rgba(255,255,255,.04)">
+                        ${zone(0, pT, 'red', 3)}${zone(pT, pB, 'amber', 4)}${zone(pB, 100, 'green', 4)}
+                    </div>
+                    ${vline(pB, 16, 50, BW, 4)}
+                    ${tri(pB, 50, '▲', BW, from(4))}${label(pB, 50, 'right', `BW ${k(busiest * share)}`, from(4))}
+                    ${tri(pSelf, 50, '▲', 'var(--ink-1)', 'data-q-self')}${label(pSelf, 50, 'left', 'the trove')}
+                </div>
+                <div ${from(1)} class="mt-1" style="width: ${X(front)}%">
+                    <div style="height: 7px; border: 1px solid var(--ink-2); border-top: 0"></div>
+                    <div class="text-[11px] text-center mt-1.5 leading-snug" style="color: var(--ink-1)">debt in front: ${k(front)} BOLD on this branch</div>
+                    <div class="text-[11px] text-center leading-snug" ${from(2)} style="color: var(--ink-2)">÷ ${Math.round(share * 100)}% branch share ≈ ${k(front / share)} BOLD system-wide</div>
+                </div>
+                <div class="flex justify-between gap-3 text-[10px] mono whitespace-nowrap mt-1.5" style="color: var(--muted)"><span>next in line · lowest rate</span><span>higher rates →</span></div>
+                <ol class="grid md:grid-cols-2 gap-x-6 gap-y-3 mt-5 text-xs leading-relaxed" style="color: var(--ink-2)">
+                    ${steps.map(([title, body], i) => `<li data-q-step="${i + 1}" class="flex gap-2.5"><span class="mono" style="color: var(--muted)">${i + 1}</span><span><b class="text-white">${title}</b> ${body}</span></li>`).join('')}
+                </ol>
+                <p class="text-xs mt-4 leading-relaxed" style="color: var(--muted)">All with the queue and the branch split as they are at the snapshot. Rate changes, above all by batch managers, and new troves move the queue, and troves that borrow again after every redemption can absorb all redemptions at the front for long periods, so TW and BW show how far a wave of redemptions would reach, not when the trove would be redeemed.</p>`;
+        }
+        // Shows the queue schema up to step n (0: the bar alone … 4: everything); the redemption wave runs to TW at step 3, to BW at 4
+        function queueStep(n) {
+            const root = $('diagramQueue');
+            root.querySelectorAll('[data-q-from]').forEach(e => { e.style.opacity = n >= +e.dataset.qFrom ? 1 : 0; });
+            root.querySelectorAll('[data-q-step]').forEach(e => { e.style.opacity = n >= +e.dataset.qStep ? 1 : .35; });
+            const { troves, share, typical, busiest } = QUEUE_DEMO, total = troves.reduce((t, [, d]) => t + d, 0);
+            root.querySelector('[data-q-wave]').style.width = `${n >= 4 ? busiest * share / total * 100 : n >= 3 ? typical * share / total * 100 : 0}%`;
+            root.querySelectorAll('[data-q-self]').forEach(e => { e.style[e.textContent ? 'color' : 'backgroundColor'] = n >= 4 ? 'var(--warn)' : 'var(--ink-1)'; });
+        }
+        let queueTimers = [];
+        function playQueue() {
+            queueTimers.forEach(clearTimeout);
+            queueStep(0);
+            $('queuePlay').textContent = '▶ Playing…';
+            queueTimers = [[1, 700], [2, 3200], [3, 5700], [4, 8600]].map(([n, ms]) => setTimeout(() => {
+                queueStep(n);
+                if (n === 4) $('queuePlay').textContent = '↻ Replay';
+            }, ms));
         }
 
         // The average redemption in USD per 10,000 BOLD redeemed, over the redemptions at normal on-chain prices (ref_*): the
@@ -2427,7 +2613,9 @@
             ['WETH, wstETH, rETH', 'WETH is wrapped ether. wstETH (Lido) and rETH (Rocket Pool) are liquid staking tokens whose ETH value accrues staking rewards, so each token is worth more than 1 ETH.'],
             ['Stability Pool', 'A per-branch pool of BOLD deposits that absorbs the debt of liquidated troves in exchange for their collateral and a share of borrower interest. Debt covered by Stability Pool deposits is considered backed.'],
             ['Collateral ratio', 'Collateral value divided by debt. Troves below the minimum collateral ratio (MCR: 110% for WETH, 120% for wstETH and rETH) can be liquidated. A branch whose total collateral ratio (TCR) falls below the shutdown ratio (SCR, at the same levels) is shut down.'],
-            ['Oracle', 'The on-chain price source. Liquity V2 uses Chainlink feeds, which publish a new price only when a deviation threshold or heartbeat interval is reached; on-chain prices therefore lag the market.'],
+            ['Oracle', 'The on-chain price source. Liquity V2 uses Chainlink feeds, which publish a new price only when a deviation threshold or heartbeat interval is reached; the protocol\'s prices therefore lag the market.'],
+            ['Exchange price', 'ETH\'s price on centralized exchanges at the moment of a redemption: the average of Coinbase and Bitstamp. The market reference for the oracle gap.'],
+            ['On-chain price', 'ETH\'s price in on-chain pools at the moment of a redemption, read from Uniswap v3 ETH/USDC. Redeemers practically always sell the collateral in on-chain pools, within the redemption transaction.'],
             ['Redemption price', 'The collateral price used to size the payout per redeemed BOLD. It equals the oracle price for WETH and may exceed it for wstETH and rETH (see section 4).'],
             ['Peg', 'The USD 1 target price of BOLD. Redemptions defend the peg from below by making BOLD trading under par profitable to acquire and redeem.'],
             ['Arbitrage bot', 'An automated agent, typically a smart contract driven by off-chain software, that executes the acquire, redeem and sell sequence atomically whenever it is profitable.'],
@@ -2470,6 +2658,54 @@
             ['Costs outside the redemption.', 'Only successful redemption transactions are recorded. Gas spent on attempts that reverted, for example after losing a race to another bot, and costs outside the chain (capital, infrastructure, payments to builders in separate transactions) are not deducted, so the combined profit of redeemers is an upper bound on what they earned overall. BOLD a redeemer already held is valued at the Curve BOLD/USDC price at the time, not at what it paid for it.']
         ];
 
+        // The parts of a redemption's result for the methodology, in the order and colours of BREAKDOWN, with the name a part takes
+        // on the other bar and what each rests on
+        const COMPONENTS = {
+            'Oracle gap': ['The collateral valued at ETH\'s exchange price (Coinbase and Bitstamp, × the wstETH or rETH rate) minus its value at Liquity\'s redemption price: what the oracle\'s lag was worth. On the cost bar as <i>Oracle gap (negative)</i> when the exchange price was below the redemption price.', 'Estimate at the exchange price'],
+            'On-chain vs exchange price': ['The rest of the measured gross profit: what the redeemer got for its trades on-chain compared with the exchange price. Usually on the cost bar as <i>Trading costs vs exchange price</i> (pool fees and price impact); on the edge bar when on-chain prices ran above the exchanges.', 'Estimate; together with the oracle gap measured exactly'],
+            'BOLD discount': ['BOLD bought below $1: BOLD redeemed × (1 − its Curve BOLD/USDC price in the block before). On the cost bar as <i>BOLD premium (above $1)</i> when BOLD traded above $1.', 'Estimate at the pool price'],
+            'Redemption fee': ['The share of the collateral Liquity keeps in the redeemed troves, at least 0.5% and rising with redemption volume.', 'Exact, from Liquity\'s events'],
+            'Builder tips': ['The priority fee and any ETH paid straight to the block builder within the transaction.', 'Exact, from the transaction'],
+            'Gas': ['Gas used × the block\'s base fee, burned by the protocol.', 'Exact, from the transaction'],
+            'Net profit': ['What the redeemer kept: its own transfers in, minus everything paid out, builder payments and gas. Shown hatched; a <i>Net loss</i> sits on the edge bar.', 'Measured from the transaction']
+        };
+        function componentTable() {
+            const swatch = color => color ? `<span class="legend-swatch" style="background:${color}"></span>`
+                : `<span class="legend-swatch" style="box-shadow: inset 0 0 0 1px var(--ink-1); background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px)"></span>`;
+            return [...BREAKDOWN.map(([label, color]) => [label, color]), ['Net profit', null]].map(([label, color]) => `
+                <tr class="border-t border-white/5 align-top">
+                    <td class="px-4 py-2.5 font-medium text-white whitespace-nowrap"><span class="inline-flex items-center gap-2">${swatch(color)}${label}</span></td>
+                    <td class="px-4 py-2.5">${COMPONENTS[label][0]}</td>
+                    <td class="px-4 py-2.5 text-[13px] whitespace-nowrap">${COMPONENTS[label][1]}</td>
+                </tr>`).join('');
+        }
+        // Two worked breakdowns drawn with the same bars as a redemption's detail panel, per 10,000 BOLD redeemed: the average
+        // redemption at normal on-chain prices (the decomposition above), and the redemptions at distorted on-chain prices
+        function componentExamples(st) {
+            const p = refParts(st);
+            if (!p) return '';
+            const parts = vals => BREAKDOWN.map(([label, c]) => ({ label, color: c, v: vals[label] }));
+            const card = (title, sub, html) => `
+                <div class="rounded-xl p-4" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                    <div class="text-sm font-semibold text-white">${title}</div>
+                    <div class="text-xs mt-0.5 mb-3" style="color: var(--muted)">${sub}</div>${html}
+                </div>`;
+            let out = card('A typical redemption', `The average at normal on-chain prices, per 10,000 BOLD redeemed (${fmt(st.ref_count)} redemptions)`,
+                profitBarHtml(parts({ 'Oracle gap': p.gap, 'On-chain vs exchange price': p.trade, 'BOLD discount': p.discount,
+                    'Redemption fee': -p.fee, 'Builder tips': -p.tip, 'Gas': -p.gas }), p.net));
+            // redemptions at distorted on-chain prices, summed with the Weekly breakdown's own parts and scaled the same way
+            const rows = chartRows.filter(r => r.ref_distorted && r.net_profit_usd != null && r.market_price != null);
+            const bold = rows.reduce((t, r) => t + r.amount, 0);
+            if (bold) {
+                const per = v => v / bold * 1e4, sums = {};
+                for (const [label, , value] of BREAKDOWN) sums[label] = per(rows.reduce((t, r) => t + value(r), 0));
+                const days = [...new Set(rows.map(r => date(r.timestamp)))];
+                out += card('At distorted on-chain prices', `${fmt(rows.length)} redemptions on ${days.join(', ')}, per 10,000 BOLD redeemed: on-chain prices far above the exchanges`,
+                    profitBarHtml(parts(sums), per(rows.reduce((t, r) => t + r.net_profit_usd, 0))));
+            }
+            return out;
+        }
+
         let lastStats = null;
 
         function renderHow() {
@@ -2477,6 +2713,9 @@
                 $('diagramPath').innerHTML = diagramPath();
                 $('diagramBranch').innerHTML = diagramBranch();
                 $('diagramFee').innerHTML = diagramFee();
+                $('diagramQueue').innerHTML = diagramQueue();
+                queueStep(4);
+                $('queuePlay').addEventListener('click', playQueue);
                 $('priceTable').innerHTML = PRICE_ROWS.map(([sym, oracle, redemption]) => `
                     <tr class="border-t border-white/5 align-top">
                         <td class="py-3 pr-4"><span class="inline-flex items-center gap-2 font-medium text-white">${branchIcon(sym, 'w-5 h-5')}${sym}</span></td>
@@ -2517,6 +2756,8 @@
                 $('howRefCount').innerText = `${fmt(lastStats.ref_count)} of the ${fmt(lastStats.priced_count)} redemptions with a profit figure`;
                 $('diagramLoop').innerHTML = diagramLoop(lastStats);
                 $('diagramWaterfall').innerHTML = diagramWaterfall(lastStats);
+                $('componentTable').innerHTML = componentTable();
+                $('componentExamples').innerHTML = componentExamples(lastStats);
             }
         }
 
