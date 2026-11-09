@@ -5,6 +5,22 @@
   "buildCommand": "echo 'static site, nothing to build'",
   "outputDirectory": "public",
   "rewrites": [
-    { "source": "/data/:path*", "destination": "https://raw.githubusercontent.com/oordinal/bold-redemption-dashboard/data/:path*" }
-  ]
+    {
+      "source": "/data/:path*",
+      "destination": "https://raw.githubusercontent.com/oordinal/bold-redemption-dashboard/data/:path*"
+    },
+    {
+      "source": "/redemptions",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/troves",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/methodology",
+      "destination": "/index.html"
+    }
+  ],
+  "trailingSlash": false
 }

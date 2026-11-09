@@ -51,7 +51,7 @@ async function snapshot() {
 }
 const describe = (snap, key) => {
     const [b, id] = key.split(':'), t = snap.troves.find(x => x.branch === Number(b) && x.id === id);
-    return t ? { t, branch: snap.branches[t.branch].name, link: `${SITE}/?trove=${encodeURIComponent(snap.branches[t.branch].name)}:${t.id}` } : null;
+    return t ? { t, branch: snap.branches[t.branch].name, link: `${SITE}/troves?trove=${encodeURIComponent(snap.branches[t.branch].name)}:${t.id}` } : null;
 };
 
 const HELP = 'This bot sends alerts about Liquity V2 troves, from <a href="' + SITE + '">boldbot.io</a>.\n\n'

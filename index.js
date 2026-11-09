@@ -113,6 +113,9 @@ function startSync() {
     return true;
 }
 
+// The site's pages are one file, served at each page's address (as on Vercel)
+app.get(['/redemptions', '/troves', '/methodology'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
 app.post('/api/sync', (req, res) => {
     const started = startSync();
     res.status(started ? 202 : 200).json({ started, status: getStatus() });

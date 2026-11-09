@@ -60,7 +60,7 @@ backup still refreshes the data about every 12 hours (GitHub may delay those run
 | `api/telegram.js` | Vercel function: the webhook of @BoldbotAlertsBot (follow a trove, `/status`, `/safe`, `/digest`, `/list`, `/stop`, `/help`) |
 | `api/_view.js` | Shared by the bot and the summaries: queue position, colour band, collateral ratio, liquidation price and the lowest rate to stay in the green (not an endpoint: the underscore keeps Vercel from serving it) |
 | `telegram-setup.js` | One-time setup: registers the bot's webhook and command menu with Telegram (`--check` shows them) |
-| `public/index.html` | The page: the Redemptions, Troves and Methodology tabs |
+| `public/index.html` | The site, one page with four views: the home page (`/`), Redemptions (`/redemptions`), Troves (`/troves`, `?q=` a search) and Methodology (`/methodology`). Vercel (`vercel.json`) and the local server serve it at each address |
 | `public/eth_drawdowns.json` | How often ETH fell by 1–95% within 7 or 30 days (Coinbase, May 2025 – October 2026), for the liquidation context; a static table made from Coinbase ETH-USD minute prices by a separate research script, not part of this repo |
 
 The trove snapshot runs after every sync, separately from it: if it fails, the redemption data is not affected and the
@@ -112,12 +112,25 @@ stored wrong (0 in Alchemy's gaps, doubled by its duplicates) and the net profit
 
 `DB_PATH` points `db.js` at another copy of the database, for testing changes without touching `database.sqlite`.
 
+## Pages and links
+
+The site is one page (`public/index.html`) with four views, each at its own address: `/` (home), `/redemptions`, `/troves`
+and `/methodology`. Choosing a tab changes the view and the address without reloading. Shared links are
+`/troves?trove=<branch>:<trove id>` and `/redemptions?tx=<hash>`; the bot's alerts link to `/troves?trove=…`. Older
+links keep working: `/?trove=…`, `/?tx=…`, `#troves`, `#troves/<search>` and `#how` open the right view and are rewritten
+to the new form.
+
+The home page uses no data of its own: the 24-hour activity, the 7-day figures, the latest redemptions and the weekly volume
+come from the redemption data, and the BOLD price, the fee now, the active troves, the trove search and the examples from
+the trove snapshot (`troves.json`). The bands of its BOLD-discount record come from a study of the redemption history and
+are explained under Methodology.
+
 ## Telegram alerts
 
 [@BoldbotAlertsBot](https://t.me/BoldbotAlertsBot) sends alerts about any trove someone follows: a self-managed trove being redeemed
 against, a batch in front of a self-managed trove moving its rate above it, redemptions hitting the batch of a trove, the batch manager changing the rate,
 and a trove joining or leaving a batch, becoming a zombie or closing. People follow a trove with the **Alerts on Telegram**
-button in its detail on the Troves tab.
+button in its detail on the Troves tab or on the home page.
 
 - **Following**: the button opens the bot with a start code for the trove. Telegram sends the message to the Vercel
   function `api/telegram.js` (webhook protected by a secret), which stores the subscription in Upstash Redis and answers.

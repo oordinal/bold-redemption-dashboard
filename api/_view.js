@@ -26,7 +26,7 @@ const stamp = ms => { const d = new Date(ms); return `${day(ms)}, ${String(d.get
 
 // The last lines of every message: the link to the trove (where there is one) and the same reminder as every alert
 const FOOTER = '\n\n<i>ℹ️ Alerts arrive up to about 30 minutes after a change occurs on chain and are for information purposes only. Before acting on a trove, check its current state in the front end of your choice.</i>';
-const troveUrl = t => `${SITE}/?trove=${encodeURIComponent(t.b.name)}:${t.id}`;
+const troveUrl = t => `${SITE}/troves?trove=${encodeURIComponent(t.b.name)}:${t.id}`;
 const linkLine = t => `<a href="${troveUrl(t)}">Open this trove on boldbot.io →</a> 🤖👀`;
 const BAND = {
     red: '🔴 within reach of a typical week of redemptions',

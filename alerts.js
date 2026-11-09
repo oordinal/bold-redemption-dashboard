@@ -136,7 +136,7 @@ function troveHits(branchName, troveId, fromBlock, toBlock) {
 }
 
 // ---------------------------------------------------------------- Detection and messages
-const troveLink = view => `${SITE}/?trove=${encodeURIComponent(view.b.name)}:${view.t.id}`;
+const troveLink = view => `${SITE}/troves?trove=${encodeURIComponent(view.b.name)}:${view.t.id}`;
 const head = (view, title) => `<b>${title}</b>\nTrove <a href="${troveLink(view)}">${short(view.t.id)}</a> · ${esc(view.b.name)} · ${pct(view.t.rate)}`;
 // asResult: the sentence follows the event that changed it ("As a result, the debt in front…")
 const frontLine = (view, state, asResult) => view.front === 0
