@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
     price_curve REAL,                -- BOLD/USDC mid prices in the block before the redemption
     price_uni_v3 REAL,
     price_uni_v4 REAL,
+    price_aero REAL,                 -- ... on the Aero BOLD/USDC pool (Slipstream), since 21 Oct 2026
     market_price REAL,               -- reference price: Curve, falling back to Uniswap v3, then v4
     spread REAL,                     -- BOLD discount to $1 at market_price, in %
     oracle_gap REAL,                 -- % the collateral's market price sits above Liquity's redemption price
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
     bold_src_curve REAL,             -- BOLD redeemed sourced in the tx from the Curve BOLD/USDC pool (net outflow)
     bold_src_uni_v3 REAL,            -- ... from the Uniswap v3 BOLD/USDC pool
     bold_src_uni_v4 REAL,            -- ... from Uniswap v4 (PoolManager, any BOLD pool)
+    bold_src_aero REAL,              -- ... from the Aero (Slipstream) BOLD/USDC pool, since 21 Oct 2026
     bold_src_other REAL,             -- ... from any other address: other pools and DEXs, lending markets
     bold_src_held REAL,              -- BOLD not sourced in the tx: already held by the redeemer
     -- Measured result (actualResult in worker.js): the redeemer's own token and ETH flows in the tx, valued at Liquity's oracle price

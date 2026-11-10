@@ -33,6 +33,7 @@
             --series-2: #d95926; /* Uniswap v3 */
             --borrowed: #f2621f; /* BOLD borrowed, against the blue BOLD redeemed in the borrowing record */
             --series-3: #199e70; /* Uniswap v4 */
+            --series-4: #e8c547; /* Aero */
             --ink-1: #f0efec;
             --ink-2: #c3c2b7;
             --muted: #898781;
@@ -106,6 +107,11 @@
         .sitetab-glide { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 8px; background: rgba(255, 255, 255, .08); opacity: 0;
             box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transition: transform .38s cubic-bezier(.3, .8, .25, 1), width .38s cubic-bezier(.3, .8, .25, 1), opacity .2s ease; }
         .site-logo { border-radius: 10px; transition: opacity .15s ease; }
+        /* A page shown from the site bar, the logo or the back button fades up, its first blocks one after another, as the home page does */
+        .view-in > * { animation: viewIn .7s ease both; }     /* the home page's timing (lp-fade) */
+        .view-in > *:nth-child(2) { animation-delay: .08s; } .view-in > *:nth-child(3) { animation-delay: .16s; } .view-in > *:nth-child(n+4) { animation-delay: .24s; }
+        @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { .view-in > * { animation: none; } }
         .site-logo:hover { opacity: .85; }
         @media (prefers-reduced-motion: reduce) { .sitetab-glide { transition: none; } }
         #diagramQueue [data-q-from], #diagramQueue [data-q-step] { transition: opacity .5s ease; }
@@ -185,6 +191,8 @@
         .pg-active { color: var(--ink-1); background: rgba(57, 135, 229, 0.18); box-shadow: inset 0 0 0 1px rgba(57, 135, 229, 0.45); }
 
         /* ---------------- Home page (view-home) */
+        /* A list that scrolls (the redemption calls) fades out at the bottom while more is below */
+        [data-calls-scroll].more { mask-image: linear-gradient(to bottom, black calc(100% - 22px), transparent); -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 22px), transparent); }
         .lp-door { position: relative; transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
         .lp-door:hover { transform: translateY(-3px); border-color: var(--edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 30px 60px -30px var(--glow); }
         .lp-door .lp-go { transition: gap .2s ease, color .2s ease; }
@@ -225,6 +233,7 @@
         .lp-band.on[data-band="amber"] { color: var(--warn); background: rgba(250,178,25,.1); border-color: rgba(250,178,25,.45); font-weight: 600; }
         .lp-band.on[data-band="green"] { color: var(--good); background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.4); font-weight: 600; }
         .lp-text { transition: opacity .35s ease; }
+        #lpTvExample[hidden] { display: none !important; }
         .lp-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.12); transition: background .35s ease, transform .35s ease; }
         .lp-dot.on { background: var(--ink-2); transform: scale(1.15); }
         /* latest redemptions arrive once when the card comes into view, then the weekly bars grow */
@@ -342,8 +351,8 @@
                         <button type="submit" class="lp-btn" style="background: #199e70; box-shadow: 0 10px 30px -12px rgba(25,158,112,.8)"><span class="hidden sm:inline">Find trove</span><span class="sm:hidden">Find</span></button>
                     </form>
                     <div id="lpTvResults" class="mt-5 space-y-3" hidden></div>
-                    <div id="lpTvExample" class="mt-5" aria-live="off"></div>
-                    <a href="/troves" data-nav="troves" class="lp-go inline-flex items-center gap-2 mt-auto pt-6 text-sm font-semibold" style="color: var(--good)">Watch the queue <span>→</span></a>
+                    <div id="lpTvExample" class="mt-5 flex-1 flex flex-col" aria-live="off"></div>
+                    <a href="/troves" data-nav="troves" class="lp-go inline-flex items-center gap-2 pt-6 text-sm font-semibold" style="color: var(--good)">Watch the queue <span>→</span></a>
                 </div>
                 <!-- Latest redemptions and the weekly volume -->
                 <div class="card lp-door lp-blue p-6 md:p-7 flex flex-col lp-fade d2" id="lpFeedCard">
@@ -444,7 +453,7 @@
                     <h2 class="font-semibold">BOLD price before each redemption</h2>
                     <span id="priceCount" class="text-xs mono" style="color: var(--muted)"></span>
                 </div>
-                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-4">
+                <div class="flex flex-col items-start gap-y-2.5 mb-4">
                     <p class="text-xs" style="color: var(--muted)">Pool mid price in the block before. Each point is one redemption tx.<br><span id="priceScope"></span></p>
                     <div id="priceLegend" class="flex flex-wrap items-center gap-2 text-xs" style="color: var(--ink-2)" aria-label="Show or hide pools"></div>
                 </div>
@@ -897,13 +906,13 @@
                         <div class="mono text-xs" style="color: #8bb8f0">BOLD SOURCING</div>
                         <div class="font-semibold mt-1">Where the redeemed BOLD came from</div>
                         <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>Every BOLD transfer inside the transaction is counted, and each address is credited with the BOLD it sent out minus the BOLD it received. Routers that pass BOLD along, and loans of BOLD repaid within the same transaction, therefore cancel out.</p>
-                            <p>Addresses that supplied BOLD are classified as the Curve BOLD/USDC pool, the Uniswap v3 BOLD/USDC pool, Uniswap v4 (any BOLD pool) or other venues (other pools and DEXs, lending markets where BOLD was borrowed). BOLD the redeemer did not obtain within the transaction counts as already held. Shares are weighted by BOLD redeemed.</p></div>
+                            <p>Addresses that supplied BOLD are classified as the Curve BOLD/USDC pool, the Uniswap v3 BOLD/USDC pool, Uniswap v4 (any BOLD pool), the Aero BOLD/USDC pool (since 21 October 2026) or other venues (other pools and DEXs, lending markets where BOLD was borrowed). BOLD the redeemer did not obtain within the transaction counts as already held. Shares are weighted by BOLD redeemed.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">FLASH FINANCING</div>
                         <div class="font-semibold mt-1">How redemptions are funded</div>
                         <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p><b class="text-white">Flash loans</b> are recognised by the event their lender emits, and named only when the event comes from the lender's known contract: Morpho, Balancer, Aave, Spark and Maker, plus Uniswap v3's flash-loan event from any of its pools.</p>
-                            <p><b class="text-white">Flash swaps</b> are recognised by their pattern: the redeemer's first token received comes from a pool that it pays back later in the same transaction, usually with the redeemed collateral. The pool is classified by the swap events it emits. Shares are per transaction, and a transaction can combine several methods. "None detected" covers own capital and patterns not recognised.</p></div>
+                            <p><b class="text-white">Flash swaps</b> are recognised by their pattern: the redeemer's first token received comes from a pool that it pays back later in the same transaction, usually with the redeemed collateral. Uniswap v4 and Balancer v3 are recognised by their contracts; a pool with Uniswap v3's swap event is named by the factory that created it (Uniswap v3 or Aero, whose Slipstream pools share that event), and any other pool counts as other. Shares are per transaction, and a transaction can combine several methods. "None detected" covers own capital and patterns not recognised.</p></div>
                     </div>
                     <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
                         <div class="mono text-xs" style="color: #8bb8f0">BATCH-MANAGED TROVES</div>
@@ -1274,7 +1283,8 @@
         const SOURCE_NOTES = {
             curve: 'BOLD bought from Curve\'s BOLD/USDC pool, the main BOLD market. BOLD from other Curve pools, such as BOLD/LUSD, '
                 + 'counts under other venues.',
-            other: 'BOLD from addresses other than the three main pools: other Curve pools (such as BOLD/LUSD), other DEXs, '
+            aero: 'BOLD bought from Aero\'s BOLD/USDC pool (Slipstream, 0.035% fee), live on Ethereum since 21 October 2026.',
+            other: 'BOLD from addresses other than the four main pools: other Curve pools (such as BOLD/LUSD), other DEXs, '
                 + 'and lending markets where the redeemer borrowed BOLD (such as an Euler vault). Each address counts by the BOLD it '
                 + 'sent out minus what it received in the transaction, so routers and loans repaid within the transaction cancel out.',
             held: 'BOLD the redeemer did not obtain within the transaction: it already held it, for example bought in an earlier '
@@ -1309,7 +1319,7 @@
 
             // Sources, weighted by BOLD; the venues sorted by size, BOLD already held last
             const total = sourced.reduce((s, r) => s + r.amount, 0);
-            const venues = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues']]
+            const venues = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['aero', 'Aero'], ['other', 'Other venues']]
                 .map(([k, label]) => ({ k, label, bold: sourced.reduce((s, r) => s + (r[`bold_src_${k}`] || 0), 0),
                     txs: sourced.filter(r => r[`bold_src_${k}`] > 0.01).length }))
                 .sort((a, b) => b.bold - a.bold);
@@ -1370,7 +1380,7 @@
         const BUILDER_NOTE = 'How much of its gross profit the operator handed to block builders to get its transactions included first: '
             + 'priority fees plus payments sent to the builder directly. 15% means that of every $100 made before costs, $15 went to builders. '
             + 'A high share usually means competing hard for the top of the block. Hover over a value for the amounts.';
-        const SOURCE_LABELS = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['other', 'Other venues'], ['held', 'Already held']];
+        const SOURCE_LABELS = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['aero', 'Aero'], ['other', 'Other venues'], ['held', 'Already held']];
         const SHORT = { 'Uniswap v3 flash swap': 'Uni v3 flash swap', 'Uniswap v4 flash swap': 'Uni v4 flash swap', 'Balancer v3 flash swap': 'Bal v3 flash swap',
             'Uniswap v3 flash loan': 'Uni v3 flash loan', 'Uniswap v4': 'Uni v4', 'Uniswap v3': 'Uni v3', 'Other venues': 'Other', 'Already held': 'Held' };
         // The largest entry of a breakdown as "label share%", with the whole breakdown as a tooltip
@@ -1669,6 +1679,17 @@
                     <td class="px-3 py-2 text-right ${signClass(r.net_margin)}">${pct(r.net_margin, 3)}</td>
                 </tr>${open ? `<tr class="detail-row"><td colspan="14" class="p-0">${txDetailHtml(r, txDetails.get(r.tx_hash))}</td></tr>` : ''}`;
             }).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
+            sizeCallLists();
+        }
+        // A transaction with more than three redemption calls lists the first three; the rest scroll under the table's header. The
+        // height is measured from the drawn rows, so exactly three calls are in view
+        function sizeCallLists() {
+            document.querySelectorAll('[data-calls-scroll]').forEach(box => {
+                const head = box.querySelector('thead'), rows = [...box.querySelectorAll('tbody tr')].slice(0, 3);
+                if (head && rows.length) box.style.maxHeight = `${Math.ceil(head.getBoundingClientRect().height + rows.reduce((a, tr) => a + tr.getBoundingClientRect().height, 0)) + 1}px`;
+                const fade = () => box.classList.toggle('more', box.scrollTop + box.clientHeight < box.scrollHeight - 2);
+                box.onscroll = fade; fade();
+            });
         }
 
         const infoTip = (text, label) => `<button type="button" class="info-tip" aria-label="About ${esc(label.toLowerCase())}">i<span class="info-pop" role="tooltip">${text}</span></button>`;
@@ -1779,8 +1800,8 @@
                     .filter(s => s.share >= 0.05).sort((a, b) => b.share - a.share);
             // One bar split by source, in the pools' colours of the price chart (the "BOLD before the block" dots below); hover names the
             // pool and its share. Other venues are grey, BOLD already held is hatched because it is not a market.
-            const POOL_NAMES = { curve: 'Curve BOLD/USDC', uni_v3: 'Uniswap v3 BOLD/USDC', uni_v4: 'Uniswap v4 BOLD/USDC', other: 'Other venues', held: 'Already held' };
-            const POOL_COLORS = { curve: css('--series-1'), uni_v3: css('--series-2'), uni_v4: css('--series-3'), other: css('--muted') };
+            const POOL_NAMES = { curve: 'Curve BOLD/USDC', uni_v3: 'Uniswap v3 BOLD/USDC', uni_v4: 'Uniswap v4 BOLD/USDC', aero: 'Aero BOLD/USDC', other: 'Other venues', held: 'Already held' };
+            const POOL_COLORS = { curve: css('--series-1'), uni_v3: css('--series-2'), uni_v4: css('--series-3'), aero: css('--series-4'), other: css('--muted') };
             const sourceShare = s => `${s.share >= 99.95 ? '100' : fmt(s.share, 1)}%`;
             const sourceText = sources.length ? `<span class="inline-flex w-40 h-2.5 rounded-sm overflow-hidden" role="img"
                     aria-label="${sources.map(s => `${POOL_NAMES[s.k]} ${sourceShare(s)}`).join(', ')}">${sources.map((s, i) => `<span class="h-full"
@@ -1806,6 +1827,7 @@
                         ${poolPrice('Curve', css('--series-1'), r.price_curve)}
                         ${poolPrice('Uniswap v3', css('--series-2'), r.price_uni_v3)}
                         ${poolPrice('Uniswap v4', css('--series-3'), r.price_uni_v4)}
+                        ${r.price_aero != null ? poolPrice('Aero', css('--series-4'), r.price_aero) : ''}
                     </p>
                 </div>`;
 
@@ -1916,9 +1938,9 @@
                         <div class="shrink-0 rounded-xl p-4 lg:max-w-[26rem]" style="background: rgba(250,178,25,.04); border: 1px solid rgba(250,178,25,.25)">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="text-sm font-semibold text-white">Redemption calls</span>
-                                <span class="text-xs" style="color: var(--muted)">${calls} calls</span>
+                                <span class="text-xs" style="color: var(--muted)">${calls} calls${calls > 3 ? ' · scroll for more' : ''}</span>
                             </div>
-                            <div class="overflow-x-auto scroll">
+                            <div class="overflow-auto scroll rounded-lg"${calls > 3 ? ' data-calls-scroll' : ''}>
                             <table class="text-left text-xs whitespace-nowrap">
                                 <thead style="color: var(--muted)"><tr class="text-[10px] uppercase tracking-wider">
                                     ${th('Call')}${th('BOLD redeemed', true)}${th('Branches')}${th('Troves', true)}${th('Fee rate', true)}
@@ -2026,7 +2048,8 @@
             const venues = [
                 ['price_curve', 'Curve', css('--series-1')],
                 ['price_uni_v3', 'Uniswap v3', css('--series-2')],
-                ['price_uni_v4', 'Uniswap v4', css('--series-3')]
+                ['price_uni_v4', 'Uniswap v4', css('--series-3')],
+                ['price_aero', 'Aero', css('--series-4')]
             ];
             const datasets = venues.map(([key, label, color]) => ({
                 label,
@@ -2043,12 +2066,12 @@
                 type: 'line', label: '$1 peg', borderColor: css('--muted'), borderWidth: 1,
                 pointRadius: 0, pointHitRadius: 0, data: [{ x: from, y: 1 }, { x: to, y: 1 }]
             });
-            // Legend doubles as the pool toggles. Every redemption has a price from each pool, so the point counts are near
+            // Legend doubles as the pool toggles. Every redemption has a price from each pool (Aero's since its launch on 21 October 2026), so the point counts are near
             // identical: the hover shows them together with how often the pool supplied the redeemed BOLD
             $('priceCount').innerText = `${fmt(rows.length)} txs`;
             $('priceScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
             const sourced = rows.filter(r => r.bold_src_held != null);
-            const srcKey = { price_curve: 'bold_src_curve', price_uni_v3: 'bold_src_uni_v3', price_uni_v4: 'bold_src_uni_v4' };
+            const srcKey = { price_curve: 'bold_src_curve', price_uni_v3: 'bold_src_uni_v3', price_uni_v4: 'bold_src_uni_v4', price_aero: 'bold_src_aero' };
             $('priceLegend').innerHTML = venues.map(([key, label, color], i) => {
                 const off = hiddenPools.has(label);
                 const used = sourced.filter(r => r[srcKey[key]] > 0.01).length;
@@ -4076,7 +4099,7 @@
         function lpCardHtml(t, example) {
             const band = lpBandOf(t), fig = (label, k, sub) => `<div><div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</div>
                 <div class="mono text-lg font-semibold mt-0.5" data-k="${k}">–</div><div class="mono text-[11px]" style="color: var(--muted)">${sub}</div></div>`;
-            return `<div class="lp-tcard rounded-xl p-4" data-key="${esc(t.key)}" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+            return `<div class="lp-tcard rounded-xl p-4${example ? ' flex-1 flex flex-col' : ''}" data-key="${esc(t.key)}" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
                 <div class="flex items-center justify-between gap-3">
                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                         <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background: rgba(255,255,255,.06); color: var(--ink-2)">${esc(t.b.name)}</span>
@@ -4091,7 +4114,7 @@
                 </div>
                 <div class="flex gap-1.5 mt-4">${[['red', 'typical week'], ['amber', 'busy week'], ['green', 'beyond']].map(([k, l]) => `<span class="lp-band" data-band="${k}">${l}</span>`).join('')}</div>
                 <p class="text-xs mt-3 leading-relaxed lp-text" style="color: var(--muted); min-height: 3.3em; opacity: 0" data-k="text"></p>
-                <div class="flex flex-wrap gap-2 mt-3">
+                <div class="flex flex-wrap gap-2 ${example ? 'mt-auto pt-3' : 'mt-3'}">
                     <a href="/troves?trove=${encodeURIComponent(t.b.name)}:${t.id}" data-lpopen="${esc(t.key)}" class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg hover:bg-white/5" style="color: var(--good); box-shadow: inset 0 0 0 1px rgba(52,211,153,.35)">Open in the trove explorer →</a>
                     <button type="button" data-tgmenu="${telegramCode(t)}" class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg hover:brightness-125" style="background: rgba(57,135,229,.16); color: #8bb8f0">${PLANE_ICON}Alerts on Telegram</button>
                 </div></div>`;
@@ -4293,6 +4316,8 @@
         function showView(name, { push = false, load = true } = {}) {
             for (const v of Object.keys(VIEW_PATH)) $(`view-${v}`).classList.toggle('hidden', v !== name);
             tvHidePicker();
+            // the fade-up of a page changed to (the home page's own sections already fade up whenever it is shown)
+            if (currentView && currentView !== name && name !== 'home') { const el = $(`view-${name}`); el.classList.remove('view-in'); el.offsetWidth; el.classList.add('view-in'); }
             placeGlide(name);
             document.title = VIEW_TITLE[name];
             const url = viewUrl(name), changed = currentView !== name;

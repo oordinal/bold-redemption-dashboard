@@ -47,6 +47,13 @@ const FLASH_EVENTS = {
 const FLASH_LENDERS = new Set(Object.values(FLASH_EVENTS).flatMap(v => typeof v === 'string' ? [] : Object.keys(v)));
 const UNI_V4_POOL_MANAGER_ADDRESS = '0x000000000004444c5dc75cb358380d2e3de08a90';
 const BALANCER_V3_VAULT = '0xba1333333333a1ba1108e8412f11850a5c319ba9';
+// Aero (the merged Aerodrome and Velodrome) on Ethereum since 21 October 2026: its Slipstream BOLD/USDC pool (0.035%, created at
+// AERO_BOLD_USDC_BLOCK by Aero's CLFactory), a BOLD source of its own. Slipstream pools are a Uniswap v3 fork with the same Swap
+// event, so a flash swap is attributed by the factory that created the pool, not by its events.
+const AERO_BOLD_USDC = '0x82ccbb91c69e75037bb972f28cc01e704e325362';
+const AERO_BOLD_USDC_BLOCK = 26238880;
+const POOL_FACTORIES = { '0x1f98431c8ad98523631ae4a59f267346ea31f984': 'Uniswap v3', '0xf4fd2e6c5b60c5b365cd1b96dd6245e6d60414c2': 'Aero' };
+const FACTORY = new ethers.Interface(['function factory() view returns (address)']);
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
 const COLLATERAL_REGISTRY_ABI = [
@@ -124,16 +131,16 @@ const insertEvent = db.prepare(`INSERT OR REPLACE INTO redemption_events
     VALUES (@tx_hash, @log_index, @branch, @bold_attempted, @bold_redeemed, @coll_sent, @coll_fee, @coll_price, @redemption_price, @coll_market_price)`);
 const insertRedemption = db.prepare(`INSERT OR REPLACE INTO redemptions
     (tx_hash, block, timestamp, sender, to_address, via_contract, branches, amount, coll_value_usd, fee_usd,
-     price_curve, price_uni_v3, price_uni_v4, market_price, spread, oracle_gap, fee_pct, net_edge,
+     price_curve, price_uni_v3, price_uni_v4, price_aero, market_price, spread, oracle_gap, fee_pct, net_edge,
      gas_used, base_fee_eth, priority_fee_eth, coinbase_tip_eth, eth_usd,
      gross_profit_usd, gas_fee_usd, builder_tip_usd, net_profit_usd, net_margin,
-     flash_venue, bold_src_curve, bold_src_uni_v3, bold_src_uni_v4, bold_src_other, bold_src_held,
+     flash_venue, bold_src_curve, bold_src_uni_v3, bold_src_uni_v4, bold_src_aero, bold_src_other, bold_src_held,
      oracle_eth_usd, actual_net_usd, actual_gross_usd, actual_status)
     VALUES (@tx_hash, @block, @timestamp, @sender, @to_address, @via_contract, @branches, @amount, @coll_value_usd, @fee_usd,
-     @price_curve, @price_uni_v3, @price_uni_v4, @market_price, @spread, @oracle_gap, @fee_pct, @net_edge,
+     @price_curve, @price_uni_v3, @price_uni_v4, @price_aero, @market_price, @spread, @oracle_gap, @fee_pct, @net_edge,
      @gas_used, @base_fee_eth, @priority_fee_eth, @coinbase_tip_eth, @eth_usd,
      @gross_profit_usd, @gas_fee_usd, @builder_tip_usd, @net_profit_usd, @net_margin,
-     @flash_venue, @bold_src_curve, @bold_src_uni_v3, @bold_src_uni_v4, @bold_src_other, @bold_src_held,
+     @flash_venue, @bold_src_curve, @bold_src_uni_v3, @bold_src_uni_v4, @bold_src_aero, @bold_src_other, @bold_src_held,
      @oracle_eth_usd, @actual_net_usd, @actual_gross_usd, @actual_status)`);
 
 const insertTrove = db.prepare(`INSERT OR REPLACE INTO redemption_troves
@@ -190,6 +197,8 @@ async function loadConfig() {
         const slot = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(['bytes32', 'uint256'], [v4Id, 6]));
         pools.uniV4 = { address: poolManager, slot, boldIsToken0: BigInt(USDC) > BigInt(env('BOLD_TOKEN_ADDRESS')) };
     }
+    // Aero's Slipstream BOLD/USDC pool: BOLD is token0 (its address sorts below USDC's)
+    pools.aero = { address: AERO_BOLD_USDC, boldIsToken0: BigInt(USDC) > BigInt(env('BOLD_TOKEN_ADDRESS')) };
     const curve = env('CURVE_POOL_ADDRESS_BOLD_USDC');
     if (ethers.isAddress(curve)) {
         const coin0 = await new ethers.Contract(curve, CURVE_POOL, provider).coins(0);
@@ -235,6 +244,12 @@ async function pricesAt(blockTag) {
             return priceFromSqrt(BigInt(word) & ((1n << 160n) - 1n), pools.uniV4.boldIsToken0);
         }]);
     }
+    if (pools.aero) {
+        // Slipstream's slot0 returns one field fewer than Uniswap v3's; the price is the first word. Before the pool existed the call
+        // returns nothing and the price stays empty
+        calls.push({ target: pools.aero.address, allowFailure: true, callData: UNI_V3_POOL.encodeFunctionData('slot0') });
+        decoders.push(['price_aero', data => priceFromSqrt(BigInt(ethers.dataSlice(data, 0, 32)), pools.aero.boldIsToken0)]);
+    }
     if (pools.curve) {
         // get_p(0): price of coin 1 in units of coin 0, 1e18-scaled
         calls.push({ target: pools.curve.address, allowFailure: true, callData: CURVE_POOL.encodeFunctionData('get_p', [0]) });
@@ -245,7 +260,7 @@ async function pricesAt(blockTag) {
         }]);
     }
 
-    const out = { price_curve: null, price_uni_v3: null, price_uni_v4: null };
+    const out = { price_curve: null, price_uni_v3: null, price_uni_v4: null, price_aero: null };
     const results = await multicall.aggregate3.staticCall(calls, { blockTag });
     results.forEach((r, i) => {
         const [key, decode] = decoders[i];
@@ -276,7 +291,7 @@ async function ethPriceBeforeTx(receipt, caches) {
 }
 
 // Flash-loan lenders used in the tx, e.g. "Morpho" or "Balancer,Morpho"; null when none is detected
-function flashVenues(receipt) {
+async function flashVenues(receipt) {
     const venues = new Set();
     for (const log of receipt.logs) {
         const known = FLASH_EVENTS[log.topics[0]];
@@ -284,7 +299,7 @@ function flashVenues(receipt) {
         const venue = typeof known === 'string' ? known.slice(1) : known[log.address.toLowerCase()];
         if (venue) venues.add(venue);
     }
-    const swap = flashSwapVenue(receipt);
+    const swap = await flashSwapVenue(receipt);
     if (swap) venues.add(swap);
     return venues.size ? [...venues].sort().join(',') : null;
 }
@@ -292,7 +307,7 @@ function flashVenues(receipt) {
 // Flash swap: the redeemer's first token movement is a pool paying it (the output of a swap not yet paid for),
 // and that pool is paid back later in the tx, typically with the redeemed collateral. Pools of the known
 // flash-loan lenders are left to their events.
-function flashSwapVenue(receipt) {
+async function flashSwapVenue(receipt) {
     const redeemer = new Set([receipt.from.toLowerCase(), (receipt.to || '').toLowerCase()]);
     const moves = [];
     for (const log of receipt.logs) {
@@ -307,8 +322,28 @@ function flashSwapVenue(receipt) {
     if (!moves.slice(1).some(m => m.dir === 'out' && m.party === first.party)) return null;
     if (first.party === UNI_V4_POOL_MANAGER_ADDRESS) return 'Uniswap v4 flash swap';
     if (first.party === BALANCER_V3_VAULT) return 'Balancer v3 flash swap';
-    const uniV3 = receipt.logs.some(l => l.address.toLowerCase() === first.party && l.topics[0] === UNI_V3_SWAP_TOPIC);
-    return uniV3 ? 'Uniswap v3 flash swap' : 'Other flash swap';
+    // a pool with Uniswap v3's Swap event is named by the factory that created it (Uniswap v3, Aero); forks of other DEXs stay "other"
+    const v3Style = receipt.logs.some(l => l.address.toLowerCase() === first.party && l.topics[0] === UNI_V3_SWAP_TOPIC);
+    const dex = v3Style ? await poolFactory(first.party) : null;
+    return dex ? `${dex} flash swap` : 'Other flash swap';
+}
+
+// The DEX that created a pool (POOL_FACTORIES), from its factory(); null for any other, also when the pool has no factory(). Under heavy
+// load a node can answer a valid call with a revert or nothing, so "no factory" is concluded only when three attempts a moment apart
+// agree; a network failure is thrown, not cached, so the transaction is attributed at the next sync instead
+const factoryCache = new Map();
+async function readFactory(pool) {
+    for (let i = 0; ; i++) {
+        const data = await withRetry(() => provider.call({ to: pool, data: FACTORY.encodeFunctionData('factory') })
+            .catch(e => { if (e.code === 'CALL_EXCEPTION') return '0x'; throw e; }));
+        if (data && data.length >= 66) return POOL_FACTORIES[FACTORY.decodeFunctionResult('factory', data)[0].toLowerCase()] || null;
+        if (i >= 2) return null;
+        await new Promise(r => setTimeout(r, 1500));
+    }
+}
+function poolFactory(pool) {
+    if (!factoryCache.has(pool)) factoryCache.set(pool, readFactory(pool).catch(e => { factoryCache.delete(pool); throw e; }));
+    return factoryCache.get(pool);
 }
 
 // Where the redeemed BOLD came from within the tx. Each address is counted by its net BOLD outflow, so routers
@@ -327,15 +362,16 @@ function boldSources(receipt, amount) {
         net.set(to, (net.get(to) || 0) - v);
     }
     const venue = {
-        [pools.curve?.address.toLowerCase()]: 'curve', [pools.uniV3?.address.toLowerCase()]: 'uni_v3', [pools.uniV4?.address.toLowerCase()]: 'uni_v4'
+        [pools.curve?.address.toLowerCase()]: 'curve', [pools.uniV3?.address.toLowerCase()]: 'uni_v3', [pools.uniV4?.address.toLowerCase()]: 'uni_v4',
+        [AERO_BOLD_USDC]: 'aero'
     };
-    const src = { curve: 0, uni_v3: 0, uni_v4: 0, other: 0 };
+    const src = { curve: 0, uni_v3: 0, uni_v4: 0, aero: 0, other: 0 };
     for (const [addr, out] of net) if (out > 1e-9 && !redeemer.has(addr)) src[venue[addr] || 'other'] += out;
     // Scale down if the tx sourced more BOLD than it redeemed (the rest stayed with the redeemer)
-    const sourced = src.curve + src.uni_v3 + src.uni_v4 + src.other;
+    const sourced = src.curve + src.uni_v3 + src.uni_v4 + src.aero + src.other;
     const k = sourced > amount ? amount / sourced : 1;
     return {
-        bold_src_curve: src.curve * k, bold_src_uni_v3: src.uni_v3 * k, bold_src_uni_v4: src.uni_v4 * k, bold_src_other: src.other * k,
+        bold_src_curve: src.curve * k, bold_src_uni_v3: src.uni_v3 * k, bold_src_uni_v4: src.uni_v4 * k, bold_src_aero: src.aero * k, bold_src_other: src.other * k,
         bold_src_held: Math.max(amount - sourced * k, 0)
     };
 }
@@ -711,6 +747,7 @@ async function enrichTx(receipt, logs, caches) {
             price_curve: prices.price_curve,
             price_uni_v3: prices.price_uni_v3,
             price_uni_v4: prices.price_uni_v4,
+            price_aero: prices.price_aero,
             market_price: market,
             spread: market != null ? (1 - market) * 100 : null,
             oracle_gap: oracleGap,
@@ -726,7 +763,7 @@ async function enrichTx(receipt, logs, caches) {
             builder_tip_usd: builderTipUsd,
             net_profit_usd: netProfit,
             net_margin: netProfit != null ? netProfit / purchaseCost * 100 : null,
-            flash_venue: flashVenues(receipt),
+            flash_venue: await flashVenues(receipt),
             ...boldSources(receipt, amount)
     };
     // Measured result; left empty on failure, and then filled by backfillActual() at the next sync
@@ -833,6 +870,57 @@ async function backfillTroves() {
     setState.run('troves_backfilled', '1');
 }
 
+// Once: redemptions stored before Aero was a named source or flash swaps were attributed by factory. Since the Aero pool's creation,
+// BOLD from "other venues" is split again (Aero apart); and every flash swap labelled Uniswap v3 by its Swap event is attributed again
+// by the pool's factory (Aero's pools and other forks were counted as Uniswap v3). Only these columns change.
+const txsForVenues = db.prepare(`SELECT tx_hash, amount, block, bold_src_other, flash_venue FROM redemptions
+    WHERE (block >= ? AND bold_src_other > 0) OR flash_venue LIKE '%Uniswap v3 flash swap%' ORDER BY block`);
+const setVenues = db.prepare(`UPDATE redemptions SET flash_venue = @flash_venue, bold_src_curve = @bold_src_curve, bold_src_uni_v3 = @bold_src_uni_v3,
+    bold_src_uni_v4 = @bold_src_uni_v4, bold_src_aero = @bold_src_aero, bold_src_other = @bold_src_other, bold_src_held = @bold_src_held WHERE tx_hash = @tx_hash`);
+const zeroAero = db.prepare('UPDATE redemptions SET bold_src_aero = 0 WHERE bold_src_aero IS NULL AND bold_src_held IS NOT NULL');
+async function backfillVenues() {
+    if (getState.get('venues_aero')?.value === '1') return;
+    zeroAero.run();                            // before the pool existed, and wherever "other venues" was empty, nothing came from Aero
+    const rows = txsForVenues.all(AERO_BOLD_USDC_BLOCK);
+    if (rows.length) console.log(`Attributing BOLD sources and flash swaps again for ${rows.length} redemption tx…`);
+    let failed = 0;
+    for (let i = 0; i < rows.length; i += 50) {
+        const chunk = rows.slice(i, i + 50);
+        const done = await mapPool(chunk, ENRICH_CONCURRENCY, async row => {
+            try {
+                const receipt = await withRetry(() => provider.getTransactionReceipt(row.tx_hash));
+                return { tx_hash: row.tx_hash, flash_venue: await flashVenues(receipt), ...boldSources(receipt, row.amount) };
+            } catch (e) { failed++; console.warn(`Venues not attributed for ${row.tx_hash}: ${e.shortMessage || e.message}`); return null; }
+        });
+        db.transaction(list => list.forEach(r => setVenues.run(r)))(done.filter(Boolean));
+        state.phase = `attributing venues ${Math.min(i + chunk.length, rows.length)}/${rows.length}`;
+    }
+    if (failed) console.warn(`${failed} redemptions left for the next sync`);
+    else setState.run('venues_aero', '1');
+}
+
+// The Aero pool's BOLD price at block N-1 for redemptions stored before it was read (since the pool's creation). Runs at every sync
+// until none is left; only that column changes
+const txsWithoutAeroPrice = db.prepare('SELECT tx_hash, block FROM redemptions WHERE block > ? AND price_aero IS NULL ORDER BY block');
+const setAeroPrice = db.prepare('UPDATE redemptions SET price_aero = ? WHERE tx_hash = ?');
+async function backfillAeroPrices() {
+    const rows = txsWithoutAeroPrice.all(AERO_BOLD_USDC_BLOCK);
+    if (!rows.length) return;
+    console.log(`Reading the Aero pool's BOLD price for ${rows.length} redemption tx…`);
+    const slot0 = UNI_V3_POOL.encodeFunctionData('slot0');
+    for (let i = 0; i < rows.length; i += 50) {
+        const chunk = rows.slice(i, i + 50);
+        const done = await mapPool(chunk, ENRICH_CONCURRENCY, async row => {
+            try {
+                const data = await withRetry(() => provider.call({ to: AERO_BOLD_USDC, data: slot0, blockTag: row.block - 1 }));
+                return data && data !== '0x' ? [priceFromSqrt(BigInt(ethers.dataSlice(data, 0, 32)), config.pools.aero.boldIsToken0), row.tx_hash] : null;
+            } catch (e) { console.warn(`Aero price not read for ${row.tx_hash}: ${e.shortMessage || e.message}`); return null; }
+        });
+        db.transaction(list => list.forEach(([price, tx]) => setAeroPrice.run(price, tx)))(done.filter(r => r && r[0] != null));
+        state.phase = `reading Aero prices ${Math.min(i + chunk.length, rows.length)}/${rows.length}`;
+    }
+}
+
 // Redemptions without a measured result (synced before it existed, or whose measurement failed): measure them from their
 // receipts. Runs at every sync until none is left; the modelled columns are not touched.
 const txsWithoutActual = db.prepare('SELECT * FROM redemptions WHERE actual_status IS NULL ORDER BY block');
@@ -913,6 +1001,16 @@ async function syncData() {
 
         await backfillTroves();
         await backfillActual(caches);
+        try {
+            await backfillVenues();
+        } catch (e) {
+            console.warn(`Venues not attributed: ${e.message}`);
+        }
+        try {
+            await backfillAeroPrices();
+        } catch (e) {
+            console.warn(`Aero prices not read: ${e.message}`);
+        }
         // Exchange price of ETH at each redemption (exchange.js); a failure keeps the Uniswap reference for those redemptions
         try {
             state.phase = 'reading exchange prices';
