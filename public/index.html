@@ -270,6 +270,11 @@
             .lp-feed-line, #lpWeeks rect.bar { opacity: 1; transform: none; }
             .lp-door, .lp-door:hover { transform: none; }
         }
+        /* Edge and cost ring next to the Weekly breakdown, its centre level with the weekly chart's $0 line (alignRing) */
+        .ring-wrap { position: relative; margin: 0 auto; width: 240px; height: 240px; }
+        .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
+        .ring-row { display: grid; grid-template-columns: 10px 1fr auto 46px; gap: 8px; align-items: center; padding: 3px 4px; border-radius: 6px; }
+        .ring-row:hover { background: rgba(255,255,255,.04); }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -512,13 +517,19 @@
             </div>
         </div>
 
-        <div class="card p-5 md:p-6 mt-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <div class="card p-5 md:p-6 lg:col-span-2 min-w-0">
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                 <h2 class="font-semibold flex items-center">Weekly breakdown<span id="breakdownInfo" class="inline-flex items-center"></span></h2>
                 <span id="breakdownTotal" class="text-xs mono" style="color: var(--muted)"></span>
             </div>
             <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 mb-4">
-                <p class="text-xs" style="color: var(--muted)">USD per week: sources of profit above zero, costs below, and the net profit that remains<br><span id="breakdownScope"></span></p>
+                <div>
+                    <p class="text-xs" style="color: var(--muted)">Weekly redemptions by edge and cost: sources of profit above zero, costs below, and the remaining net in USD<br><span id="breakdownScope"></span></p>
+                    <div class="flex gap-1 p-1 rounded-lg mt-3 w-fit" style="background: rgba(255,255,255,.03)" id="splitSwitch" role="group" aria-label="Gains and costs per week">
+                        <button class="seg" data-split="1" data-tip="Each component's gains above zero and its costs below, summed per week">Split</button><button class="seg" data-split="0" data-tip="Each component's gains and costs netted per week: one bar per component">Netted</button>
+                    </div>
+                </div>
                 <div id="breakdownLegend" class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs" style="color: var(--ink-2)"></div>
             </div>
             <div class="relative h-80"><canvas id="breakdownChart"></canvas></div>
@@ -529,6 +540,18 @@
                 </div>
                 <div class="relative h-28 mt-1"><canvas id="breakdownRatio"></canvas></div>
             </div>
+        </div>
+        <section class="card p-5 md:p-6 flex flex-col" id="ringCard" aria-labelledby="ringTitle">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <h2 id="ringTitle" class="font-semibold flex items-center">Edge and cost<span id="ringInfo" class="inline-flex items-center"></span></h2>
+                <span id="ringCount" class="text-xs mono" style="color: var(--muted)"></span>
+            </div>
+            <p class="text-xs" style="color: var(--muted)">Where the profit came from and where it went<br><span id="ringScope"></span></p>
+            <div class="flex gap-1 p-1 rounded-lg mt-3 self-start" style="background: rgba(255,255,255,.03)" id="ringSwitch" role="group" aria-label="Edge or cost">
+                <button class="seg seg-active" data-ring="edge" aria-pressed="true">Edge</button><button class="seg" data-ring="cost" aria-pressed="false">Cost</button>
+            </div>
+            <div id="ringBody" class="mt-4 flex-1 flex flex-col"></div>
+        </section>
         </div>
 
         <div id="anatomyRow" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 hidden">
@@ -2192,6 +2215,7 @@
         // Both panels reserve the same width for their y axis, so their weeks line up exactly
         const Y_AXIS_WIDTH = 72;
         const hiddenParts = new Set();
+        let breakdownSplit = true;                       // Split on every page load; the choice is not remembered
         // "Typical weeks" scale of the weekly charts, switched for all three in the chart range bar: each chart shows every week at its
         // real size, or zooms to the regular weeks. On each side of zero the weeks are ranked by size; the weeks above the first jump
         // among the three largest, where a week is more than SCALE_GAP times the next one, are outlying. The axis then covers the
@@ -2306,16 +2330,106 @@
             + 'Liquity\'s redemption price; and "on-chain vs exchange price", the rest of the measured gross profit: what redeemers got on-chain above or '
             + 'below the exchange price, normally their trading costs (negative), but a gain when on-chain prices run far above the exchanges, as on '
             + '29 October 2026. The components add up to the net profit. When BOLD traded above $1 the discount is negative. '
-            + 'Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
+            + 'Split (the default) shows each component\'s gains above zero and its costs below, each summed per week over the redemptions where '
+            + 'it was positive or negative; Netted adds the two up within each week, one bar per component. Their totals in the chart range are in '
+            + 'the Edge and cost card. Select a legend entry to hide or show it. The panel below shows the net profit as a percentage of the BOLD redeemed in each '
             + 'week; weeks without redemptions are bridged. "Typical weeks" (switch in the chart range bar) scales the weekly charts to the regular '
             + 'weeks: a week far larger than the rest runs up to a dotted line that marks the chart\'s highest week (and, below zero, its lowest), '
             + 'with that value on the axis and a break mark on the bar; hover over it for its full values.';
+        // Edge and cost of the chart range. Each redemption's six components (BREAKDOWN) are split by sign as in its detail panel:
+        // positive parts are edge, negative ones cost under the name of their negative side. Summed over the range; edge minus cost is
+        // the net profit. Only priced redemptions (with a net profit and a BOLD price), as in the detail panel
+        const NEGATIVE_PART = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)', 'On-chain vs exchange price': 'Trading costs vs exchange price' };
+        const RING_NOTE = 'The six components of the Weekly breakdown, split by redemption: a component that added to a redemption\'s profit counts '
+            + 'as edge, one that took from it as cost, under the name of its negative side (oracle gap negative, BOLD premium above $1, trading costs '
+            + 'vs exchange price). Summed over the redemptions in the chart range; edge minus cost is their net profit. The margin is the net '
+            + 'profit over the capital deployed (BOLD × its price). Shares are of the side shown. The ring follows the chart range only.';
+        let ringMode = 'edge', ringChart = null, ringData = null, ringKey = null;
+        function ringTotals(rows) {
+            const priced = rows.filter(r => r.net_profit_usd != null && r.market_price != null);
+            const edge = new Map(), cost = new Map();
+            const add = (m, label, color, v) => { const x = m.get(label) || { label, color, v: 0 }; x.v += v; m.set(label, x); };
+            for (const r of priced) for (const [label, color, value] of BREAKDOWN) {
+                const v = value(r);
+                if (v > 0) add(edge, label, color, v); else if (v < 0) add(cost, NEGATIVE_PART[label] || label, color, -v);
+            }
+            const E = [...edge.values()].reduce((a, x) => a + x.v, 0), C = [...cost.values()].reduce((a, x) => a + x.v, 0);
+            const capital = priced.reduce((a, r) => a + r.amount * r.market_price, 0);
+            return { edge: [...edge.values()].filter(x => x.v > 0.005), cost: [...cost.values()].filter(x => x.v > 0.005), E, C, net: E - C,
+                margin: capital ? (E - C) / capital * 100 : null, count: priced.length };
+        }
+        const ringShare = (v, t) => { const x = t ? v / t * 100 : 0; return x > 0 && x < 0.1 ? '<0.1%' : `${x.toFixed(1)}%`; };
+        // Drawn when the chart range or the data changes its figures; legend toggles, the Split / Netted switch and the price chart's
+        // pool selectors leave it as it is
+        function renderRing(rows, from, to) {
+            $('ringScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
+            $('ringInfo').innerHTML = infoTip(RING_NOTE, 'Edge and cost').replace('class="info-tip"', 'class="info-tip below"');
+            const data = ringTotals(rows), key = JSON.stringify(data);
+            if (key === ringKey) return;
+            ringKey = key; ringData = data;
+            $('ringCount').innerText = `${fmt(data.count)} txs`;
+            drawRing();
+        }
+        function drawRing() {
+            const d = ringData, list = d[ringMode], t = ringMode === 'edge' ? d.E : d.C;
+            $('ringBody').innerHTML = !list.length ? `<p class="text-sm m-auto" style="color: var(--muted)">${d.count ? `No ${ringMode} in this range` : 'No priced redemptions in this range'}</p>` : `
+                <div class="ring-wrap"><canvas id="ringChart" role="img" aria-label="${ringMode === 'edge' ? 'Edge' : 'Cost'} by component"></canvas><div class="ring-center">
+                    <div class="text-[10px] uppercase tracking-wider" style="color: var(--muted)">${ringMode === 'edge' ? 'Edge' : 'Cost'}</div>
+                    <div class="text-xl font-semibold mt-0.5 mono">${usd(t, 0)}</div>
+                    <div class="text-[11px] mt-1 mono ${signClass(d.net)}">${d.net >= 0 ? 'net profit' : 'net loss'} ${usd(Math.abs(d.net), 0)}</div>
+                    <div class="text-[10px] mono" style="color: var(--muted)">${d.margin != null ? pct(d.margin, 3) + ' margin' : ''}</div>
+                </div></div>
+                <div class="mt-5 space-y-0.5 text-xs">${list.map(x => `<div class="ring-row" data-tip-title="${esc(x.label)}" data-tip="${esc(`${usd(x.v, 0)} · ${ringShare(x.v, t)} of the ${ringMode}`)}">
+                    <span class="legend-swatch" style="background:${x.color}"></span><span class="truncate" style="color: var(--ink-2)">${esc(x.label)}</span>
+                    <span class="mono text-white">${usd(x.v, 0)}</span><span class="mono text-right" style="color: var(--muted)">${ringShare(x.v, t)}</span></div>`).join('')}</div>`;
+            if (ringChart) { ringChart.destroy(); ringChart = null; }
+            if (!list.length) { $('ringBody').style.marginTop = ''; return; }
+            ringChart = new Chart($('ringChart'), {
+                type: 'doughnut',
+                data: { labels: list.map(x => x.label), datasets: [{ data: list.map(x => x.v), backgroundColor: list.map(x => x.color),
+                    borderColor: css('--surface'), borderWidth: 2, hoverOffset: 6 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', animation: { duration: 400 }, onResize: () => requestAnimationFrame(alignRing),
+                    plugins: { legend: { display: false },
+                    tooltip: { callbacks: { label: c => ` ${usd(c.raw, 0)} · ${ringShare(c.raw, t)}` } } } }
+            });
+            alignRing();
+        }
+        // Side by side with the weekly chart, the ring's centre lines up with its $0 line. Measured when the ring is drawn or resized,
+        // when the page is shown and on resizing the window, so hiding components or switching Split / Netted never moves it; stacked (phone), no offset
+        function alignRing() {
+            // the ring's centre is its chart area's (its arcs animate in from the top when first drawn, so they are not measured)
+            const body = $('ringBody'), c = charts.breakdownChart, area = ringChart?.chartArea;
+            if (!c || !area?.bottom) return;                     // not laid out yet (drawn while the page was hidden): onResize calls again
+            const chartBox = c.canvas.getBoundingClientRect(), ringBox = ringChart.canvas.getBoundingClientRect();
+            if (!chartBox.height || $('ringCard').getBoundingClientRect().top >= chartBox.bottom) { body.style.marginTop = ''; return; }
+            const zero = chartBox.top + c.scales.y.getPixelForValue(0), centre = ringBox.top + (area.top + area.bottom) / 2;
+            body.style.marginTop = `${Math.max(8, parseFloat(getComputedStyle(body).marginTop) + zero - centre)}px`;
+        }
+        let ringAlignTimer;
+        addEventListener('resize', () => { clearTimeout(ringAlignTimer); ringAlignTimer = setTimeout(alignRing, 200); });
+        $('ringSwitch').addEventListener('click', e => {
+            const b = e.target.closest('[data-ring]');
+            if (!b || b.dataset.ring === ringMode || !ringData) return;
+            ringMode = b.dataset.ring;
+            $('ringSwitch').querySelectorAll('[data-ring]').forEach(x => { x.classList.toggle('seg-active', x === b); x.setAttribute('aria-pressed', x === b); });
+            drawRing();
+        });
+
         function renderBreakdown(rows, from, to) {
             const priced = rows.filter(r => r.net_profit_usd != null);
-            const datasets = BREAKDOWN.map(([label, color, value]) => ({
-                type: 'bar', label, data: weekly(priced, value, from, to).data, backgroundColor: color, hidden: hiddenParts.has(label),
+            const bars = (label, part, color, value) => ({
+                type: 'bar', label, part, data: weekly(priced, value, from, to).data, backgroundColor: color, hidden: hiddenParts.has(part),
                 borderRadius: 0, categoryPercentage: 0.9, barPercentage: 0.9, stack: 'parts', order: 2
-            }));
+            });
+            // Split: each component's gains (the redemptions where it was positive) above zero under its own name, its costs below under
+            // the name of its negative side; a side with nothing in the range is left out. Netted: one series per component
+            $('splitSwitch').querySelectorAll('[data-split]').forEach(b => { const on = (b.dataset.split === '1') === breakdownSplit; b.classList.toggle('seg-active', on); b.setAttribute('aria-pressed', on); });
+            const datasets = breakdownSplit
+                ? BREAKDOWN.flatMap(([label, color, value]) => [
+                    bars(label, label, color, r => Math.max(value(r), 0)),
+                    bars(NEGATIVE_PART[label] || label, label, color, r => Math.min(value(r), 0))
+                ]).filter(d => d.data.some(v => v !== 0))
+                : BREAKDOWN.map(([label, color, value]) => bars(label, label, color, value));
             const { labels, data: net } = weekly(priced, r => r.net_profit_usd, from, to);
             const { data: bold } = weekly(priced, r => r.amount, from, to);
             const ratio = net.map((v, i) => bold[i] ? v / bold[i] * 100 : null);
@@ -2331,15 +2445,14 @@
             scaleCuts.breakdownChart = cut && { ...cut, label: v => usd(v, 0), axis: v => usd(v, 0) };
             $('breakdownScope').innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote('breakdownChart', labels);
             $('breakdownInfo').innerHTML = infoTip(BREAKDOWN_NOTE, 'Weekly breakdown').replace('class="info-tip"', 'class="info-tip below"');
-            // Legend with each part's total in the range (they add up to the net total); each entry turns its series on and off
+            // Legend: each entry turns its component on and off (both sides when split; the totals are in the Edge and cost card)
             const toggle = (label, swatch, extra = '', tip = '') => {
                 const off = hiddenParts.has(label);
                 return `<button class="legend-btn ${off ? 'off' : ''}" data-part="${label}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}"`
                     + `${tip ? ` data-tip="${esc(tip)}"` : ''}>${swatch}${label}${extra}</button>`;
             };
             $('breakdownLegend').innerHTML = BREAKDOWN.map(([label, color, value, tip]) =>
-                toggle(label, `<span class="legend-swatch" style="background:${color}"></span>`,
-                    ` <span class="mono" style="color: var(--muted)">${usd(total(value), 0)}</span>`, tip)).join('')
+                toggle(label, `<span class="legend-swatch" style="background:${color}"></span>`, '', tip)).join('')
                 + toggle('Net profit', `<span class="legend-swatch" style="width:14px;height:2px;border-radius:0;background:${css('--ink-1')}"></span>`);
             upsertChart('breakdownChart', {
                 type: 'bar',
@@ -2353,6 +2466,7 @@
                         legend: { display: false },
                         tooltip: {
                             itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // legend order, net profit (the last dataset) at the bottom
+                            filter: item => !breakdownSplit || item.dataset.type === 'line' || item.parsed.y !== 0,
                             callbacks: {
                                 title: items => 'Week of ' + date(labels[items[0].dataIndex]),
                                 label: item => ` ${item.dataset.label}: ${usd(item.parsed.y, Math.abs(item.parsed.y) < 10 ? 2 : 0)}`
@@ -2416,6 +2530,13 @@
             renderBreakdown(rows, from, to);
         });
 
+        $('splitSwitch').addEventListener('click', e => {
+            const b = e.target.closest('[data-split]');
+            if (!b || (b.dataset.split === '1') === breakdownSplit) return;
+            breakdownSplit = b.dataset.split === '1';
+            const [from, to] = rangeBounds();
+            renderBreakdown(chartRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
+        });
         $('breakdownLegend').addEventListener('click', e => {
             const part = e.target.closest('[data-part]')?.dataset.part;
             if (!part) return;
@@ -2482,6 +2603,7 @@
             renderWeeklyChart('volumeChart', rows, from, to);
             renderWeeklyChart('profitChart', rows, from, to);
             renderBreakdown(rows, from, to);
+            renderRing(rows, from, to);
             // Totals of exactly what the two charts plot (rows without a value are left out, as in the bars)
             const sumOf = key => rows.reduce((t, r) => t + (r[key] ?? 0), 0);
             $('volumeTotal').innerText = `${compact(sumOf('amount'))} BOLD`;
@@ -4328,7 +4450,7 @@
             if (name === 'how') renderHow();
             else if (name === 'troves') loadTroves();
             else if (name === 'home') { renderLanding(); loadTroves(); }
-            else Object.values(charts).forEach(c => c.resize());
+            else { Object.values(charts).forEach(c => c.resize()); ringChart?.resize(); requestAnimationFrame(alignRing); }
         }
         // Links to a view (site bar, logo, home page): open it here; a click with a modifier key opens a new tab as usual
         document.addEventListener('click', e => {

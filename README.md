@@ -100,8 +100,10 @@ The market reference for the estimated parts is ETH's exchange price (`cex_eth_u
 oracle gap in % and in USD (`gap_x_usd`: collateral at the exchange price minus at Liquity's redemption price) and its edge. The Weekly
 breakdown and the transaction detail split gross profit into the BOLD discount, that oracle gap, and **on-chain vs exchange price**, the
 rest of the measured gross profit: normally the redeemers' trading costs (about 0.08% of the BOLD redeemed in the median), and a gain when
-on-chain prices run far above the exchanges (+$725k in the week of 26 October 2026). A redemption is tagged distorted when Uniswap
-ETH/USDC differs from the exchange price by more than 3% (only 29 October 2026 so far); tagged redemptions are left out of the averages
+on-chain prices run far above the exchanges (+$725k in the week of 26 October 2026). The Weekly breakdown shows each component's
+gains above zero and its costs below, split by redemption (Split, the default; Netted sums the two per week), and the Edge and cost card
+next to it sums them over the chart range. A redemption is tagged distorted when Uniswap ETH/USDC differs from the exchange price by more
+than 3% (only 29 October 2026 so far); tagged redemptions are left out of the averages
 and of the methodology's decomposition, which sums the estimate's parts (`ref_discount_usd`, `ref_fee_usd`, `ref_gross_model_usd`) and
 the measured figures (`ref_gross_usd`, `ref_net_usd`, ...) over the same redemptions so that its steps reconcile exactly. Without an
 exchange price the Uniswap-based estimates stand, and the tag compares Uniswap with the oracle price.
