@@ -1698,7 +1698,7 @@
                     <td class="px-3 py-2 text-right">${est(r)}${usd(r.gross_profit_usd)}</td>
                     <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.gas_fee_usd)}</td>
                     <td class="px-3 py-2 text-right" style="color: var(--muted)">${usd(r.builder_tip_usd)}</td>
-                    <td class="px-3 py-2 text-right font-medium ${signClass(r.net_profit_usd)}">${est(r)}${usd(r.net_profit_usd)}</td>
+                    <td class="px-3 py-2 text-right font-medium ${signClass(r.net_profit_usd)}">${r.exploit ? exploitTag(r) : est(r) + usd(r.net_profit_usd)}</td>
                     <td class="px-3 py-2 text-right ${signClass(r.net_margin)}">${pct(r.net_margin, 3)}</td>
                 </tr>${open ? `<tr class="detail-row"><td colspan="14" class="p-0">${txDetailHtml(r, txDetails.get(r.tx_hash))}</td></tr>` : ''}`;
             }).join('') || '<tr><td class="px-3 py-4" style="color: var(--muted)" colspan="14">No redemptions yet — the first sync is running.</td></tr>';
@@ -1725,11 +1725,15 @@
         const est = r => r.measured || r.net_profit_usd == null ? '' : '<span class="tip-target" style="color: var(--muted)" data-tip="Estimate: no measured result for this redemption">~</span>';
         // Whether a redemption's profit is measured or the estimate, as a pill in the style of the distorted tag: blue when measured,
         // neutral grey for the estimate (the net profit tile already carries green or red)
-        const basisTag = r => r.net_profit_usd == null ? '' : r.measured
+        const basisTag = r => r.exploit ? exploitTag(r) : r.net_profit_usd == null ? '' : r.measured
             ? '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(57,135,229,.16); color: #8bb8f0" '
                 + 'data-tip="Measured from the redeemer\'s own transfers in the transaction, valued at Liquity\'s oracle price">measured</span>'
             : '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(158,166,174,.16); color: var(--ink-2)" '
                 + 'data-tip="Estimate at reference prices: no measured result for this redemption, see Methodology">estimate</span>';
+        // A redemption of an exploit (incidents.json): its BOLD was taken from a third-party vault in the same transaction, so it is not
+        // redemption arbitrage. It stays in the list with this tag and no profit figures, and is left out of every total and chart
+        const exploitTag = r => `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(251,113,133,.14); color: var(--bad)" `
+            + `data-tip-title="${esc(r.exploit.title)}" data-tip="${esc(r.exploit.note)}">${esc(r.exploit.label)}</span>`;
         const DISTORTED_TAG = '<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(250,178,25,.12); color: var(--warn)" '
             + 'data-tip="On-chain ETH prices (Uniswap ETH/USDC) were more than 3% from exchange prices at this redemption. The oracle gap is measured against '
             + 'the exchanges; what the redeemer earned from the on-chain prices shows as &quot;On-chain vs exchange price&quot; in its breakdown. The redemption is '
@@ -1931,9 +1935,10 @@
                         <div class="text-sm font-semibold text-white">Inclusion costs and result</div>
                         <div class="num text-[11px]" style="color: var(--muted)">${fmt(r.gas_used)} gas · ETH/USD ${price(ethPx)}${r.oracle_eth_usd != null ? ' (oracle)' : ''} · total inclusion cost <span class="bad">${minus(totalCost)}</span></div>
                     </div>
+                    ${r.exploit ? `<p class="text-xs mb-3 flex flex-wrap items-center gap-2" style="color: var(--ink-2)">${exploitTag(r)}<span>${esc(r.exploit.note)}</span></p>` : ''}
                     ${profitBar}
                     <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
-                        ${tile('Gross profit', `${est(r)}${usd(r.gross_profit_usd)}`, 'before inclusion costs', GROSS_NOTE, basisTag(r))}
+                        ${tile('Gross profit', `${est(r)}${usd(r.gross_profit_usd)}`, 'before inclusion costs', GROSS_NOTE, r.exploit ? '' : basisTag(r))}
                         ${tile('Base fee (burned)', minus(r.gas_fee_usd), eth(r.base_fee_eth), GAS_NOTE)}
                         ${tile('Priority fee', minus(inUsd(r.priority_fee_eth)), eth(r.priority_fee_eth))}
                         ${tile('Direct builder payment', minus(inUsd(r.coinbase_tip_eth)), eth(r.coinbase_tip_eth))}
@@ -2587,6 +2592,7 @@
         const chartRange = { preset: '1y', from: null, to: null };
         const hiddenPools = new Set();
         let chartRows = [];
+        let allRows = [];                               // every redemption, exploits included (the Troves tab's redemption volume)
         const isoDate = ts => new Date(ts).toISOString().slice(0, 10);
 
         function rangeBounds() {
@@ -2670,9 +2676,16 @@
             batchData = await fetch(API.batches, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
             addressInfo = new Map((await fetch(API.addresses, { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []))
                 .map(a => [a.address, a]));
-            chartRows = redemptions;
+            // Redemptions of an exploit (incidents.json): listed in the feed with their tag and without profit figures, left out of
+            // every chart, total and card (chartRows); stats.json, bots.json and batches.json already leave them out
+            const incidents = await fetch('/incidents.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : { incidents: [] }).catch(() => ({ incidents: [] }));
+            const exploitOf = new Map(incidents.incidents.flatMap(i => i.txs.map(h => [h, i])));
+            allRows = redemptions;
+            chartRows = redemptions.filter(r => !exploitOf.has(r.tx_hash));
             renderStats(stats);
-            renderFeed(redemptions);
+            renderFeed(redemptions.map(r => exploitOf.has(r.tx_hash)
+                ? { ...r, exploit: exploitOf.get(r.tx_hash), gross_profit_usd: null, net_profit_usd: null, net_margin: null }
+                : r));
 
             renderCharts();
             if (tv) {
@@ -3272,11 +3285,12 @@
         }
 
         // Typical 7-day system-wide redemption volume over the 180 days before the snapshot, from the dashboard's redemption data
-        // (loaded separately, so computed when the tab renders)
+        // (loaded separately, so computed when the tab renders). Every redemption counts, exploits included (allRows): they redeemed
+        // troves like any other, and the Telegram bot computes the same weeks from the database
         function tvWeekVolumes() {
-            if (tv.weekVol != null || !chartRows.length) return;
+            if (tv.weekVol != null || !allRows.length) return;
             const end = tv.snap.ts * 1000, start = end - 180 * 86400e3, daily = new Array(180).fill(0);
-            for (const r of chartRows) if (r.timestamp > start && r.timestamp <= end) daily[Math.min(179, Math.floor((r.timestamp - start) / 86400e3))] += r.amount;
+            for (const r of allRows) if (r.timestamp > start && r.timestamp <= end) daily[Math.min(179, Math.floor((r.timestamp - start) / 86400e3))] += r.amount;
             const sums = [];
             for (let i = 0; i + 7 <= 180; i++) sums.push(daily.slice(i, i + 7).reduce((a, v) => a + v, 0));
             tv.weekVol = sums.reduce((a, v) => a + v, 0) / sums.length;

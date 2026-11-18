@@ -5,6 +5,14 @@ const BOT_MIN_REDEMPTIONS = 3;
 // On-chain prices (Uniswap ETH/USDC) count as distorted when they stray this far from the exchanges' price (exchange.js), or,
 // for a redemption without an exchange price, from Liquity's oracle price
 const DISTORTED_REFERENCE = 0.03;
+// Redemptions of an exploit (public/incidents.json, also read by the page): BOLD taken from a third-party vault in the same
+// transaction and cashed out through redemption, so not redemption arbitrage. They stay in the redemption list and the troves'
+// records, and are left out of every total, average and leaderboard here
+const EXCLUDED_TXS = require('./public/incidents.json').incidents.flatMap(i => i.txs).map(h => {
+    if (!/^0x[0-9a-f]{64}$/.test(h)) throw new Error(`incidents.json: not a transaction hash: ${h}`);
+    return h;
+});
+const notExcluded = (col = 'tx_hash') => EXCLUDED_TXS.length ? `${col} NOT IN (${EXCLUDED_TXS.map(h => `'${h}'`).join(', ')})` : '1';
 
 // The figures shown for each redemption: the measured result (worker.js, actualResult) where it is available, the modelled
 // one otherwise. Gas and builder payments are exact amounts of ETH, valued at Liquity's oracle price once it is recorded; the
@@ -66,6 +74,7 @@ const botsQuery = db.prepare(`
            MAX(via_contract) AS via_contract,
            MAX(timestamp) AS last_active
     FROM s
+    WHERE ${notExcluded()}
     GROUP BY sender
     HAVING MAX(via_contract) = 1 OR COUNT(*) >= ${BOT_MIN_REDEMPTIONS}
     ORDER BY net_profit_usd DESC, frequency DESC`);
@@ -105,26 +114,28 @@ const statsQuery = db.prepare(`
            SUM(CASE WHEN reliable AND net_s IS NOT NULL THEN est_s END) AS ref_gross_model_usd,
            SUM(CASE WHEN reliable THEN net_s END) * 100 / SUM(CASE WHEN reliable AND net_s IS NOT NULL THEN amount * market_price END) AS ref_margin,
            MAX(timestamp) AS last_redemption
-    FROM s`);
+    FROM s
+    WHERE ${notExcluded()}`);
 
 // Troves redeemed while a batch manager (interest-rate delegate) set their rate. A trove redeemed several times counts
 // as batch-managed if it was in a batch at any of those redemptions.
 const batchTotalsQuery = db.prepare(`
-    WITH troves AS (SELECT MAX(batch_manager IS NOT NULL) AS batched FROM redemption_troves GROUP BY branch, trove_id)
-    SELECT (SELECT COALESCE(SUM(debt_redeemed), 0) FROM redemption_troves) AS trove_bold,
-           (SELECT COALESCE(SUM(debt_redeemed), 0) FROM redemption_troves WHERE batch_manager IS NOT NULL) AS batch_bold,
+    WITH t AS (SELECT * FROM redemption_troves WHERE ${notExcluded()}),
+         troves AS (SELECT MAX(batch_manager IS NOT NULL) AS batched FROM t GROUP BY branch, trove_id)
+    SELECT (SELECT COALESCE(SUM(debt_redeemed), 0) FROM t) AS trove_bold,
+           (SELECT COALESCE(SUM(debt_redeemed), 0) FROM t WHERE batch_manager IS NOT NULL) AS batch_bold,
            (SELECT COUNT(*) FROM troves) AS troves,
            (SELECT COALESCE(SUM(batched), 0) FROM troves) AS batch_troves,
            -- a hit is a trove reached by a transaction (one transaction can make several redemption calls)
-           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM redemption_troves) AS hits,
-           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM redemption_troves WHERE batch_manager IS NOT NULL) AS batch_hits`);
+           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM t) AS hits,
+           (SELECT COUNT(DISTINCT tx_hash || branch || trove_id) FROM t WHERE batch_manager IS NOT NULL) AS batch_hits`);
 const batchManagersQuery = db.prepare(`
     SELECT batch_manager AS address,
            COUNT(DISTINCT branch || trove_id) AS troves,
            COUNT(DISTINCT tx_hash) AS txs,
            SUM(debt_redeemed) AS bold
     FROM redemption_troves
-    WHERE batch_manager IS NOT NULL
+    WHERE batch_manager IS NOT NULL AND ${notExcluded()}
     GROUP BY batch_manager
     ORDER BY bold DESC`);
 
@@ -134,6 +145,7 @@ const batchManagersQuery = db.prepare(`
 const batchRowsQuery = db.prepare(`
     SELECT r.timestamp, t.tx_hash, t.branch || t.trove_id AS trove, t.batch_manager, t.debt_redeemed
     FROM redemption_troves t JOIN redemptions r USING (tx_hash)
+    WHERE ${notExcluded('t.tx_hash')}
     ORDER BY r.timestamp, t.tx_hash, t.log_index`);
 function batchRows() {
     const indexer = () => { const m = new Map(); const idx = v => { if (!m.has(v)) m.set(v, m.size); return m.get(v); }; idx.keys = () => [...m.keys()]; return idx; };
