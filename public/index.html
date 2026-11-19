@@ -2592,7 +2592,11 @@
         const chartRange = { preset: '1y', from: null, to: null };
         const hiddenPools = new Set();
         let chartRows = [];
-        let allRows = [];                               // every redemption, exploits included (the Troves tab's redemption volume)
+        let allRows = [];                               // every redemption, exploits included (activity and volume: Troves tab, home page)
+        let exploitOf = new Map();                      // tx hash -> incident (incidents.json)
+        // The exploit tag of the home page's latest redemptions, with the incident's note on hover
+        const lpExploitTag = inc => `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(251,113,133,.14); color: var(--bad)" `
+            + `data-tip-title="${esc(inc.title)}" data-tip="${esc(inc.note)}">${esc(inc.label)}</span>`;
         const isoDate = ts => new Date(ts).toISOString().slice(0, 10);
 
         function rangeBounds() {
@@ -2679,7 +2683,7 @@
             // Redemptions of an exploit (incidents.json): listed in the feed with their tag and without profit figures, left out of
             // every chart, total and card (chartRows); stats.json, bots.json and batches.json already leave them out
             const incidents = await fetch('/incidents.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : { incidents: [] }).catch(() => ({ incidents: [] }));
-            const exploitOf = new Map(incidents.incidents.flatMap(i => i.txs.map(h => [h, i])));
+            exploitOf = new Map(incidents.incidents.flatMap(i => i.txs.map(h => [h, i])));
             allRows = redemptions;
             chartRows = redemptions.filter(r => !exploitOf.has(r.tx_hash));
             renderStats(stats);
@@ -4129,16 +4133,17 @@
         }
 
         // Redemption activity: the last 24 hours against every 24-hour stretch with redemptions in the last 180 days (hourly steps);
-        // the hourly strip of the last 7 days; BOLD against $1 from the latest trove snapshot; a flag if on-chain prices were distorted
+        // the hourly strip of the last 7 days; BOLD against $1 from the latest trove snapshot; a flag if on-chain prices were distorted.
+        // Every redemption counts, exploits included (allRows)
         function lpConditions() {
             const asOf = lpAsOf(), H = 3600e3, end = Math.floor(asOf / H) * H + H, hours = 180 * 24, start = end - hours * H;
             const hourly = new Float64Array(hours);
-            for (const r of chartRows) if (r.timestamp >= start && r.timestamp < end) hourly[Math.floor((r.timestamp - start) / H)] += r.amount;
+            for (const r of allRows) if (r.timestamp >= start && r.timestamp < end) hourly[Math.floor((r.timestamp - start) / H)] += r.amount;
             const sums = [];
             for (let i = 0, run = 0; i < hours; i++) { run += hourly[i] - (i >= 24 ? hourly[i - 24] : 0); if (i >= 23) sums.push(run); }
             const active = sums.filter(v => v > 0).sort((a, b) => a - b);
             const q = f => active.length ? active[Math.floor(f * (active.length - 1))] : 0, q50 = q(.5), q90 = q(.9);
-            const last = chartRows.filter(r => r.timestamp > asOf - 24 * H && r.timestamp <= asOf).sort((a, b) => a.timestamp - b.timestamp);
+            const last = allRows.filter(r => r.timestamp > asOf - 24 * H && r.timestamp <= asOf).sort((a, b) => a.timestamp - b.timestamp);
             const v24 = last.reduce((a, r) => a + r.amount, 0);
             const bursts = last.length ? 1 + last.filter((r, i) => i && r.timestamp - last[i - 1].timestamp > 2 * H).length : 0;
             const level = !v24 ? 0 : v24 < q50 ? 1 : v24 < q90 ? 2 : 3;
@@ -4174,14 +4179,16 @@
             const margin = priced.length ? net / sum(priced, r => r.amount * r.market_price) * 100 : null;
             const reliable = (rows, k) => { const x = rows.filter(r => r.ref_reliable && r[k] != null), b = sum(x, r => r.amount); return b ? sum(x, r => r[k] * r.amount) / b : null; };
             const disc = reliable(week, 'spread'), gap = reliable(week, 'oracle_gap');
-            const lastTs = chartRows.reduce((a, r) => Math.max(a, r.timestamp), 0);
+            // activity and volume count every redemption (allRows); profit and averages leave the exploits out (week)
+            const lastTs = allRows.reduce((a, r) => Math.max(a, r.timestamp), 0);
+            const weekAll = allRows.filter(r => r.timestamp > asOf - 7 * 86400e3 && r.timestamp <= asOf);
             const active = tv ? tv.branches.reduce((a, b) => a + b.active, 0) : null;
             const tiles = [
                 ['BOLD price now', s?.boldUsd != null ? `$${s.boldUsd.toFixed(4)}` : '–', 'Curve BOLD/USDC'],
                 ['Redemption fee now', s?.redemptionRate != null ? `${fmt(s.redemptionRate, 2)}%` : '–', s?.redemptionRate != null ? `0.5% floor + ${fmt(Math.max(s.redemptionRate - 0.5, 0), 2)}% base rate` : ''],
                 ['Active troves', active != null ? fmt(active) : '–', tv ? tv.branches.map(b => `${b.name} ${fmt(b.active)}`).join(' · ') : ''],
                 ['Last redemption', lastTs ? ago(lastTs) : '–', lastTs ? dateTime(lastTs) : ''],
-                ['BOLD redeemed · 7 days', compact(sum(week, r => r.amount)), `${fmt(week.length)} txs · ${fmt(new Set(week.map(r => r.sender)).size)} senders`],
+                ['BOLD redeemed · 7 days', compact(sum(weekAll, r => r.amount)), `${fmt(weekAll.length)} txs · ${fmt(new Set(weekAll.map(r => r.sender)).size)} senders`],
                 ['Bots\' net profit · 7 days', priced.length ? usd(net, 0) : '–', margin != null ? `${pct(margin, 3)} avg margin · measured` : '', signClass(net)],
                 ['Avg. BOLD discount · 7 days', disc != null ? pct(disc, 3) : '–', disc != null && disc < 0 ? 'above $1 at redemption · estimate' : 'below $1 at redemption · estimate'],
                 ['Avg. oracle gap · 7 days', gap != null ? pct(gap, 3) : '–', 'exchange price vs. oracle · estimate']
@@ -4192,14 +4199,14 @@
 
         // The seven latest redemptions; they arrive once, the first time the card comes into view, then the weekly bars grow
         function lpFeed() {
-            const rows = [...chartRows].sort((a, b) => b.timestamp - a.timestamp).slice(0, 7), dayAgo = Date.now() - 86400e3;
+            const rows = [...allRows].sort((a, b) => b.timestamp - a.timestamp).slice(0, 7), dayAgo = Date.now() - 86400e3;
             $('lpFeed').innerHTML = rows.map((r, i) => {
                 const when = r.timestamp > dayAgo ? new Date(r.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : date(r.timestamp);
                 const net = r.net_profit_usd;
                 return `<a href="/redemptions?tx=${r.tx_hash}" data-lptx="${r.tx_hash}" class="lp-feed-line grid grid-cols-[auto_1fr_auto] items-center gap-3 py-3 px-1 hover:bg-white/[.03] rounded" style="animation-delay: ${i * .09}s">
                     <span class="mono text-[11px]" style="color: var(--muted)">${when}</span>
                     <span class="min-w-0"><span class="mono text-sm">${fmt(Math.round(r.amount))} BOLD</span> <span class="text-[11px] ml-1" style="color: var(--muted)">${esc((r.branches || '').split(',').join(' · '))}</span></span>
-                    <span class="mono text-sm ${signClass(net)}">${net == null ? '–' : `${net > 0 ? '+' : ''}${usd(net)}`}</span></a>`;
+                    ${exploitOf.has(r.tx_hash) ? `<span>${lpExploitTag(exploitOf.get(r.tx_hash))}</span>` : `<span class="mono text-sm ${signClass(net)}">${net == null ? '–' : `${net > 0 ? '+' : ''}${usd(net)}`}</span>`}</a>`;
             }).join('');
             if (!lpFeed.watching) {
                 lpFeed.watching = true;
@@ -4215,7 +4222,7 @@
         // BOLD redeemed per week over the last 26 weeks (7-day periods ending now); a week far larger than the rest is cut at the top
         function lpWeeks() {
             const asOf = lpAsOf(), W = 7 * 86400e3, weeks = new Array(26).fill(0);
-            for (const r of chartRows) { const i = 25 - Math.floor((asOf - r.timestamp) / W); if (i >= 0 && i < 26 && r.timestamp <= asOf) weeks[i] += r.amount; }
+            for (const r of allRows) { const i = 25 - Math.floor((asOf - r.timestamp) / W); if (i >= 0 && i < 26 && r.timestamp <= asOf) weeks[i] += r.amount; }
             const nz = weeks.filter(v => v > 0).sort((a, b) => a - b), med = nz.length ? nz[Math.floor(nz.length / 2)] : 1;
             const cap = Math.max(Math.min(Math.max(...weeks), med * 4), 1), w = 100 / 26, hgt = 72;
             $('lpWeeks').innerHTML = `<svg viewBox="0 0 100 ${hgt}" preserveAspectRatio="none" class="w-full" style="height: ${hgt}px" role="img" aria-label="BOLD redeemed per week over the last 26 weeks">
