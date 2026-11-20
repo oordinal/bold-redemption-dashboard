@@ -4,6 +4,7 @@
    "id": "k3-sbold-2026-11-18",
    "label": "exploit",
    "title": "K3 Capital sBOLD exploit",
+   "name": "K3 Capital exploit",
    "date": "2026-11-18",
    "note": "The BOLD redeemed was taken from K3 Capital’s sBOLD vault in the same transaction (exploit of 18 November 2026), not bought on the market. This redemption is not redemption arbitrage: it shows no profit figures and is left out of every total, average and chart.",
    "txs": [

@@ -7,7 +7,8 @@ const BOT_MIN_REDEMPTIONS = 3;
 const DISTORTED_REFERENCE = 0.03;
 // Redemptions of an exploit (public/incidents.json, also read by the page): BOLD taken from a third-party vault in the same
 // transaction and cashed out through redemption, so not redemption arbitrage. They stay in the redemption list and the troves'
-// records, and are left out of every total, average and leaderboard here
+// records (trove hits and the batch-managed figures: those troves were redeemed), and are left out of every total, average and
+// leaderboard here
 const EXCLUDED_TXS = require('./public/incidents.json').incidents.flatMap(i => i.txs).map(h => {
     if (!/^0x[0-9a-f]{64}$/.test(h)) throw new Error(`incidents.json: not a transaction hash: ${h}`);
     return h;
@@ -120,7 +121,7 @@ const statsQuery = db.prepare(`
 // Troves redeemed while a batch manager (interest-rate delegate) set their rate. A trove redeemed several times counts
 // as batch-managed if it was in a batch at any of those redemptions.
 const batchTotalsQuery = db.prepare(`
-    WITH t AS (SELECT * FROM redemption_troves WHERE ${notExcluded()}),
+    WITH t AS (SELECT * FROM redemption_troves),
          troves AS (SELECT MAX(batch_manager IS NOT NULL) AS batched FROM t GROUP BY branch, trove_id)
     SELECT (SELECT COALESCE(SUM(debt_redeemed), 0) FROM t) AS trove_bold,
            (SELECT COALESCE(SUM(debt_redeemed), 0) FROM t WHERE batch_manager IS NOT NULL) AS batch_bold,
@@ -135,7 +136,7 @@ const batchManagersQuery = db.prepare(`
            COUNT(DISTINCT tx_hash) AS txs,
            SUM(debt_redeemed) AS bold
     FROM redemption_troves
-    WHERE batch_manager IS NOT NULL AND ${notExcluded()}
+    WHERE batch_manager IS NOT NULL
     GROUP BY batch_manager
     ORDER BY bold DESC`);
 
@@ -145,14 +146,16 @@ const batchManagersQuery = db.prepare(`
 const batchRowsQuery = db.prepare(`
     SELECT r.timestamp, t.tx_hash, t.branch || t.trove_id AS trove, t.batch_manager, t.debt_redeemed
     FROM redemption_troves t JOIN redemptions r USING (tx_hash)
-    WHERE ${notExcluded('t.tx_hash')}
     ORDER BY r.timestamp, t.tx_hash, t.log_index`);
 function batchRows() {
     const indexer = () => { const m = new Map(); const idx = v => { if (!m.has(v)) m.set(v, m.size); return m.get(v); }; idx.keys = () => [...m.keys()]; return idx; };
     const txIdx = indexer(), troveIdx = indexer(), managerIdx = indexer();
     const rows = batchRowsQuery.all().map(r => [r.timestamp, txIdx(r.tx_hash), troveIdx(r.trove),
         r.batch_manager ? managerIdx(r.batch_manager) : -1, Math.round(r.debt_redeemed * 100) / 100]);
-    return { managers: managerIdx.keys(), rows };
+    // the tx indexes of exploit redemptions, so the page can name the exploit's share of a figure
+    const excluded = new Set(EXCLUDED_TXS);
+    const incident = txIdx.keys().flatMap((hash, i) => excluded.has(hash) ? [i] : []);
+    return { managers: managerIdx.keys(), rows, incident };
 }
 
 // Redeemer addresses with their contract deployer and ENS name, for grouping into operators

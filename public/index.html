@@ -1277,15 +1277,19 @@
         function renderStats(s) {
             lastStats = s;
             if (!$('view-how').classList.contains('hidden')) renderHow();
+            // BOLD redeemed and the last redemption count every redemption (allRows); the profit and average figures come from
+            // stats.json, which leaves the exploits out
+            const lastAll = allRows.reduce((a, r) => Math.max(a, r.timestamp), 0) || s.last_redemption;
             const tiles = [
-                ['BOLD redeemed', compact(s.total_bold), `${fmt(s.tx_count)} txs · ${fmt(s.senders)} senders`],
+                ['BOLD redeemed', `<span${exploitTip(allRows)}>${compact(allRows.reduce((a, r) => a + r.amount, 0))}</span>`,
+                    `${fmt(allRows.length)} txs · ${fmt(new Set(allRows.map(r => r.sender)).size)} senders`],
                 ['Bots\' net profit', usd(s.net_profit_usd, 0), `${pct(s.avg_margin, 3)} avg margin · measured`, signClass(s.net_profit_usd)],
                 ['Bots\' gross profit', usd(s.gross_profit_usd, 0), 'before gas and tips · measured'],
                 ['Bots\' gas + builder tips', usd((s.gas_fee_usd || 0) + (s.builder_tip_usd || 0), 0), `${usd(s.gas_fee_usd, 0)} gas · ${usd(s.builder_tip_usd, 0)} tips`],
                 ['Avg. BOLD discount', pct(s.avg_spread, 3), 'below $1 at redemption · estimate'],
                 ['Avg. oracle gap', pct(s.avg_oracle_gap, 3), 'exchange price vs. oracle · estimate'],
                 ['Avg. redemption fee', pct(s.avg_fee, 3), 'paid in collateral'],
-                ['Last redemption', s.last_redemption ? ago(s.last_redemption) : '–', s.last_redemption ? dateTime(s.last_redemption) : '']
+                ['Last redemption', lastAll ? ago(lastAll) : '–', lastAll ? dateTime(lastAll) : '']
             ];
             $('stats').innerHTML = tiles.map(([label, value, sub, cls = '']) => `
                 <div class="card p-4 md:p-5">
@@ -1307,6 +1311,8 @@
             curve: 'BOLD bought from Curve\'s BOLD/USDC pool, the main BOLD market. BOLD from other Curve pools, such as BOLD/LUSD, '
                 + 'counts under other venues.',
             aero: 'BOLD bought from Aero\'s BOLD/USDC pool (Slipstream, 0.035% fee), live on Ethereum since 21 October 2026.',
+            exploit: 'BOLD taken from K3 Capital\'s sBOLD vault during the exploit of 18 November 2026 and redeemed in the same transaction; '
+                + 'not bought on a market. Shown as its own source so that it does not swell the other venues.',
             other: 'BOLD from addresses other than the four main pools: other Curve pools (such as BOLD/LUSD), other DEXs, '
                 + 'and lending markets where the redeemer borrowed BOLD (such as an Euler vault). Each address counts by the BOLD it '
                 + 'sent out minus what it received in the transaction, so routers and loans repaid within the transaction cancel out.',
@@ -1331,7 +1337,8 @@
                 </div>
             </div>`;
 
-        function renderAnatomy(rows, from, to) {
+        // rows: the range's redemptions without the exploits (flash financing); every: with them (BOLD sourcing)
+        function renderAnatomy(rows, from, to, every = rows) {
             const has = chartRows.some(r => r.bold_src_held != null);
             $('anatomyRow').classList.toggle('hidden', !has);
             if (!has) return;
@@ -1340,15 +1347,18 @@
             const sourced = rows.filter(r => r.bold_src_held != null);
             const empty = '<p class="text-sm" style="color: var(--muted)">No redemptions in this range.</p>';
 
-            // Sources, weighted by BOLD; the venues sorted by size, BOLD already held last
-            const total = sourced.reduce((s, r) => s + r.amount, 0);
+            // Sources, weighted by BOLD; the venues sorted by size, BOLD already held last. Every redemption counts: an exploit's
+            // BOLD forms its own source (it came from the vault, not from these venues)
+            const all = every.filter(r => r.bold_src_held != null), market = all.filter(r => !exploitOf.has(r.tx_hash)), taken = all.filter(r => exploitOf.has(r.tx_hash));
+            const total = all.reduce((s, r) => s + r.amount, 0);
             const venues = [['curve', 'Curve'], ['uni_v4', 'Uniswap v4'], ['uni_v3', 'Uniswap v3'], ['aero', 'Aero'], ['other', 'Other venues']]
-                .map(([k, label]) => ({ k, label, bold: sourced.reduce((s, r) => s + (r[`bold_src_${k}`] || 0), 0),
-                    txs: sourced.filter(r => r[`bold_src_${k}`] > 0.01).length }))
-                .sort((a, b) => b.bold - a.bold);
-            const held = { k: 'held', label: 'Already held', bold: sourced.reduce((s, r) => s + (r.bold_src_held || 0), 0),
-                txs: sourced.filter(r => r.bold_src_held > 0.01).length };
-            $('sourceCount').innerText = `${compact(total)} BOLD`;
+                .map(([k, label]) => ({ k, label, bold: market.reduce((s, r) => s + (r[`bold_src_${k}`] || 0), 0),
+                    txs: market.filter(r => r[`bold_src_${k}`] > 0.01).length }));
+            if (taken.length) venues.push({ k: 'exploit', label: 'sBOLD vault (exploit)', bold: taken.reduce((s, r) => s + r.amount, 0), txs: taken.length });
+            venues.sort((a, b) => b.bold - a.bold);
+            const held = { k: 'held', label: 'Already held', bold: market.reduce((s, r) => s + (r.bold_src_held || 0), 0),
+                txs: market.filter(r => r.bold_src_held > 0.01).length };
+            $('sourceCount').innerHTML = `<span${exploitTip(all)}>${compact(total)} BOLD</span>`;
             $('sourceRows').innerHTML = total ? [...venues, held].map(v => shareRow(v.label, SOURCE_NOTES[v.k], v.bold / total * 100,
                 `${compact(v.bold)} BOLD`, `${fmt(v.txs)} ${v.txs === 1 ? 'tx' : 'txs'}`)).join('') : empty;
             // the list scrolls, so a hint on its top row opens downwards instead of being cut off
@@ -1554,19 +1564,25 @@
                     managers: s.batch_managers.map(m => ({ address: m.address, troves: m.troves, txs: m.txs, bold: m.bold })) } : null;
             }
             // a hit is a trove reached by a transaction; a transaction with several redemption calls can reach it more than once
-            let troveBold = 0, batchBold = 0;
+            // every redemption counts (troves hit by an exploit were redeemed too); batchData.incident lists the exploit's tx indexes
+            let troveBold = 0, batchBold = 0, exploitTrove = 0, exploitBatch = 0;
+            const incident = new Set(batchData.incident || []), exploitTroves = new Set();
             const troves = new Set(), batchTroves = new Set(), byManager = new Map(), hits = new Set(), batchHits = new Set();
             for (const [t, tx, trove, mgr, bold] of batchData.rows) {
                 if (t < from || t > to) continue;
+                const ex = incident.has(tx);
                 troveBold += bold; troves.add(trove); hits.add(`${tx}:${trove}`);
+                if (ex) { exploitTrove += bold; exploitTroves.add(trove); }
                 if (mgr < 0) continue;
                 batchBold += bold; batchTroves.add(trove); batchHits.add(`${tx}:${trove}`);
-                if (!byManager.has(mgr)) byManager.set(mgr, { address: batchData.managers[mgr], troves: new Set(), txs: new Set(), bold: 0 });
-                const m = byManager.get(mgr); m.troves.add(trove); m.txs.add(tx); m.bold += bold;
+                if (ex) exploitBatch += bold;
+                if (!byManager.has(mgr)) byManager.set(mgr, { address: batchData.managers[mgr], troves: new Set(), txs: new Set(), bold: 0, exploit: 0 });
+                const m = byManager.get(mgr); m.troves.add(trove); m.txs.add(tx); m.bold += bold; if (ex) m.exploit += bold;
             }
-            const managers = [...byManager.values()].map(m => ({ address: m.address, troves: m.troves.size, txs: m.txs.size, bold: m.bold }))
+            const managers = [...byManager.values()].map(m => ({ address: m.address, troves: m.troves.size, txs: m.txs.size, bold: m.bold, exploit: m.exploit }))
                 .sort((a, b) => b.bold - a.bold);
-            return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits: hits.size, batchHits: batchHits.size, managers };
+            return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits: hits.size, batchHits: batchHits.size, managers,
+                exploitTrove, exploitBatch, exploitTroves: exploitTroves.size };
         }
 
         function renderBatches() {
@@ -1580,19 +1596,25 @@
             $('batchCount').innerText = `${f.managers.length} ${f.managers.length === 1 ? 'manager' : 'managers'}`;
             const boldShare = f.troveBold ? f.batchBold / f.troveBold * 100 : null;
             const troveShare = f.troves ? f.batchTroves / f.troves * 100 : null;
-            const figure = (value, label, detail) => `
+            // the exploit's share, on hover of a figure's detail line (one incident so far; the note names it)
+            const inc = batchData?.incident?.length ? [...exploitOf.values()][0] : null;
+            const during = inc ? `during the ${inc.name || inc.title}` : '';
+            const exTip = text => text && inc ? ` class="tip-target" data-tip="${esc(text)}"` : '';     // no note without the incident list
+            const figure = (value, label, detail, tip = '') => `
                 <div class="rounded-xl p-4 flex flex-col" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
                     <div class="text-2xl md:text-[28px] font-semibold tracking-tight">${value == null ? '–' : `${fmt(value, 1)}%`}</div>
                     <div class="text-xs mt-1" style="color: var(--ink-2)">${label}</div>
                     <div class="mt-auto pt-4">
                         <div class="share-bar" role="presentation"><span style="width: ${Math.min(value || 0, 100)}%"></span></div>
-                        <div class="text-[11px] mono mt-2" style="color: var(--muted)">${detail}</div>
+                        <div class="text-[11px] mono mt-2" style="color: var(--muted)"><span${exTip(tip)}>${detail}</span></div>
                     </div>
                 </div>`;
             $('batchFigures').innerHTML =
-                figure(boldShare, 'of redeemed BOLD came from batch-managed troves', `${compact(f.batchBold)} of ${compact(f.troveBold)} BOLD`) +
+                figure(boldShare, 'of redeemed BOLD came from batch-managed troves', `${compact(f.batchBold)} of ${compact(f.troveBold)} BOLD`,
+                    f.exploitTrove ? `Including ${compact(f.exploitTrove)} BOLD redeemed ${during} (${compact(f.exploitBatch)} of it from batch-managed troves)` : '') +
                 figure(troveShare, 'of the troves hit were batch-managed at the time',
-                    `${fmt(f.batchTroves)} of ${fmt(f.troves)} troves` + (f.hits == null ? '' : ` · ${fmt(f.batchHits)} of ${fmt(f.hits)} hits`));
+                    `${fmt(f.batchTroves)} of ${fmt(f.troves)} troves` + (f.hits == null ? '' : ` · ${fmt(f.batchHits)} of ${fmt(f.hits)} hits`),
+                    f.exploitTroves ? `Including ${fmt(f.exploitTroves)} ${f.exploitTroves === 1 ? 'trove' : 'troves'} hit ${during}` : '');
             $('batchManagers').innerHTML = f.managers.map((m, i) => {
                 const share = f.batchBold ? m.bold / f.batchBold * 100 : 0;
                 return `
@@ -1604,7 +1626,7 @@
                     </div>
                     <div class="w-16 md:w-24 hidden sm:block share-bar" title="${fmt(share, 1)}% of BOLD redeemed from batch-managed troves"><span style="width: ${share}%"></span></div>
                     <div class="text-right shrink-0 w-24">
-                        <div class="mono text-[13px]">${compact(m.bold)} BOLD</div>
+                        <div class="mono text-[13px]"><span${exTip(m.exploit ? `Including ${compact(m.exploit)} BOLD redeemed ${during}` : '')}>${compact(m.bold)} BOLD</span></div>
                         <div class="text-[11px] mono" style="color: var(--muted)">${fmt(share, 1)}%</div>
                     </div>
                 </div>`;
@@ -2082,7 +2104,7 @@
             const datasets = venues.map(([key, label, color]) => ({
                 label,
                 hidden: hiddenPools.has(label),
-                data: asc.filter(r => r[key] != null).map(r => ({ x: r.timestamp, y: r[key], amount: r.amount })),
+                data: asc.filter(r => r[key] != null).map(r => ({ x: r.timestamp, y: r[key], amount: r.amount, exploit: exploitOf.get(r.tx_hash) })),
                 backgroundColor: color,
                 borderColor: css('--surface'),
                 borderWidth: 1,
@@ -2096,7 +2118,7 @@
             });
             // Legend doubles as the pool toggles. Every redemption has a price from each pool (Aero's since its launch on 21 October 2026), so the point counts are near
             // identical: the hover shows them together with how often the pool supplied the redeemed BOLD
-            $('priceCount').innerText = `${fmt(rows.length)} txs`;
+            $('priceCount').innerHTML = `<span${exploitTip(rows)}>${fmt(rows.length)} txs</span>`;
             $('priceScope').innerText = `Chart range: ${date(from)} – ${date(to)}`;
             const sourced = rows.filter(r => r.bold_src_held != null);
             const srcKey = { price_curve: 'bold_src_curve', price_uni_v3: 'bold_src_uni_v3', price_uni_v4: 'bold_src_uni_v4', price_aero: 'bold_src_aero' };
@@ -2122,7 +2144,8 @@
                             filter: item => item.dataset.label !== '$1 peg',
                             callbacks: {
                                 title: items => items.length ? dateTime(items[0].parsed.x) : '',
-                                label: item => ` ${item.dataset.label}  $${item.parsed.y.toFixed(4)}  ·  ${fmt(item.raw.amount)} BOLD`
+                                label: item => ` ${item.dataset.label}  $${item.parsed.y.toFixed(4)}  ·  ${fmt(item.raw.amount)} BOLD`,
+                                afterBody: items => items[0]?.raw.exploit ? `Redeemed during the ${items[0].raw.exploit.name || items[0].raw.exploit.title}` : ''
                             }
                         }
                     },
@@ -2530,7 +2553,7 @@
             scaleZoom = scale === 'zoom';
             setScaleButtons();
             const [from, to] = rangeBounds(), rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
-            renderWeeklyChart('volumeChart', rows, from, to);
+            renderWeeklyChart('volumeChart', allRows.filter(r => r.timestamp >= from && r.timestamp <= to), from, to);
             renderWeeklyChart('profitChart', rows, from, to);
             renderBreakdown(rows, from, to);
         });
@@ -2555,9 +2578,22 @@
             volumeChart: { value: r => r.amount, color: '--series-1', tip: v => `${fmt(v)} BOLD`, mark: v => `${compact(v)} BOLD`, scope: 'volumeScope' },
             profitChart: { value: r => r.net_profit_usd, color: '--series-3', tip: v => usd(v), mark: v => usd(v, 0), scope: 'profitScope' }
         };
+        // Diagonal hatching in a series colour, for the exploit part of a bar
+        function hatch(color) {
+            const c = document.createElement('canvas'); c.width = c.height = 6;
+            const x = c.getContext('2d');
+            x.fillStyle = color; x.globalAlpha = .22; x.fillRect(0, 0, 6, 6);
+            x.globalAlpha = 1; x.strokeStyle = color; x.lineWidth = 1.5;
+            x.beginPath(); x.moveTo(-1, 7); x.lineTo(7, -1); x.moveTo(-1, 1); x.lineTo(1, -1); x.moveTo(5, 7); x.lineTo(7, 5); x.stroke();
+            return x.createPattern(c, 'repeat');
+        }
         function renderWeeklyChart(id, rows, from, to) {
             const cfg = WEEKLY_CHARTS[id];
             const { labels, data } = weekly(rows, cfg.value, from, to);
+            // the volume chart's exploit redemptions as a hatched part on top of each bar, named in the tooltip
+            const exploitRows = id === 'volumeChart' ? rows.filter(r => exploitOf.has(r.tx_hash)) : [];
+            const exploit = exploitRows.length ? weekly(exploitRows, cfg.value, from, to).data : null;
+            const names = exploit ? labels.map((w, i) => exploit[i] ? exploitNote(exploitBold(exploitRows.filter(r => r.timestamp >= w && r.timestamp < w + WEEK))) : '') : null;
             const cut = scaleZoom ? typicalScale(data.map(v => Math.max(v, 0)), data.map(v => Math.min(v, 0))) : null;
             scaleCuts[id] = cut && { ...cut, label: cfg.mark, axis: v => compact(v) };
             $(cfg.scope).innerText = `Chart range: ${date(from)} – ${date(to)}` + scaleNote(id, labels);
@@ -2565,22 +2601,30 @@
                 type: 'bar',
                 data: {
                     labels,
-                    datasets: [{ data, backgroundColor: css(cfg.color), borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9 }]
+                    datasets: exploit ? [
+                        { data: data.map((v, i) => v - exploit[i]), backgroundColor: css(cfg.color), borderRadius: c => exploit[c.dataIndex] ? 0 : 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9, stack: 'w' },
+                        { data: exploit, backgroundColor: hatch(css(cfg.color)), borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9, stack: 'w' }
+                    ] : [{ data, backgroundColor: css(cfg.color), borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.9, barPercentage: 0.9 }]
                 },
                 plugins: [cutMarks],
                 options: {
                     maintainAspectRatio: false,
                     animation: false,
+                    ...(exploit ? { interaction: { mode: 'index', intersect: false } } : {}),
                     plugins: {
                         legend: { display: false },
-                        tooltip: { callbacks: {
-                            title: items => 'Week of ' + date(labels[items[0].dataIndex]),
-                            label: item => ' ' + cfg.tip(item.parsed.y)
-                        } }
+                        tooltip: {
+                            filter: item => item.datasetIndex === 0,
+                            callbacks: {
+                                title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                                label: item => ' ' + cfg.tip(data[item.dataIndex]),
+                                afterBody: items => exploit && names[items[0].dataIndex] ? names[items[0].dataIndex] : ''
+                            }
+                        }
                     },
                     scales: {
-                        x: { ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
-                        y: { border: { display: false }, ...scaleAxis(cut, v => compact(v)) }
+                        x: { stacked: !!exploit, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 8, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { stacked: !!exploit, border: { display: false }, ...scaleAxis(cut, v => compact(v)) }
                     }
                 }
             });
@@ -2591,9 +2635,22 @@
         const RANGE_DAYS = { '1m': 30, '3m': 91, '6m': 182, '1y': 365 };
         const chartRange = { preset: '1y', from: null, to: null };
         const hiddenPools = new Set();
+        // Two sets of redemptions. allRows: every redemption, exploits included (incidents.json), for the facts: BOLD redeemed,
+        // activity, prices, BOLD sources, troves hit (home page, Troves tab, the volume figures and those cards on Redemptions).
+        // chartRows: without the exploits, for redemption arbitrage: profit, margins, tips, averages, financing, bots, operators.
+        // A figure that includes an exploit names its share on hover (exploitTip)
         let chartRows = [];
-        let allRows = [];                               // every redemption, exploits included (activity and volume: Troves tab, home page)
+        let allRows = [];
         let exploitOf = new Map();                      // tx hash -> incident (incidents.json)
+        // Hover note of a figure computed from rows that include exploit redemptions, e.g. "Including 3.17M BOLD redeemed during the
+        // K3 Capital exploit"; '' when none is included. part: the BOLD of each incident's rows (default: the BOLD redeemed)
+        const exploitBold = (rows, part = r => r.amount) => {
+            const by = new Map();
+            for (const r of rows) { const inc = exploitOf.get(r.tx_hash); if (inc) by.set(inc, (by.get(inc) || 0) + part(r)); }
+            return by;
+        };
+        const exploitNote = by => [...by].filter(([, v]) => v > 0).map(([inc, v]) => `Including ${compact(v)} BOLD redeemed during the ${inc.name || inc.title}`).join('; ');
+        const exploitTip = (rows, part) => { const n = exploitNote(exploitBold(rows, part)); return n ? ` class="tip-target" data-tip="${esc(n)}"` : ''; };
         // The exploit tag of the home page's latest redemptions, with the incident's note on hover
         const lpExploitTag = inc => `<span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide" style="background: rgba(251,113,133,.14); color: var(--bad)" `
             + `data-tip-title="${esc(inc.title)}" data-tip="${esc(inc.note)}">${esc(inc.label)}</span>`;
@@ -2609,17 +2666,18 @@
         function renderCharts() {
             const [from, to] = rangeBounds();
             const rows = chartRows.filter(r => r.timestamp >= from && r.timestamp <= to);
-            renderPriceChart(rows, from, to);
-            renderWeeklyChart('volumeChart', rows, from, to);
+            const every = allRows.filter(r => r.timestamp >= from && r.timestamp <= to);       // exploits included
+            renderPriceChart(every, from, to);
+            renderWeeklyChart('volumeChart', every, from, to);
             renderWeeklyChart('profitChart', rows, from, to);
             renderBreakdown(rows, from, to);
             renderRing(rows, from, to);
             // Totals of exactly what the two charts plot (rows without a value are left out, as in the bars)
             const sumOf = key => rows.reduce((t, r) => t + (r[key] ?? 0), 0);
-            $('volumeTotal').innerText = `${compact(sumOf('amount'))} BOLD`;
+            $('volumeTotal').innerHTML = `<span${exploitTip(every)}>${compact(every.reduce((t, r) => t + r.amount, 0))} BOLD</span>`;
             $('profitTotal').innerText = `${usd(sumOf('net_profit_usd'), 0)} total`;
             renderBots(rows, from, to);
-            renderAnatomy(rows, from, to);
+            renderAnatomy(rows, from, to, every);
             renderBatches();
             renderOperators(rows, from, to);
             for (const btn of $('rangePresets').querySelectorAll('[data-range]')) {
@@ -4460,7 +4518,12 @@
             for (const v of Object.keys(VIEW_PATH)) $(`view-${v}`).classList.toggle('hidden', v !== name);
             tvHidePicker();
             // the fade-up of a page changed to (the home page's own sections already fade up whenever it is shown)
-            if (currentView && currentView !== name && name !== 'home') { const el = $(`view-${name}`); el.classList.remove('view-in'); el.offsetWidth; el.classList.add('view-in'); }
+            // The class comes off once the last block has faded up (0.7 s after a 0.24 s delay): its animations would otherwise stay
+            // applied and keep each block on a layer of its own, where hovering inside a card's blurred background could paint an offset glow
+            if (currentView && currentView !== name && name !== 'home') {
+                const el = $(`view-${name}`); el.classList.remove('view-in'); el.offsetWidth; el.classList.add('view-in');
+                clearTimeout(el.viewInTimer); el.viewInTimer = setTimeout(() => el.classList.remove('view-in'), 1100);
+            }
             placeGlide(name);
             document.title = VIEW_TITLE[name];
             const url = viewUrl(name), changed = currentView !== name;
