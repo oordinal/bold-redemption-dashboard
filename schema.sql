@@ -120,3 +120,18 @@ CREATE TABLE IF NOT EXISTS trove_ops (
     PRIMARY KEY (tx_hash, log_index)
 );
 CREATE INDEX IF NOT EXISTS idx_trove_ops_trove ON trove_ops(branch, trove_id);
+
+-- BOLD bought from the four BOLD/USDC pools (poolvolume.js), from their events: every swap that bought BOLD (kind 'swap'; swaps
+-- selling BOLD into a pool are not stored), and Curve's liquidity events ('add', 'remove': RemoveLiquidityOne) for purchases made by
+-- adding USDC and taking out BOLD in one transaction. BOLD is token 0 in all four pools. The export sums them per pool and UTC day.
+CREATE TABLE IF NOT EXISTS pool_events (
+    pool TEXT NOT NULL,              -- curve, uni_v3, uni_v4, aero
+    tx_hash TEXT NOT NULL,
+    log_index INTEGER NOT NULL,
+    block INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,      -- ms since epoch
+    kind TEXT NOT NULL,              -- swap, add, remove
+    bold_out REAL NOT NULL,          -- BOLD out of the pool (bought, or withdrawn alone for 'remove')
+    bold_in REAL NOT NULL,           -- BOLD added as liquidity ('add'; 0 otherwise)
+    PRIMARY KEY (pool, tx_hash, log_index)
+) WITHOUT ROWID;

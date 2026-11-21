@@ -275,6 +275,9 @@
         .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
         .ring-row { display: grid; grid-template-columns: 10px 1fr auto 46px; gap: 8px; align-items: center; padding: 3px 4px; border-radius: 6px; }
         .ring-row:hover { background: rgba(255,255,255,.04); }
+        /* Redemptions by pool: one bar per pool, its part bought for redemptions (as thin as .share-bar) */
+        .pv-bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.06); }
+        .pv-bar > span { height: 100%; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -570,6 +573,35 @@
                 </div>
                 <p class="text-xs mb-4" style="color: var(--muted)">Flash loans and flash swaps detected in each redemption transaction, by share of transactions<br><span class="range-scope"></span></p>
                 <div class="fill"><div id="flashRows" class="scroll-area scroll space-y-1.5"></div></div>
+            </section>
+        </div>
+
+        <div id="pvRow" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 hidden">
+            <section class="card p-5 md:p-6 lg:col-span-2 min-w-0" aria-labelledby="pvWeekTitle">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 id="pvWeekTitle" class="font-semibold flex items-center">Weekly BOLD bought from the pools<span id="pvWeekInfo" class="inline-flex items-center"></span></h2>
+                    <span id="pvWeekCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs" style="color: var(--muted)">Weekly view of the aggregated total volume of BOLD bought from each pool and the percentage sourced by redemption bots<br><span class="range-scope"></span></p>
+                <div class="flex flex-wrap items-center justify-between gap-3 mt-3 mb-4">
+                    <div id="pvLegend" class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs" style="color: var(--ink-2)"></div>
+                    <div class="flex items-center gap-2 text-[11px]" style="color: var(--muted)">Other buyers
+                        <div class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" id="pvRestSwitch" role="group" aria-label="Other buyers">
+                            <button class="seg seg-active" data-rest="total" aria-pressed="true" data-tip="The BOLD bought by other buyers from the pools shown, as one grey part">Total</button><button class="seg" data-rest="pool" aria-pressed="false" data-tip="The BOLD bought by other buyers, in each pool's darker shade">By pool</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative h-72"><canvas id="pvWeekChart"></canvas></div>
+            </section>
+            <section class="card p-5 md:p-6 flex flex-col" aria-labelledby="pvPoolTitle">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 id="pvPoolTitle" class="font-semibold">Redemptions by pool</h2>
+                    <span id="pvPoolCount" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs" style="color: var(--muted)">Share of each pool's BOLD sales bought for redemptions<br><span class="range-scope"></span></p>
+                <div id="pvPoolBody" class="mt-5 space-y-5 flex-1"></div>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] mt-5" style="color: var(--muted)"><span class="flex items-center gap-1.5"><span class="legend-swatch" style="background: var(--series-1)"></span>for redemptions</span>
+                    <span class="flex items-center gap-1.5"><span class="legend-swatch" style="background: #3a3f48"></span>other buyers</span></div>
             </section>
         </div>
 
@@ -1337,6 +1369,105 @@
                 </div>
             </div>`;
 
+        // ---- Pool volume: BOLD bought from the four BOLD/USDC pools (pool_volume.json, from their events; poolvolume.js) against the BOLD
+        // the redemptions bought from them (bold_src_*, as in BOLD sourcing). Both sides are counted over the same UTC days. The weekly card
+        // shows one bar per week (each pool's redemption part, the rest by other buyers as one grey part or by pool; pools switched on and
+        // off in the legend), the card next to it one bar per pool. Hidden until pool_volume.json exists
+        const PV_POOLS = [['curve', 'Curve', '--series-1'], ['uni_v4', 'Uniswap v4', '--series-3'], ['uni_v3', 'Uniswap v3', '--series-2'], ['aero', 'Aero', '--series-4']];
+        const PV_WEEK_NOTE = 'Each bar is one week (Monday to Sunday, UTC) and its height is all the BOLD bought that week from the pools switched on '
+            + 'above. The coloured parts are the BOLD bought for redemptions, by the pool it came from: what each redemption took from that pool within '
+            + 'its own transaction. The grey part is the rest, bought by everyone else (traders, arbitrage and other uses); "By pool" splits it into '
+            + 'each pool\'s darker shade. BOLD bought counts the BOLD that left a pool in a purchase: swaps, and on Curve also adding USDC and taking '
+            + 'out BOLD in one transaction. BOLD sold into the pools is not counted. Hover over a week for each part as a share of that week\'s total.';
+        const PV_GREY = '#3a3f48';
+        // opaque colours (no transparency, so the parts stay readable): w of the colour mixed with the card background
+        const pvMix = (hex, w, base = '#14171d') => { const c = h => [16, 8, 0].map(b => parseInt(h.replace('#', ''), 16) >> b & 255), [a, b] = [c(hex), c(base)];
+            return `rgb(${a.map((v, i) => Math.round(v * w + b[i] * (1 - w))).join(', ')})`; };
+        const pvDay = ts => new Date(ts).toISOString().slice(0, 10);
+        let pvData = null, pvRest = 'total';
+        const pvHidden = new Set();
+        // per pool over the UTC days d0–d1: BOLD bought from the pool (and the purchases), and by the redemptions of those days
+        function pvSums(d0, d1) {
+            const rows = allRows.filter(r => { const d = pvDay(r.timestamp); return d >= d0 && d <= d1; });
+            return PV_POOLS.map(([k, label, color]) => {
+                const days = Object.entries(pvData.daily[k] || {}).filter(([d]) => d >= d0 && d <= d1);
+                const pool = days.reduce((a, [, v]) => a + v.boldOut, 0), red = rows.reduce((a, r) => a + (r[`bold_src_${k}`] || 0), 0);
+                return { k, label, color: css(color), pool, red: Math.min(red, pool), purchases: days.reduce((a, [, v]) => a + v.purchases, 0) };
+            });
+        }
+        function renderPoolVolume(from, to) {
+            $('pvRow').classList.toggle('hidden', !pvData);
+            if (!pvData) return;
+            const t = pvSums(pvDay(from), pvDay(to));
+            $('pvWeekInfo').innerHTML = infoTip(PV_WEEK_NOTE, 'Weekly BOLD bought from the pools').replace('class="info-tip"', 'class="info-tip below"');
+
+            // Redemptions by pool
+            const pool = t.reduce((a, x) => a + x.pool, 0), red = t.reduce((a, x) => a + x.red, 0);
+            $('pvPoolCount').innerText = pool ? `${fmt(red / pool * 100, 1)}% overall` : '';
+            $('pvPoolBody').innerHTML = t.map(x => `
+                <div>
+                    <div class="flex items-baseline justify-between gap-3 mb-1.5">
+                        <span class="flex items-center gap-2 text-[13px]"><span class="legend-swatch" style="background:${x.color}"></span>${x.label}</span>
+                        <span class="mono text-[13px]">${x.pool ? fmt(x.red / x.pool * 100, 1) + '%' : '–'}</span>
+                    </div>
+                    <div class="pv-bar" data-tip-title="${x.label}" data-tip="${esc(`${compact(x.red)} BOLD bought for redemptions out of ${compact(x.pool)} BOLD bought from the pool (${fmt(x.purchases)} purchases)`)}">
+                        <span style="width:${x.pool ? x.red / x.pool * 100 : 0}%; background:${x.color}"></span></div>
+                    <div class="flex justify-between text-[11px] mono mt-1" style="color: var(--muted)"><span>${compact(x.red)} for redemptions</span><span>of ${compact(x.pool)} BOLD</span></div>
+                </div>`).join('');
+
+            // Weekly BOLD bought from the pools switched on: per week and pool, BOLD bought and for redemptions (the range's days only)
+            const on = PV_POOLS.filter(([k]) => !pvHidden.has(k));
+            const labels = [], byPool = Object.fromEntries(PV_POOLS.map(([k]) => [k, { pool: [], red: [] }]));
+            for (let w = mondayOf(from); w <= to; w += WEEK) {
+                labels.push(w);
+                for (const x of pvSums(pvDay(Math.max(w, from)), pvDay(Math.min(w + WEEK - DAY, to)))) { byPool[x.k].pool.push(x.pool); byPool[x.k].red.push(x.red); }
+            }
+            $('pvLegend').innerHTML = PV_POOLS.map(([k, label, color]) => {
+                const off = pvHidden.has(k), x = t.find(y => y.k === k);
+                return `<button class="legend-btn ${off ? 'off' : ''}" data-pvpool="${k}" aria-pressed="${!off}" aria-label="${off ? 'Show' : 'Hide'} ${label}" data-tip-title="${label}"
+                    data-tip="${esc(`${x.pool ? fmt(x.red / x.pool * 100, 1) + '%' : '–'} for redemptions in the range · click to ${off ? 'show' : 'hide'}`)}"><span class="legend-swatch" style="background:${css(color)}"></span>${label}</button>`;
+            }).join('');
+            const sp = on.reduce((a, [k]) => a + t.find(y => y.k === k).pool, 0), sr = on.reduce((a, [k]) => a + t.find(y => y.k === k).red, 0);
+            $('pvWeekCount').innerText = sp ? `${compact(sr)} of ${compact(sp)} BOLD` : '';
+            $('pvRestSwitch').querySelectorAll('[data-rest]').forEach(b => { const a = b.dataset.rest === pvRest; b.classList.toggle('seg-active', a); b.setAttribute('aria-pressed', a); });
+            // each pool's redemption part; the rest by other buyers as one grey part on top, or in each pool's darker shade
+            const redOf = (k, i) => byPool[k].red[i], restOf = (k, i) => byPool[k].pool[i] - byPool[k].red[i];
+            const weekTotal = i => on.reduce((a, [k]) => a + byPool[k].pool[i], 0);
+            const bar = { stack: 's', categoryPercentage: .9, barPercentage: .9 };
+            const datasets = pvRest === 'pool'
+                ? on.flatMap(([k, label, color]) => [
+                    { ...bar, label, part: 'red', pool: k, data: labels.map((_, i) => redOf(k, i)), backgroundColor: css(color) },
+                    { ...bar, label, part: 'rest', pool: k, data: labels.map((_, i) => restOf(k, i)), backgroundColor: pvMix(css(color), .38) }])
+                : [...on.map(([k, label, color]) => ({ ...bar, label, part: 'red', pool: k, data: labels.map((_, i) => redOf(k, i)), backgroundColor: css(color) })),
+                    { ...bar, label: 'Other buyers', part: 'rest-total', data: labels.map((_, i) => on.reduce((a, [k]) => a + restOf(k, i), 0)), backgroundColor: PV_GREY, borderRadius: 4, borderSkipped: 'start' }];
+            const pctOfTotal = (v, i) => weekTotal(i) ? `${fmt(v / weekTotal(i) * 100, 1)}%` : '–';
+            upsertChart('pvWeekChart', {
+                type: 'bar', data: { labels, datasets },
+                options: { maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+                    // hover: each pool's redemption BOLD as a share of the week's total BOLD bought from the pools shown
+                    plugins: { legend: { display: false }, tooltip: {
+                        filter: item => item.dataset.part !== 'rest', itemSort: (a, b) => a.datasetIndex - b.datasetIndex,
+                        callbacks: {
+                            title: items => 'Week of ' + date(labels[items[0].dataIndex]),
+                            label: item => { const i = item.dataIndex, k = item.dataset.pool;
+                                if (item.dataset.part === 'rest-total') return ` Other buyers: ${compact(item.parsed.y)} BOLD · ${pctOfTotal(item.parsed.y, i)}`;
+                                return ` ${item.dataset.label}: ${compact(redOf(k, i))} for redemptions · ${pctOfTotal(redOf(k, i), i)}`; },
+                            labelColor: item => ({ borderColor: item.dataset.backgroundColor, backgroundColor: item.dataset.backgroundColor }),
+                            afterBody: items => { const i = items[0].dataIndex, p = weekTotal(i), r = on.reduce((a, [k]) => a + redOf(k, i), 0);
+                                return p ? `Total ${compact(p)} BOLD bought from ${on.length === PV_POOLS.length ? 'the four pools' : on.map(x => x[1]).join(', ')} · ${fmt(r / p * 100, 1)}% for redemptions` : 'No purchases'; } } } },
+                    scales: { x: { stacked: true, ticks: { callback: (_, i) => date(labels[i]), maxTicksLimit: 10, autoSkip: true }, grid: { display: false }, border: { color: css('--grid') } },
+                        y: { stacked: true, ticks: { callback: v => compact(v) }, border: { display: false } } } }
+            });
+        }
+        const pvRerender = () => { const [from, to] = rangeBounds(); renderPoolVolume(from, to); };
+        $('pvRestSwitch').addEventListener('click', e => { const b = e.target.closest('[data-rest]'); if (!b || b.dataset.rest === pvRest) return; pvRest = b.dataset.rest; pvRerender(); });
+        $('pvLegend').addEventListener('click', e => {
+            const b = e.target.closest('[data-pvpool]'); if (!b) return;
+            hideTip();                                     // the legend is redrawn, so the tooltip of the clicked tag would go stale
+            pvHidden.has(b.dataset.pvpool) ? pvHidden.delete(b.dataset.pvpool) : pvHidden.add(b.dataset.pvpool);
+            pvRerender();
+        });
+
         // rows: the range's redemptions without the exploits (flash financing); every: with them (BOLD sourcing)
         function renderAnatomy(rows, from, to, every = rows) {
             const has = chartRows.some(r => r.bold_src_held != null);
@@ -1620,12 +1751,12 @@
                 return `
                 <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[.04] transition" style="background: rgba(255,255,255,.025)">
                     <span class="w-6 h-6 shrink-0 rounded-md grid place-items-center text-[11px] font-semibold mono" style="background: rgba(255,255,255,.06); color: var(--muted)">${i + 1}</span>
-                    <div class="flex-1 min-w-0">
+                    <div class="w-[76px] sm:w-[165px] shrink-0 min-w-0">
                         <div class="mono text-[13px] truncate">${etherscan('address', m.address, short(m.address))}</div>
                         <div class="text-[11px] mono" style="color: var(--muted)">${fmt(m.troves)} ${m.troves === 1 ? 'trove' : 'troves'} · ${fmt(m.txs)} ${m.txs === 1 ? 'tx' : 'txs'}</div>
                     </div>
-                    <div class="w-16 md:w-24 hidden sm:block share-bar" title="${fmt(share, 1)}% of BOLD redeemed from batch-managed troves"><span style="width: ${share}%"></span></div>
-                    <div class="text-right shrink-0 w-24">
+                    <div class="flex-1 min-w-[32px] share-bar" title="${fmt(share, 1)}% of BOLD redeemed from batch-managed troves"><span style="width: ${share}%"></span></div>
+                    <div class="text-right shrink-0 sm:w-44">
                         <div class="mono text-[13px]"><span${exTip(m.exploit ? `Including ${compact(m.exploit)} BOLD redeemed ${during}` : '')}>${compact(m.bold)} BOLD</span></div>
                         <div class="text-[11px] mono" style="color: var(--muted)">${fmt(share, 1)}%</div>
                     </div>
@@ -2678,6 +2809,7 @@
             $('profitTotal').innerText = `${usd(sumOf('net_profit_usd'), 0)} total`;
             renderBots(rows, from, to);
             renderAnatomy(rows, from, to, every);
+            renderPoolVolume(from, to);
             renderBatches();
             renderOperators(rows, from, to);
             for (const btn of $('rangePresets').querySelectorAll('[data-range]')) {
@@ -2715,7 +2847,7 @@
 
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
-        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses',
+        const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses', pool_volume: '/api/pool_volume',
             troves: '/api/troves', trovehits: '/api/trovehits', troveops: '/api/troveops' };
         let staticMode = false;
         let lastGenerated = null;
@@ -2736,6 +2868,8 @@
             );
             // Optional: data published before this file existed falls back to all-time totals
             batchData = await fetch(API.batches, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            // Optional too: the pool volume cards stay hidden until the data has it
+            pvData = await fetch(API.pool_volume, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
             addressInfo = new Map((await fetch(API.addresses, { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []))
                 .map(a => [a.address, a]));
             // Redemptions of an exploit (incidents.json): listed in the feed with their tag and without profit figures, left out of

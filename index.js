@@ -7,6 +7,7 @@ const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
 const { syncTroveOps, troveOpsExport } = require('./troveops');
+const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
 
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES || 5);
 
@@ -76,6 +77,16 @@ app.get('/api/troveops', (req, res) => {
     }
 });
 
+app.get('/api/pool_volume', (req, res) => {
+    try {
+        const data = poolVolumeExport();
+        if (!data) return res.status(404).json({ error: 'pool volume not synced yet' });
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/trovehits', (req, res) => {
     try {
         res.json(queries.troveHits());
@@ -109,7 +120,10 @@ function startSync() {
         .catch(e => console.warn(`Trove snapshot not updated: ${e.shortMessage || e.message}`))
         // Borrowing record: a failure keeps the operations already stored
         .then(() => syncTroveOps())
-        .catch(e => console.warn(`Trove operations not updated: ${e.message}`));
+        .catch(e => console.warn(`Trove operations not updated: ${e.message}`))
+        // Pool volume: a failure keeps the events already stored
+        .then(() => syncPoolVolume())
+        .catch(e => console.warn(`Pool volume not updated: ${e.message}`));
     return true;
 }
 

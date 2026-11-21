@@ -9,6 +9,7 @@ const queries = require('./queries');
 const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
 const { syncTroveOps, troveOpsExport } = require('./troveops');
+const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
 const { runAlerts, runDigests, weekVolumes } = require('./alerts');
 
 const outDir = path.resolve(process.argv[2] || 'out');
@@ -27,6 +28,13 @@ async function main() {
         console.log(`Trove operations: ${JSON.stringify(r)}`);
     } catch (e) {
         console.warn(`Trove operations not updated: ${e.message}`);
+    }
+    // BOLD bought from the four pools (Etherscan), for the pool volume cards: a failure keeps the events already stored
+    try {
+        const r = await syncPoolVolume();
+        console.log(`Pool volume: ${JSON.stringify(r)}`);
+    } catch (e) {
+        console.warn(`Pool volume not updated: ${e.message}`);
     }
     // Telegram alerts for the watched troves (does nothing without the Upstash and Telegram settings; never stops the export)
     try {
@@ -61,6 +69,8 @@ async function main() {
     write('trovehits.json', queries.troveHits());
     const ops = troveOpsExport();
     if (ops) write('troveops.json', ops);
+    const pools = poolVolumeExport();
+    if (pools) write('pool_volume.json', pools);
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
     // One file per redemption transaction, loaded by the page when a feed row is expanded
     fs.mkdirSync(path.join(outDir, 'tx'), { recursive: true });
