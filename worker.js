@@ -1040,7 +1040,7 @@ function getStatus() {
 }
 
 // flashVenues, boldSources, actualResult and loadConfig are exposed for checks against individual transactions
-module.exports = { syncData, getStatus, flashVenues, boldSources, actualResult, loadConfig, provider };
+module.exports = { syncData, getStatus, flashVenues, boldSources, actualResult, loadConfig, provider, env };
 
 if (require.main === module) {
     syncData()

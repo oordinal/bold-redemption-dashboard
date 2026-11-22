@@ -11,8 +11,10 @@ const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const db = require('./db');
+// The pool addresses as the redemption sync reads them: from .env, else worker.js's defaults (GitHub Actions has no .env)
+const { env } = require('./worker');
 
-const START_BLOCK = Number(process.env.START_BLOCK || 22516069);         // CollateralRegistry deployment block, as in worker.js
+const START_BLOCK = Number(env('START_BLOCK'));                           // CollateralRegistry deployment block, as in worker.js
 const PAGE = 1000;                                                         // Etherscan's maximum per log request
 const FULL = 900;                                                          // a full page sometimes comes back with 999 records
 const SWAP_V3 = ethers.id('Swap(address,address,int256,int256,uint160,uint128,int24)');
@@ -22,21 +24,22 @@ const abi = ethers.AbiCoder.defaultAbiCoder();
 // (Slipstream) report amounts from the pool's side (positive = into the pool), Uniswap v4 from the swapper's side (positive = to the
 // swapper); Curve's TokenExchange names the coin bought. Curve's AddLiquidity and RemoveLiquidityOne are kept for the round trips.
 function streams() {
+    const curve = env('CURVE_POOL_ADDRESS_BOLD_USDC').toLowerCase();
     const v3 = data => { const [a0] = abi.decode(['int256'], ethers.dataSlice(data, 0, 32)); return a0 < 0n ? { boldOut: -a0 } : { boldIn: a0 }; };
     return [
-        { key: 'curve:swap', pool: 'curve', kind: 'swap', address: '0xefc6516323fbd28e80b85a497b65a86243a54b3e',
+        { key: 'curve:swap', pool: 'curve', kind: 'swap', address: curve,
             topic0: ethers.id('TokenExchange(address,int128,uint256,int128,uint256)'),
             decode: data => { const [soldId, sold, boughtId, bought] = abi.decode(['int128', 'uint256', 'int128', 'uint256'], data);
                 return Number(boughtId) === 0 ? { boldOut: bought } : Number(soldId) === 0 ? { boldIn: sold } : {}; } },
-        { key: 'curve:add', pool: 'curve', kind: 'add', address: '0xefc6516323fbd28e80b85a497b65a86243a54b3e',
+        { key: 'curve:add', pool: 'curve', kind: 'add', address: curve,
             topic0: ethers.id('AddLiquidity(address,uint256[],uint256[],uint256,uint256)'),
             decode: data => ({ boldIn: abi.decode(['uint256[]'], data)[0][0] }) },
-        { key: 'curve:remove', pool: 'curve', kind: 'remove', address: '0xefc6516323fbd28e80b85a497b65a86243a54b3e',
+        { key: 'curve:remove', pool: 'curve', kind: 'remove', address: curve,
             topic0: ethers.id('RemoveLiquidityOne(address,int128,uint256,uint256,uint256)'),
             decode: data => { const [id, , coin] = abi.decode(['int128', 'uint256', 'uint256'], ethers.dataSlice(data, 0, 96)); return Number(id) === 0 ? { boldOut: coin } : {}; } },
-        { key: 'uni_v3:swap', pool: 'uni_v3', kind: 'swap', address: process.env.UNISWAP_V3_POOL_ADDRESS_BOLD_USDC, topic0: SWAP_V3, decode: v3 },
-        { key: 'uni_v4:swap', pool: 'uni_v4', kind: 'swap', address: process.env.UNISWAP_V4_POOL_MANAGER,
-            topic0: ethers.id('Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)'), topic1: process.env.UNISWAP_V4_POOL_ID_BOLD_USDC,
+        { key: 'uni_v3:swap', pool: 'uni_v3', kind: 'swap', address: env('UNISWAP_V3_POOL_ADDRESS_BOLD_USDC').toLowerCase(), topic0: SWAP_V3, decode: v3 },
+        { key: 'uni_v4:swap', pool: 'uni_v4', kind: 'swap', address: env('UNISWAP_V4_POOL_MANAGER').toLowerCase(),
+            topic0: ethers.id('Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)'), topic1: env('UNISWAP_V4_POOL_ID_BOLD_USDC').toLowerCase(),
             decode: data => { const [a0] = abi.decode(['int128'], ethers.dataSlice(data, 0, 32)); return a0 > 0n ? { boldOut: a0 } : { boldIn: -a0 }; } },
         { key: 'aero:swap', pool: 'aero', kind: 'swap', address: '0x82ccbb91c69e75037bb972f28cc01e704e325362', topic0: SWAP_V3, decode: v3 }
     ];
@@ -79,8 +82,6 @@ function decode(s, log) {
 // Reads every stream up to the block the redemptions are synced to, so both cover the same blocks
 async function syncPoolVolume() {
     if (!process.env.ETHERSCAN_API_KEY) return { skipped: 'ETHERSCAN_API_KEY is not set' };
-    for (const k of ['UNISWAP_V3_POOL_ADDRESS_BOLD_USDC', 'UNISWAP_V4_POOL_MANAGER', 'UNISWAP_V4_POOL_ID_BOLD_USDC'])
-        if (!process.env[k]) return { skipped: `${k} is not set` };
     const to = Number(getState.get('last_block')?.value);
     if (!to) return { skipped: 'redemptions not synced yet' };
     let requests = 0, added = 0;
