@@ -135,3 +135,42 @@ CREATE TABLE IF NOT EXISTS pool_events (
     bold_in REAL NOT NULL,           -- BOLD added as liquidity ('add'; 0 otherwise)
     PRIMARY KEY (pool, tx_hash, log_index)
 ) WITHOUT ROWID;
+
+-- Every BatchUpdated event of the three TroveManagers (batchmanagers.js), for the Batch Manager monitor: the batch's state after the
+-- operation and the upfront fee it added to the batch's debt (charged when the rate changes less than 7 days after the last change)
+CREATE TABLE IF NOT EXISTS batch_events (
+    tx_hash TEXT NOT NULL,
+    log_index INTEGER NOT NULL,
+    block INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,      -- ms since epoch
+    branch TEXT NOT NULL,            -- collateral symbol, as in redemption_troves
+    manager TEXT NOT NULL,           -- batch manager address, lowercase
+    operation TEXT NOT NULL,         -- registerBatchManager, lowerBatchManagerFee, setBatchManagerAnnualInterestRate,
+                                     -- applyBatchInterestAndFeePermissionless, joinBatch, exitBatch, troveChange
+    debt REAL NOT NULL,              -- BOLD debt of the batch after the operation
+    interest_rate REAL NOT NULL,     -- annual interest rate, in %
+    interest_rate_raw TEXT NOT NULL, -- the same at full precision (1e18 = 100%), to tell a real change from an update to the same rate
+    management_fee REAL NOT NULL,    -- annual management fee, in %
+    upfront_fee REAL NOT NULL,       -- BOLD added to the batch's debt as upfront fee
+    PRIMARY KEY (tx_hash, log_index)
+) WITHOUT ROWID;
+
+-- Each branch's debt, Stability Pool deposits and average interest rate (batchmanagers.js), for the Branch trends card: one sample at
+-- the trove snapshot's block after every sync (older than 7 days, only the latest of each 2-hour step is kept), and the history from
+-- 20 August 2026 every 2 hours
+CREATE TABLE IF NOT EXISTS branch_samples (
+    branch TEXT NOT NULL,
+    block INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,      -- ms since epoch, the block's time
+    debt REAL NOT NULL,              -- getEntireBranchDebt
+    sp_deposits REAL NOT NULL,       -- the Stability Pool's getTotalBoldDeposits
+    avg_rate REAL,                   -- ActivePool aggWeightedDebtSum / aggRecordedDebt, in %
+    interest REAL,                   -- BOLD a year the branch's troves pay at their current rates: aggWeightedDebtSum / 1e36
+    pending_sp_yield REAL,           -- BOLD accrued to the Stability Pool and not yet minted (ActivePool calcPendingSPYield)
+    sp_minted REAL NOT NULL DEFAULT 0, -- BOLD minted to the Stability Pool after the previous sample's block, up to this sample's block
+                                     -- (75% of the interest and upfront fees: BOLD Transfer events from the zero address to the pool)
+    sp_minted_incident REAL NOT NULL DEFAULT 0, -- the part of sp_minted from upfront fees paid in an exploit's transactions (public/incidents.json):
+                                     -- 75% of those fees. Included in the yield; the page names it on hover
+    PRIMARY KEY (branch, block)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_branch_samples_time ON branch_samples(timestamp);

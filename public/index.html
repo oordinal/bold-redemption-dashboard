@@ -690,6 +690,56 @@
                 <section id="tvMarket" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
             </div>
             <section id="tvBranches" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
+            <!-- Branch trends and the card beside it: the same columns and gap as the branch cards above; the two cards share their rows
+                 (title, description, switches, content) so the switches line up whatever the length of the descriptions. Each card becomes a grid
+                 (display) only when it is shown: the grid class would otherwise override hidden -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <section id="btCard" class="card p-5 md:p-6 hidden lg:col-span-2 min-w-0 grid-rows-subgrid row-span-4 gap-y-0" aria-labelledby="btTitle" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015) 640px)">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                        <h2 id="btTitle" class="font-semibold flex items-center">Branch trends<span id="btInfo" class="inline-flex items-center"></span></h2>
+                        <span id="btAsOf" class="text-xs mono" style="color: var(--muted)"></span>
+                    </div>
+                    <p id="btSub" class="text-xs max-w-4xl" style="color: var(--muted)"></p>
+                    <div class="flex flex-wrap items-center gap-3 mt-4">
+                        <div id="btView" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Measure"></div>
+                        <div id="btRange" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Period"></div>
+                    </div>
+                    <div class="mt-4 min-w-0">
+                        <div class="relative h-64"><canvas id="btChart" role="img" aria-label="Branch trends over time"></canvas></div>
+                        <div id="btLegend" class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] mt-3" style="color: var(--ink-2)"></div>
+                    </div>
+                </section>
+                <section id="bsCard" class="card p-5 md:p-6 hidden min-w-0 grid-rows-subgrid row-span-4 gap-y-0" aria-labelledby="bsTitle" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015) 640px)">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                        <h2 id="bsTitle" class="font-semibold flex items-center"></h2>
+                        <span id="bsCorner" class="text-xs mono" style="color: var(--muted)"></span>
+                    </div>
+                    <p id="bsSub" class="text-xs" style="color: var(--muted)"></p>
+                    <div class="flex flex-wrap items-center gap-3 mt-4">
+                        <div id="bsView" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Measure"></div>
+                    </div>
+                    <div id="bsBody" class="mt-3 min-w-0 flex flex-col"></div>
+                </section>
+            </div>
+            <section id="bmCard" class="card p-5 md:p-6 hidden" aria-labelledby="bmTitle" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015) 640px)">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                    <h2 id="bmTitle" class="font-semibold flex items-center">Batch Manager monitor<span id="bmInfo" class="inline-flex items-center"></span></h2>
+                    <span id="bmAsOf" class="text-xs mono" style="color: var(--muted)"></span>
+                </div>
+                <p class="text-xs max-w-4xl" style="color: var(--muted)">Batch managers set the interest rate of every trove in their batch. What their troves paid, how often the rate
+                    changed and how often their troves were redeemed. Select a manager for its rate history. <span id="bmLink"></span></p>
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <div id="bmBranch" class="flex gap-1 p-1 rounded-lg" style="background: rgba(255,255,255,.03)" role="group" aria-label="Branch"></div>
+                    <button id="bmEmpty" type="button" class="switch" role="switch" aria-checked="false"><span class="switch-track"><span class="switch-knob"></span></span>Empty batches</button>
+                </div>
+                <div id="bmTiles" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5"></div>
+                <div id="bmScroll" class="overflow-x-auto scroll rounded-lg mt-5" style="border: 1px solid rgba(255,255,255,.06)">
+                    <table class="w-full text-left text-[13px] whitespace-nowrap">
+                        <thead style="color: var(--muted)"><tr id="bmHead" class="text-[11px] uppercase tracking-wider"></tr></thead>
+                        <tbody id="bmRows"></tbody>
+                    </table>
+                </div>
+            </section>
             <section class="card p-5 md:p-6">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                     <h2 class="font-semibold flex items-center">Trove overview<span id="tvInfo" class="inline-flex items-center"></span></h2>
@@ -1022,8 +1072,113 @@
                 </div>
             </section>
 
+            <section class="card p-5 md:p-8" id="scorecard">
+                <div class="kicker">8 · Batch managers</div>
+                <h3 class="text-xl font-semibold mt-1">How the Batch Manager monitor is computed</h3>
+                <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">Every rate change, debt change and upfront fee of a batch comes from the
+                    <span class="mono">BatchUpdated</span> events of Liquity's three branches. Redemptions are this dashboard's own, matched to the troves of each batch. Each
+                    branch's debt, Stability Pool and average interest rate are read after every data update. Managers are named from Liquity's list of known delegates, and the
+                    others from their contracts' names on Etherscan and from ENS.</p>
+                <div class="grid md:grid-cols-2 gap-3 mt-6">
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">EARLY CHANGES</div>
+                        <div class="font-semibold mt-1">Upfront fees</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A rate change less than 7 days after the batch's last rate update is early.
+                            Liquity then charges the batch an upfront fee: 7 days of interest on its debt at the branch's average rate, added to the troves' debt (none
+                            when the batch holds no debt). An update that keeps the same rate is not counted as a change and costs nothing, but restarts the 7 days. The fee
+                            is shown in BOLD and as a share of the batch's average debt over the period.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">REDEMPTIONS</div>
+                        <div class="font-semibold mt-1">Hits and BOLD redeemed</div>
+                        <div class="text-xs mt-2 leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A redemption counts for a batch when it redeemed at least one of the
+                            batch's troves; the BOLD redeemed is the debt it cancelled in them. The redemptions of the K3 Capital exploit are included, in the figures and the score: those troves were redeemed.</p></div>
+                    </div>
+                    <div class="rounded-xl p-4 md:col-span-2" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="mono text-xs" style="color: #8bb8f0">RAISES ABOVE OTHER BATCHES</div>
+                        <div class="font-semibold mt-1">A raise just above another batch</div>
+                        <div class="grid lg:grid-cols-2 gap-4 items-center mt-2">
+                            <div class="text-xs leading-relaxed space-y-2" style="color: var(--ink-2)"><p>A raise counts when it takes a batch from at or below another batch's
+                                rate to above it, within 3 hours after that other batch raised its own rate. Batches that keep doing this to each other push the branch's rates up
+                                step by step, and each early step charges an upfront fee.</p>
+                                <p>A manager is tagged <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style="background: rgba(232,197,71,.12); color: var(--warn)">Frequent rate changes</span>
+                                when its last 7 days hold 5 or more early changes, or 4 or more such raises.</p></div>
+                            <div><svg viewBox="0 0 440 150" class="w-full max-w-[520px]" role="img" aria-label="Batch A raises its rate; within 3 hours batch B raises from below A's rate to just above it" style="font: 10px Inter, system-ui, sans-serif; fill: #8a8f98">
+                            <line x1="40" y1="120" x2="410" y2="120" stroke="#2a2f37"/>
+                            <text x="34" y="44" text-anchor="end" class="mono">5.6%</text><text x="34" y="69" text-anchor="end" class="mono">5.4%</text><text x="34" y="94" text-anchor="end" class="mono">5.2%</text>
+                            <polyline points="40,104 150,104 150,65 410,65" fill="none" stroke="#8a8f98" stroke-width="2" stroke-dasharray="5 3"/>
+                            <polyline points="40,90 230,90 230,40 410,40" fill="none" stroke="#3987e5" stroke-width="2"/>
+                            <text x="415" y="68" style="fill: #c9cdd3">A</text><text x="415" y="43" style="fill: #c9cdd3">B</text>
+                            <line x1="150" y1="128" x2="230" y2="128" stroke="#e8c547"/><line x1="150" y1="124" x2="150" y2="132" stroke="#e8c547"/><line x1="230" y1="124" x2="230" y2="132" stroke="#e8c547"/>
+                            <text x="190" y="143" text-anchor="middle" style="fill: #e8c547">within 3 hours</text>
+                            <text x="150" y="16" text-anchor="middle">A raises</text><line x1="150" y1="20" x2="150" y2="60" stroke="#4a505a" stroke-dasharray="2 3"/>
+                            <text x="236" y="16">B moves from below A to above it:</text><text x="236" y="29" style="fill: #c9cdd3">one raise just above another batch</text>
+                        </svg></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-xl p-4 md:p-5 mt-6" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                    <div class="text-sm font-semibold text-white">The score: four parts of 25 points</div>
+                    <div class="text-xs mt-0.5 max-w-3xl leading-relaxed" style="color: var(--muted)">Over the last 90 days, for batches that held at least 50K BOLD on average.
+                        Each part keeps 25 points when nothing is measured and loses them in a straight line, down to 0 at its limit. The yellow dots are an illustrative batch:
+                        16.7 + 20 + 20 + 18.8 = a score of 75.</div>
+                    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4"><div class="rounded-xl p-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                            <div class="flex justify-between text-xs"><span class="font-semibold text-white">Rate</span><span class="mono" style="color: var(--muted)">points above all borrowers</span></div>
+                            <svg viewBox="0 0 260 120" class="w-full mt-2" role="img" aria-label="Rate: 25 points at 0, falling in a straight line to 0 points at +3" style="font: 10px 'JetBrains Mono', monospace; fill: #8a8f98">
+                                <line x1="30" y1="94" x2="250" y2="94" stroke="#2a2f37"/><line x1="30" y1="12" x2="30" y2="94" stroke="#2a2f37"/>
+                                <text x="26" y="16" text-anchor="end">25</text><text x="26" y="97" text-anchor="end">0</text>
+                                <line x1="206" y1="12" x2="206" y2="94" stroke="#4a505a" stroke-dasharray="3 3"/>
+                                <polyline points="30,12 206,94 250,94" fill="none" stroke="#3987e5" stroke-width="2"/>
+                                <circle cx="89" cy="39" r="4.5" fill="#e8c547" stroke="#14171c" stroke-width="2"/>
+                                <text x="97" y="33" style="fill: #c9cdd3">+1.0 → 16.7 pts</text>
+                                <text x="30" y="112" text-anchor="middle">0</text><text x="118" y="112" text-anchor="middle">+1.5</text><text x="206" y="112" text-anchor="middle">+3</text>
+                            </svg>
+                        </div><div class="rounded-xl p-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                            <div class="flex justify-between text-xs"><span class="font-semibold text-white">Fees</span><span class="mono" style="color: var(--muted)">% of debt</span></div>
+                            <svg viewBox="0 0 260 120" class="w-full mt-2" role="img" aria-label="Fees: 25 points at 0, falling in a straight line to 0 points at 1.5%" style="font: 10px 'JetBrains Mono', monospace; fill: #8a8f98">
+                                <line x1="30" y1="94" x2="250" y2="94" stroke="#2a2f37"/><line x1="30" y1="12" x2="30" y2="94" stroke="#2a2f37"/>
+                                <text x="26" y="16" text-anchor="end">25</text><text x="26" y="97" text-anchor="end">0</text>
+                                <line x1="206" y1="12" x2="206" y2="94" stroke="#4a505a" stroke-dasharray="3 3"/>
+                                <polyline points="30,12 206,94 250,94" fill="none" stroke="#3987e5" stroke-width="2"/>
+                                <circle cx="65" cy="28" r="4.5" fill="#e8c547" stroke="#14171c" stroke-width="2"/>
+                                <text x="73" y="22" style="fill: #c9cdd3">0.3% → 20 pts</text>
+                                <text x="30" y="112" text-anchor="middle">0%</text><text x="118" y="112" text-anchor="middle">0.75%</text><text x="206" y="112" text-anchor="middle">1.5%</text>
+                            </svg>
+                        </div><div class="rounded-xl p-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                            <div class="flex justify-between text-xs"><span class="font-semibold text-white">Raises above others</span><span class="mono" style="color: var(--muted)">per 30 days</span></div>
+                            <svg viewBox="0 0 260 120" class="w-full mt-2" role="img" aria-label="Raises above others: 25 points at 0, falling in a straight line to 0 points at 10" style="font: 10px 'JetBrains Mono', monospace; fill: #8a8f98">
+                                <line x1="30" y1="94" x2="250" y2="94" stroke="#2a2f37"/><line x1="30" y1="12" x2="30" y2="94" stroke="#2a2f37"/>
+                                <text x="26" y="16" text-anchor="end">25</text><text x="26" y="97" text-anchor="end">0</text>
+                                <line x1="206" y1="12" x2="206" y2="94" stroke="#4a505a" stroke-dasharray="3 3"/>
+                                <polyline points="30,12 206,94 250,94" fill="none" stroke="#3987e5" stroke-width="2"/>
+                                <circle cx="65" cy="28" r="4.5" fill="#e8c547" stroke="#14171c" stroke-width="2"/>
+                                <text x="73" y="22" style="fill: #c9cdd3">2 → 20 pts</text>
+                                <text x="30" y="112" text-anchor="middle">0</text><text x="118" y="112" text-anchor="middle">5</text><text x="206" y="112" text-anchor="middle">10</text>
+                            </svg>
+                        </div><div class="rounded-xl p-3" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                            <div class="flex justify-between text-xs"><span class="font-semibold text-white">Redemptions</span><span class="mono" style="color: var(--muted)">% of debt redeemed</span></div>
+                            <svg viewBox="0 0 260 120" class="w-full mt-2" role="img" aria-label="Redemptions: 25 points at 0, falling in a straight line to 0 points at 20%" style="font: 10px 'JetBrains Mono', monospace; fill: #8a8f98">
+                                <line x1="30" y1="94" x2="250" y2="94" stroke="#2a2f37"/><line x1="30" y1="12" x2="30" y2="94" stroke="#2a2f37"/>
+                                <text x="26" y="16" text-anchor="end">25</text><text x="26" y="97" text-anchor="end">0</text>
+                                <line x1="206" y1="12" x2="206" y2="94" stroke="#4a505a" stroke-dasharray="3 3"/>
+                                <polyline points="30,12 206,94 250,94" fill="none" stroke="#3987e5" stroke-width="2"/>
+                                <circle cx="74" cy="32" r="4.5" fill="#e8c547" stroke="#14171c" stroke-width="2"/>
+                                <text x="82" y="26" style="fill: #c9cdd3">5% → 18.8 pts</text>
+                                <text x="30" y="112" text-anchor="middle">0%</text><text x="118" y="112" text-anchor="middle">10%</text><text x="206" y="112" text-anchor="middle">20%</text>
+                            </svg>
+                        </div></div>
+                    <div class="grid md:grid-cols-2 gap-x-6 gap-y-1 text-xs mt-4 leading-relaxed" style="color: var(--ink-2)">
+                        <p><b class="text-white">Rate</b> · the batch's average rate over the 90 days minus the average rate of all BOLD borrowers on the three branches.</p>
+                        <p><b class="text-white">Fees</b> · management fee and upfront fees over the 90 days, as a % of the batch's average debt.</p>
+                        <p><b class="text-white">Raises above others</b> · raises just above another batch, per 30 days.</p>
+                        <p><b class="text-white">Redemptions</b> · BOLD redeemed from its troves over the 90 days, as a % of its average debt.</p>
+                    </div>
+                    <p class="text-[11px] mt-3" style="color: var(--muted)">A low rate costs less but sits earlier in the redemption queue; a high rate is redeemed less but costs more. The score weighs both, so neither alone earns full marks.</p>
+                </div>
+            </section>
+
             <section class="card p-5 md:p-8" id="conditions">
-                <div class="kicker">8 · Redemption conditions</div>
+                <div class="kicker">9 · Redemption conditions</div>
                 <h3 class="text-xl font-semibold mt-1">How the home page's figures are computed</h3>
                 <p class="text-sm mt-2 max-w-3xl leading-relaxed" style="color: var(--ink-2)">The home page summarises the other pages. Its figures come from the same data: the redemption history for activity and the 7-day figures, and the latest trove snapshot for the BOLD price, the fee and the troves. All of them are as of the latest data update.</p>
                 <div class="grid md:grid-cols-2 gap-3 mt-6">
@@ -1051,7 +1206,7 @@
             </section>
 
             <section class="card p-5 md:p-8">
-                <div class="kicker">9 · Methodology</div>
+                <div class="kicker">10 · Methodology</div>
                 <h3 class="text-xl font-semibold mt-1">From on-chain data to the dashboard</h3>
                 <div class="grid md:grid-cols-4 gap-3 mt-6">
                     <div class="rounded-xl p-4 relative" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
@@ -1707,10 +1862,13 @@
                 if (mgr < 0) continue;
                 batchBold += bold; batchTroves.add(trove); batchHits.add(`${tx}:${trove}`);
                 if (ex) exploitBatch += bold;
-                if (!byManager.has(mgr)) byManager.set(mgr, { address: batchData.managers[mgr], troves: new Set(), txs: new Set(), bold: 0, exploit: 0 });
+                // the operator and strategy where known (batches.json names), else the address alone
+                const a = batchData.managers[mgr], nm = batchData.names?.[a];
+                if (!byManager.has(mgr)) byManager.set(mgr, { address: a, operator: nm?.[0] || null, strategy: nm?.[1] || '', branches: batchData.branches?.[a] || [],
+                    troves: new Set(), txs: new Set(), bold: 0, exploit: 0 });
                 const m = byManager.get(mgr); m.troves.add(trove); m.txs.add(tx); m.bold += bold; if (ex) m.exploit += bold;
             }
-            const managers = [...byManager.values()].map(m => ({ address: m.address, troves: m.troves.size, txs: m.txs.size, bold: m.bold, exploit: m.exploit }))
+            const managers = [...byManager.values()].map(m => ({ address: m.address, operator: m.operator, strategy: m.strategy, branches: m.branches, troves: m.troves.size, txs: m.txs.size, bold: m.bold, exploit: m.exploit }))
                 .sort((a, b) => b.bold - a.bold);
             return { all: false, troveBold, batchBold, troves: troves.size, batchTroves: batchTroves.size, hits: hits.size, batchHits: batchHits.size, managers,
                 exploitTrove, exploitBatch, exploitTroves: exploitTroves.size };
@@ -1751,9 +1909,11 @@
                 return `
                 <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[.04] transition" style="background: rgba(255,255,255,.025)">
                     <span class="w-6 h-6 shrink-0 rounded-md grid place-items-center text-[11px] font-semibold mono" style="background: rgba(255,255,255,.06); color: var(--muted)">${i + 1}</span>
-                    <div class="w-[76px] sm:w-[165px] shrink-0 min-w-0">
-                        <div class="mono text-[13px] truncate">${etherscan('address', m.address, short(m.address))}</div>
-                        <div class="text-[11px] mono" style="color: var(--muted)">${fmt(m.troves)} ${m.troves === 1 ? 'trove' : 'troves'} · ${fmt(m.txs)} ${m.txs === 1 ? 'tx' : 'txs'}</div>
+                    <div class="w-[118px] sm:w-[165px] shrink-0 min-w-0" title="${esc([m.operator, m.strategy, (m.branches || []).join(', '), m.address].filter(Boolean).join(' · '))}">
+                        <div class="text-[13px] flex items-center gap-1.5 min-w-0"><span class="flex shrink-0 -space-x-1">${(m.branches || []).map(b => branchIcon(b, 'w-3.5 h-3.5 ring-1 ring-[#14171c]')).join('')}</span>
+                            <span class="truncate">${m.operator ? etherscan('address', m.address, m.operator) : `<span class="mono">${etherscan('address', m.address, short(m.address))}</span>`}</span></div>
+                        ${m.strategy ? `<div class="text-[11px] truncate" style="color: var(--ink-2)">${esc(m.strategy)}</div>` : ''}
+                        <div class="text-[11px] mono truncate" style="color: var(--muted)">${fmt(m.troves)} ${m.troves === 1 ? 'trove' : 'troves'} · ${fmt(m.txs)} ${m.txs === 1 ? 'tx' : 'txs'}</div>
                     </div>
                     <div class="flex-1 min-w-[32px] share-bar" title="${fmt(share, 1)}% of BOLD redeemed from batch-managed troves"><span style="width: ${share}%"></span></div>
                     <div class="text-right shrink-0 sm:w-44">
@@ -2848,7 +3008,7 @@
         // Served by the local Node server: live API with a sync button. Hosted as a static site
         // (Vercel): JSON snapshots under data/, refreshed by a scheduled GitHub Action.
         const API = { redemptions: '/api/redemptions', bots: '/api/bots', stats: '/api/stats', status: '/api/status', batches: '/api/batches', addresses: '/api/addresses', pool_volume: '/api/pool_volume',
-            troves: '/api/troves', trovehits: '/api/trovehits', troveops: '/api/troveops' };
+            troves: '/api/troves', trovehits: '/api/trovehits', troveops: '/api/troveops', batch_managers: '/api/batch_managers' };
         let staticMode = false;
         let lastGenerated = null;
 
@@ -3401,7 +3561,7 @@
         const REFILL_MIN = 10000, REFILL_SHARE = 0.8;      // "refills": redeemed for at least 10,000 BOLD in 30 days, at least 80% borrowed back
 
         async function loadTroves(force) {
-            if (tv && !force && Date.now() - tv.loadedAt < 5 * 60 * 1000) return renderTroves();
+            if (tv && !force && Date.now() - tv.loadedAt < 5 * 60 * 1000) { loadBatchManagers(); return renderTroves(); }
             if (!tv) $('tvRows').innerHTML = '<tr><td class="px-3 py-6 text-xs" style="color: var(--muted)">Loading troves…</td></tr>';
             try {
                 const [snap, hits, drawdowns, ops] = await Promise.all([
@@ -3416,6 +3576,7 @@
                 return;
             }
             renderTroves();
+            loadBatchManagers(true);
             if (currentView === 'home') renderLanding();
         }
 
@@ -3685,6 +3846,345 @@
             }).join('');
             renderTroveTable();
         }
+
+        // Batch Manager monitor: batch_managers.json (batchmanagers.js), from the BatchUpdated events of the three TroveManagers, each
+        // branch's debt, Stability Pool and average rate (one sample per sync, one per 2 hours in the file) and the redemptions that reached
+        // each batch's troves
+        let bm = null, bmBranchSel = 'all', bmShowEmpty = false, bmOpen = null;
+        const BM_INFO = 'A batch manager sets one interest rate for all the troves in its batch, for a yearly fee. A rate change within 7 days of the last rate update is '
+            + '<b>early</b>: it charges the batch\'s troves an <b>upfront fee</b>, added to their debt.';
+        const BM_SCORE_TIP = 'Out of 100, over the last 90 days: 25 points each for rate, fees, raises above other batches and redemptions. The less of each, the more points.';
+        const BM_COLS = [['Manager'], ['Debt', 'Debt and troves in the batch now', true],
+            ['Rate', 'Interest rate now and the yearly management fee', true],
+            ['Rate changes · 30d', 'Rate changes in the last 30 days, and how many were early', true],
+            ['Upfront fees · 30d', 'Upfront fees charged to the batch\'s troves in the last 30 days', true],
+            ['Redeemed · 90d', 'BOLD redeemed from the batch\'s troves in the last 90 days, and how often', true],
+            ['Score · 90d', BM_SCORE_TIP, true]];
+        const BM_LINK = '<a href="/methodology#scorecard" data-nav="how" data-anchor="scorecard" class="underline decoration-dotted underline-offset-4">How the monitor works</a>';
+        const bmName = m => m.strategy ? `${m.operator} · ${m.strategy}` : m.operator;
+
+        // Branch trends: each branch's Stability Pool as a share of its debt, its share of every redemption (its debt not covered by its
+        // pool, over all branches' uncovered debt) and its average interest rate (batch_managers.json). One solid line per branch, with its
+        // name at the end of the line; the three colours are told apart under every common colour-vision deficiency on the card surface
+        let btView = 'cover', btRange = '30d';
+        const BT_RANGES = [['7d', '7D', 7], ['30d', '30D', 30], ['90d', '90D', 90]];
+        const btDays = () => BT_RANGES.find(r => r[0] === btRange)[2];
+        // 90 days: one reading per 8 hours on the chart (the latest in each 8-hour step, and the very latest), drawn as a smooth curve; the
+        // data, the tooltips' values and the card beside it are unchanged
+        const BT_SMOOTH = { '90d': 8 * 3600e3 };
+        const BT_COLORS = { WETH: '#e2e8f0', wstETH: '#00a3ff', rETH: '#f2774b' };
+        const BT_VIEWS = [['cover', 'Pool coverage'], ['share', 'Redemption share'], ['rate', 'Average rate']];
+        const BT_SUB = { cover: 'Each branch\'s Stability Pool as a share of its debt. Below 100%, the branch takes part in redemptions.',
+            share: 'The share of every redemption each branch takes: its debt not covered by its Stability Pool, over all branches\' uncovered debt.',
+            rate: 'The average interest rate of all troves on each branch, weighted by debt.' };
+        function btSeries(br, view) {
+            const all = Object.keys(bm.branches), pools = bm.branches[br].pools;
+            return pools.map((p, i) => {
+                if (view === 'cover') return p[1] == null ? null : p[1] * 100;
+                if (view === 'rate') return p[2];
+                const unb = all.map(b => { const q = bm.branches[b].pools[i]; return q && q[1] != null ? Math.max(q[3] * (1 - q[1]), 0) : 0; });
+                const tot = unb.reduce((a, v) => a + v, 0), mine = unb[all.indexOf(br)];
+                if (tot) return mine / tot * 100;
+                const debts = all.map(b => bm.branches[b].pools[i]?.[3] || 0), dt = debts.reduce((a, v) => a + v, 0);
+                return dt ? debts[all.indexOf(br)] / dt * 100 : null;              // every pool full: split by debt
+            });
+        }
+        function renderBranchTrends() {
+            if (!bm) return;
+            $('btCard').classList.replace('hidden', 'grid');
+            $('btInfo').innerHTML = infoTip('Liquity splits each redemption across the branches by the debt their Stability Pool does not cover. A branch whose pool covers all its debt takes no part.', 'Branch trends').replace('class="info-tip"', 'class="info-tip below"');
+            $('btAsOf').innerText = `2-hour steps · to ${dateTime(bm.end * 1000)}`;
+            $('btSub').innerText = BT_SUB[btView];
+            $('btView').innerHTML = BT_VIEWS.map(([k, l]) => `<button class="seg ${k === btView ? 'seg-active' : ''}" data-btview="${k}" aria-pressed="${k === btView}">${l}</button>`).join('');
+            $('btRange').innerHTML = BT_RANGES.map(([k, l]) => `<button class="seg ${k === btRange ? 'seg-active' : ''}" data-btrange="${k}" aria-pressed="${k === btRange}">${l}</button>`).join('');
+            const end = bm.end * 1000, from = end - btDays() * DAY, brs = Object.keys(bm.branches), smooth = BT_SMOOTH[btRange];
+            const unit = btView === 'rate' ? v => `${fmt(v, 2)}%` : v => `${fmt(v, 0)}%`;
+            const datasets = brs.map(br => {
+                const ys = btSeries(br, btView), pools = bm.branches[br].pools, c = BT_COLORS[br] || '#8a8f98';
+                let data = pools.map((p, i) => ({ x: p[0] * 1000, y: ys[i] })).filter(p => p.x >= from && p.y != null);
+                if (smooth) data = data.filter((p, i) => i === data.length - 1 || Math.floor(p.x / smooth) !== Math.floor(data[i + 1].x / smooth));
+                return { label: br, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, pointHoverRadius: 3,
+                    ...(smooth ? { cubicInterpolationMode: 'monotone' } : { tension: 0 }), data };
+            });
+            if (btView === 'cover') datasets.push({ label: '100%', ref: true, borderColor: css('--muted'), borderWidth: 1, borderDash: [4, 4], pointRadius: 0, pointHoverRadius: 0, data: [{ x: from, y: 100 }, { x: end, y: 100 }] });
+            // the branch's name at the end of its line (text in the text colour; the line carries the colour). The labels are laid out
+            // together: sorted by height, at least 14 px apart (a label that would overlap the one above moves down), kept inside the chart
+            const endLabels = { id: 'btEnd', afterDatasetsDraw(c) {
+                const ctx = c.ctx, gap = 14, top = c.chartArea.top + gap / 2, bottom = c.chartArea.bottom - gap / 2;
+                const labels = c.data.datasets.map((ds, i) => ds.ref || !ds.data.length || c.getDatasetMeta(i).hidden ? null
+                    : { text: ds.label, y: c.getDatasetMeta(i).data.at(-1).y }).filter(Boolean).sort((a, b) => a.y - b.y);
+                labels.forEach((l, i) => { l.y = Math.max(l.y, top, i ? labels[i - 1].y + gap : -Infinity); });
+                // past the bottom: move the last label up to the bottom and the others up behind it
+                for (let i = labels.length - 1; i >= 0; i--) labels[i].y = Math.min(labels[i].y, i === labels.length - 1 ? bottom : labels[i + 1].y - gap);
+                ctx.save(); ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.fillStyle = css('--ink-2'); ctx.textBaseline = 'middle';
+                for (const l of labels) ctx.fillText(l.text, c.chartArea.right + 6, l.y);
+                ctx.restore(); } };
+            if (charts.btChart) { charts.btChart.destroy(); delete charts.btChart; }
+            upsertChart('btChart', { type: 'line', data: { datasets }, plugins: [endLabels], options: { maintainAspectRatio: false, animation: false,
+                layout: { padding: { right: 56 } }, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { display: false }, tooltip: { filter: item => !item.dataset.ref, callbacks: {
+                    title: items => items.length ? dateTime(items[0].parsed.x) : '',
+                    label: item => ` ${item.dataset.label}: ${unit(item.parsed.y)}${btView === 'cover' ? ' of its debt' : btView === 'share' ? ' of each redemption' : ''}`,
+                    labelColor: item => ({ borderColor: item.dataset.borderColor, backgroundColor: item.dataset.borderColor }) } } },
+                scales: { x: { ...timeAxis, ticks: { ...timeAxis.ticks, maxTicksLimit: innerWidth < 640 ? 4 : 7 }, min: from, max: end },
+                    y: { beginAtZero: true, ...(btView === 'share' ? { max: 100 } : {}), ticks: { callback: v => v + '%', maxTicksLimit: 6 }, border: { display: false } } } } });
+            // legend: line style, branch and its value now
+            $('btLegend').innerHTML = brs.map((br, i) => { const d = datasets[i].data, now = d.at(-1)?.y;
+                return `<span class="inline-flex items-center gap-2"><span style="width: 18px; height: 2px; border-radius: 1px; background: ${datasets[i].borderColor}"></span>${branchIcon(br, 'w-4 h-4')}${br}
+                    <span class="mono" style="color: var(--muted)">now ${now == null ? '–' : unit(now)}</span></span>`; }).join('')
+                + (btView === 'cover' ? `<span class="inline-flex items-center gap-2" style="color: var(--muted)"><svg width="22" height="6" aria-hidden="true"><line x1="0" y1="3" x2="22" y2="3" stroke="${css('--muted')}" stroke-dasharray="4 4"/></svg>100%: all debt covered</span>` : '');
+        }
+        $('btView').addEventListener('click', e => { const b = e.target.closest('[data-btview]'); if (!b) return; btView = b.dataset.btview; renderBranchTrends(); });
+        $('btRange').addEventListener('click', e => { const b = e.target.closest('[data-btrange]'); if (!b) return; btRange = b.dataset.btrange; renderBranchTrends(); renderBranchSide(); });
+
+        // The card beside Branch trends, over the chart's period. Redeemed: BOLD redeemed from each branch's troves (each redemption takes
+        // from a branch its share at that moment, the Redemption share line). Yield: the BOLD paid to each Stability Pool (75% of the interest
+        // and upfront fees, Liquity's SP_YIELD_SPLIT, minted to the pool) from the period's first sample to the latest, as a yearly rate on the
+        // pool's time-weighted deposits, including what the pools received during an exploit (named on hover); now: the rate it accrues at the latest sample,
+        // 75% of the interest a year over the deposits. Liquidation gains (collateral) are not included
+        let bsView = 'redeemed';
+        function renderBranchSide() {
+            if (!bm) return;
+            $('bsCard').classList.replace('hidden', 'grid');
+            $('bsView').innerHTML = [['redeemed', 'Redeemed'], ['yield', 'Yield']].map(([k, l]) => `<button class="seg ${k === bsView ? 'seg-active' : ''}" data-bsview="${k}" aria-pressed="${k === bsView}">${l}</button>`).join('');
+            const brs = Object.keys(bm.branches), days = btDays(), from = bm.end - days * 86400;
+            const row = (br, value, sub, share) => `<div class="py-2.5 border-b border-white/5 last:border-0">
+                <div class="flex items-baseline justify-between gap-3"><span class="inline-flex items-center gap-2 text-sm">${branchIcon(br, 'w-4 h-4')}${br}</span><span class="mono text-[15px] font-semibold">${value}</span></div>
+                <div class="share-bar mt-2"><span style="width:${Math.min(Math.max(share, 0), 100)}%; background:${BT_COLORS[br]}"></span></div>
+                <div class="text-[11px] mono mt-1.5" style="color: var(--muted)">${sub}</div></div>`;
+            if (bsView === 'redeemed') {
+                $('bsTitle').innerHTML = 'Redeemed by branch' + infoTip('BOLD redeemed from each branch\'s troves, and its share of all BOLD redeemed. Each redemption takes from a branch its share at that moment: the Redemption share line.', 'Redeemed by branch');
+                $('bsSub').innerText = `BOLD redeemed from each branch · last ${days} days`;
+                const per = Object.fromEntries(brs.map(br => { const h = bm.branches[br].redeemed.filter(x => x[0] > from);
+                    return [br, { bold: h.reduce((a, x) => a + x[1], 0), n: h.length, ex: h.filter(x => x[2]).reduce((a, x) => a + x[1], 0) }]; }));
+                const tot = Object.values(per).reduce((a, x) => a + x.bold, 0), ex = Object.values(per).reduce((a, x) => a + x.ex, 0);
+                const exName = [...exploitOf.values()][0]?.name || 'exploit';
+                $('bsCorner').innerHTML = `<span${ex ? ` class="tip-target" data-tip="${esc(`Including ${compact(ex)} BOLD redeemed during the ${exName}`)}"` : ''}>${compact(tot)} BOLD</span>`;
+                $('bsBody').innerHTML = brs.map(br => row(br, `${compact(per[br].bold)}`,
+                    `${fmt(tot ? per[br].bold / tot * 100 : 0, 1)}% of the BOLD redeemed · ${fmt(per[br].n)} ${per[br].n === 1 ? 'redemption' : 'redemptions'}`, tot ? per[br].bold / tot * 100 : 0)).join('');
+            } else {
+                $('bsTitle').innerHTML = 'Stability Pool yield' + infoTip('75% of the interest and upfront fees each branch\'s borrowers pay is minted to its Stability Pool as BOLD for the depositors. The yield is that BOLD over the period, as a yearly rate on the pool\'s average deposits; <b>now</b> is the rate it is accruing at, from the interest alone. Liquidation gains, paid in collateral, are not included.', 'Stability Pool yield');
+                $('bsSub').innerText = `Yearly yield paid to depositors · last ${days} days`;
+                const vals = brs.map(br => {
+                    // pools: [time, pool / debt, average rate, debt, pool deposits, interest a year, not yet minted, minted since the previous]
+                    const ps = bm.branches[br].pools, last = ps.at(-1), i0 = Math.max(ps.findLastIndex(p => p[0] <= bm.end - days * 86400), 0), s0 = ps[i0];
+                    // BOLD paid to the pool from the period's first sample to the last: minted in between, plus the change in what is not yet minted.
+                    // It includes what the pools received during an exploit (the upfront fees of the troves opened in it), named on hover
+                    const incident = ps.slice(i0 + 1).reduce((a, p) => a + p[8], 0);
+                    const paid = ps.slice(i0 + 1).reduce((a, p) => a + p[7], 0) + last[6] - s0[6];
+                    let area = 0;
+                    for (let i = i0; i < ps.length - 1; i++) area += ps[i][4] * (ps[i + 1][0] - ps[i][0]);      // deposits, time-weighted
+                    const span = last[0] - s0[0], avgDeposits = span ? area / span : null, years = span / (365 * 86400);
+                    return { br, paid, incident, avg: avgDeposits && years ? paid / avgDeposits / years * 100 : null, now: last[4] ? .75 * last[5] / last[4] * 100 : null, pool: last[4] };
+                });
+                const inc = [...exploitOf.values()][0], exNote = v => v.incident >= 1 && inc
+                    ? ` class="tip-target" data-tip="${esc(`Including ${compact(v.incident)} BOLD paid to the pool from the upfront fees of the troves opened during the ${inc.name || inc.title}`)}"` : '';
+                const incTotal = vals.reduce((a, v) => a + v.incident, 0);
+                $('bsCorner').innerHTML = `<span${exNote({ incident: incTotal })}>${compact(vals.reduce((a, v) => a + v.paid, 0))} BOLD paid</span>`;
+                const max = Math.max(...vals.map(v => v.avg || 0));
+                $('bsBody').innerHTML = vals.map(v => row(v.br, v.avg == null ? '–' : `<span${exNote(v)}>${fmt(v.avg, 2)}%</span>`,
+                    `now ${v.now == null ? '–' : fmt(v.now, 2) + '%'} · ${compact(v.paid)} paid · pool ${compact(v.pool)}`, max && v.avg ? v.avg / max * 100 : 0)).join('');
+            }
+        }
+        $('bsView').addEventListener('click', e => { const b = e.target.closest('[data-bsview]'); if (!b) return; bsView = b.dataset.bsview; hideTip(); renderBranchSide(); });
+
+        // Read with the trove snapshot (force: when the troves were re-read); a failed read keeps the data already shown
+        async function loadBatchManagers(force) {
+            if (!bm || force) {
+                const fresh = await fetch(API.batch_managers, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+                if (fresh) {
+                    // each branch's samples [time, debt, pool deposits, average rate, interest a year, pool yield not yet minted, BOLD minted to the
+                    // pool since the previous sample, the part minted in an exploit's transactions] as [time, pool / debt, average rate, debt, pool
+                    // deposits, interest a year, not yet minted, minted, minted during an exploit]
+                    for (const b of Object.values(fresh.branches)) b.pools = b.samples.map(([t, debt, sp, rate, interest, pending, minted, incident]) =>
+                        [t, debt ? sp / debt : null, rate, debt, sp, interest, pending, minted, incident]);
+                    bm = fresh;
+                }
+                if (!bm) return;
+            }
+            renderBatchManagers();
+            renderBranchTrends();
+            renderBranchSide();
+        }
+
+        // A batch's figures over the last `days` days: rate changes, early ones, upfront fees, raises above another batch, hits, BOLD
+        // redeemed (and the exploit's part) and its average debt (time-weighted from its steps)
+        function bmPeriod(b, days) {
+            const end = bm.end, from = end - days * 86400, inP = xs => xs.filter(x => x[0] >= from);
+            const ch = inP(b.changes), hits = inP(b.hits);
+            let area = 0;
+            b.steps.forEach((s, i) => { const a = Math.max(s[0], from), z = Math.min(b.steps[i + 1]?.[0] ?? end, end); if (z > a) area += s[2] * (z - a); });
+            return { changes: ch.length, early: ch.filter(c => c[3]).length, upfront: ch.reduce((a, c) => a + c[4], 0), leaps: inP(b.leaps).length,
+                hits: hits.length, redeemed: hits.reduce((a, h) => a + h[1], 0), exploit: hits.filter(h => h[2]).reduce((a, h) => a + h[1], 0),
+                avgDebt: area / (end - from) };
+        }
+
+        function renderBatchManagers() {
+            if (!bm) return;
+            $('bmCard').classList.remove('hidden');
+            $('bmInfo').innerHTML = infoTip(BM_INFO, 'Batch Manager monitor').replace('class="info-tip"', 'class="info-tip below"');
+            $('bmAsOf').innerText = `updated ${dateTime(bm.end * 1000)}`;
+            $('bmLink').innerHTML = BM_LINK;
+            const branches = Object.keys(bm.branches);
+            $('bmBranch').innerHTML = ['all', ...branches].map(n => `<button class="seg ${n === bmBranchSel ? 'seg-active' : ''}" data-bmbranch="${n}" aria-pressed="${n === bmBranchSel}">${n === 'all' ? 'All' : n}</button>`).join('');
+            $('bmEmpty').setAttribute('aria-checked', bmShowEmpty);
+            const inBranch = bm.batches.filter(b => bmBranchSel === 'all' || b.branch === bmBranchSel)
+                .map(b => ({ b, d30: bmPeriod(b, 30), d90: bmPeriod(b, 90), d7: bmPeriod(b, 7) }));
+
+            // Tiles: the debt in batches, the managers with troves, rate changes in 7 days, upfront fees in 30 days
+            const debtOf = br => bm.branches[br].pools.at(-1)[3];
+            const total = (bmBranchSel === 'all' ? branches : [bmBranchSel]).reduce((a, br) => a + debtOf(br), 0);
+            const managed = inBranch.reduce((a, x) => a + x.b.debt, 0), withDebt = inBranch.filter(x => x.b.debt >= 1);
+            const ch7 = inBranch.reduce((a, x) => a + x.d7.changes, 0), early7 = inBranch.reduce((a, x) => a + x.d7.early, 0);
+            const fees30 = inBranch.reduce((a, x) => a + x.d30.upfront, 0);
+            const tile = (label, value, sub) => `<div class="rounded-xl p-4" style="background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06)">
+                <div class="kicker">${label}</div><div class="text-xl md:text-2xl font-semibold tracking-tight mt-1.5">${value}</div>
+                <div class="text-[11px] mono mt-1" style="color: var(--muted)">${sub}</div></div>`;
+            $('bmTiles').innerHTML = tile('Debt in batches', `${compact(managed)} BOLD`, `${fmt(total ? managed / total * 100 : 0, 0)}% of the ${bmBranchSel === 'all' ? '' : bmBranchSel + ' '}debt`)
+                + tile('Managers with troves', fmt(withDebt.length), `of ${fmt(inBranch.length)} registered`)
+                + tile('Rate changes, 7 days', fmt(ch7), `${fmt(early7)} early`)
+                + tile('Upfront fees, 30 days', `${compact(fees30)} BOLD`, 'charged to batch troves');
+
+            // Table: managers by debt; empty batches (no debt now) only when switched on
+            const rows = inBranch.filter(x => bmShowEmpty || x.b.debt >= 1).sort((a, b) => b.b.debt - a.b.debt || b.d30.changes - a.d30.changes);
+            $('bmHead').innerHTML = BM_COLS.map(([l, tip, right]) => `<th class="px-3 py-2.5 font-medium ${right ? 'text-right' : ''}"${tip ? ` data-tip="${esc(tip)}"` : ''}>${l}</th>`).join('');
+            const exName = [...exploitOf.values()][0]?.name || 'exploit';
+            const sub = t => `<div class="text-[11px] mono mt-0.5" style="color: var(--muted)">${t}</div>`;
+            $('bmRows').innerHTML = rows.map(({ b, d30, d90, d7 }) => {
+                const key = `${b.branch}:${b.manager}`, open = bmOpen === key;
+                // flagged when the last 7 days had 5 or more early changes, or 4 or more raises just above another batch
+                const busy = d7.early >= 5 || d7.leaps >= 4;
+                const flag = cls => busy ? ` <span class="tip-target text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ml-1 ${cls}" style="background: rgba(232,197,71,.12); color: var(--warn); text-decoration: none"
+                    data-tip-title="Frequent rate changes" data-tip="${esc(`Last 7 days: ${fmt(d7.changes)} rate changes, ${fmt(d7.early)} early, ${compact(d7.upfront)} BOLD of upfront fees; ${fmt(d7.leaps)} raises just above another batch that had raised in the 3 hours before.`)}">Frequent rate changes</span>` : '';
+                const empty = b.debt < 1;
+                return `<tr class="feed-row border-t hover:bg-white/[.03] transition ${open ? 'is-open' : ''}" style="border-color: rgba(255,255,255,.05)" data-bmrow="${key}">
+                    <td class="px-3 py-2.5"><div class="flex items-center gap-2"><button class="row-toggle !mr-0" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} the manager's details">›</button>${branchIcon(b.branch, 'w-4 h-4')}<span class="font-medium"${empty ? ' style="color: var(--muted)"' : ''}>${esc(bmName(b))}</span>${flag('hidden sm:inline')}</div>
+                        <div class="text-[11px] mono mt-0.5 pl-12" style="color: var(--muted)">${b.branch} · ${etherscan('address', b.manager, short(b.manager))}</div>${busy ? `<div class="pl-11 mt-1 sm:hidden">${flag('')}</div>` : ''}</td>
+                    <td class="px-3 py-2.5 text-right mono">${empty ? '–' : compact(b.debt)}${sub(empty ? 'no troves' : `${b.troves} ${b.troves === 1 ? 'trove' : 'troves'}`)}</td>
+                    <td class="px-3 py-2.5 text-right mono">${fmt(b.rate, 2)}%${sub(`fee ${fmt(b.fee, 2)}%`)}</td>
+                    <td class="px-3 py-2.5 text-right mono">${fmt(d30.changes)}${sub(d30.early ? `${fmt(d30.early)} early` : 'none early')}</td>
+                    <td class="px-3 py-2.5 text-right mono">${d30.upfront >= 1 ? compact(d30.upfront) : '–'}${sub(d30.upfront >= 1 && d30.avgDebt ? `${fmt(d30.upfront / d30.avgDebt * 100, 2)}% of debt` : '&nbsp;')}</td>
+                    <td class="px-3 py-2.5 text-right mono"><span${d90.exploit ? ` class="tip-target" data-tip="${esc(`Including ${compact(d90.exploit)} BOLD redeemed during the ${exName}`)}"` : ''}>${d90.redeemed ? compact(d90.redeemed) : '–'}</span>${sub(d90.hits ? `${fmt(d90.hits)} ${d90.hits === 1 ? 'time' : 'times'}` : 'not redeemed')}</td>
+                    <td class="px-3 py-2.5 text-right mono">${b.score ? `<span class="text-base font-semibold">${b.score.total}</span>${bmScoreBar(b, 'w-14 ml-auto mt-1')}` : `<span style="color: var(--muted)" data-tip="Not scored: under 50K BOLD average debt in the last 90 days">–</span>`}</td>
+                </tr>${open ? `<tr class="detail-row"><td colspan="${BM_COLS.length}" class="p-0">${bmDetail(b, d30, d90)}</td></tr>` : ''}`;
+            }).join('') || `<tr><td class="px-3 py-6 text-xs" style="color: var(--muted)" colspan="${BM_COLS.length}">No batch holds debt on this branch.</td></tr>`;
+            const open = rows.find(x => `${x.b.branch}:${x.b.manager}` === bmOpen);
+            if (open) bmDetailChart(open.b); else if (charts.bmRateChart) { charts.bmRateChart.destroy(); delete charts.bmRateChart; }
+        }
+
+        const bmScoreBar = (b, cls) => `<div class="grid grid-cols-4 gap-0.5 ${cls}">${Object.keys(BM_PARTS).map(k => `<div class="share-bar" style="height: 4px"><span style="width:${b.score.parts[k].points / 25 * 100}%"></span></div>`).join('')}</div>`;
+
+        // The selected manager: a header line (name, address, registration), its rate over 90 days against the branch average with its
+        // redemptions, and beside it the figures as labelled rows in three groups (rate now, last 30 days, last 90 days) and the score's parts
+        const BM_PARTS = { rate: 'Rate', fees: 'Fees', chasing: 'Raises above others', redeemed: 'Redemptions' };
+        function bmDetail(b, d30, d90) {
+            const now = br => bm.branches[br].pools.at(-1), brs = Object.keys(bm.branches);
+            const allAvg = brs.reduce((a, br) => a + now(br)[2] * now(br)[3], 0) / brs.reduce((a, br) => a + now(br)[3], 0);
+            const exName = [...exploitOf.values()][0]?.name || 'exploit';
+            const muted = v => `<span style="color: var(--muted)">${v}</span>`;
+            const line = (label, value) => `<div class="flex justify-between gap-4 py-1.5 border-b border-white/5 last:border-0"><span style="color: var(--muted)">${label}</span><span class="mono text-right">${value}</span></div>`;
+            const group = (title, rows, info) => `<div><div class="kicker mb-1 flex items-center">${title}${info ? infoTip(info, title) : ''}</div>${rows.filter(Boolean).join('')}</div>`;
+            const ofDebt = (v, d) => d ? ` ${muted(`· ${fmt(v / d * 100, 2)}% of debt`)}` : '';
+            const groups = [
+                group('Rate now', [
+                    line('Interest rate', `<b class="text-white">${fmt(b.rate, 2)}%</b>`),
+                    line('Management fee, yearly', `${fmt(b.fee, 2)}%`),
+                    line(`Average of all ${b.branch} troves`, `${fmt(now(b.branch)[2], 2)}%`),
+                    line('Average of all BOLD borrowers', `${fmt(allAvg, 2)}%`),
+                    line('Troves · debt', b.debt >= 1 ? `${fmt(b.troves)} · ${compact(b.debt)} BOLD` : 'none')]),
+                group('Last 30 days', [
+                    line('Rate changes', `<b class="text-white">${fmt(d30.changes)}</b> ${muted(`· ${fmt(d30.early)} early`)}`),
+                    line('Upfront fees charged', d30.upfront >= 1 ? `<b class="text-white">${compact(d30.upfront)} BOLD</b>${ofDebt(d30.upfront, d30.avgDebt)}` : 'none'),
+                    line('Raises just above another batch', fmt(d30.leaps))],
+                    `Early: within ${bm.cooldownDays} days of the last rate update, charging an upfront fee if the batch holds debt. Raise just above another batch: to just above a batch that raised in the ${bm.leapWindowHours} hours before.`),
+                group('Last 90 days', [
+                    line('Redemptions reaching its troves', `<b class="text-white">${fmt(d90.hits)}</b>`),
+                    line('BOLD redeemed', d90.redeemed ? `<b class="text-white">${compact(d90.redeemed)} BOLD</b>${ofDebt(d90.redeemed, d90.avgDebt)}` : 'none'),
+                    d90.exploit ? line(`Of which during the ${esc(exName)}`, `${compact(d90.exploit)} BOLD`) : '',
+                    line('Average debt', `${compact(d90.avgDebt)} BOLD`)])];
+            const partValue = { rate: v => `${v > 0 ? '+' : ''}${fmt(v, 2)} points vs all borrowers`, fees: v => `${fmt(v, 2)}% of debt`,
+                chasing: v => `${fmt(v, 1)} per 30 days`, redeemed: v => `${fmt(v, 1)}% of debt redeemed` };
+            const score = b.score ? `<div><div class="kicker mb-2 flex items-center">Score ${b.score.total} of 100 · last 90 days${infoTip(BM_SCORE_TIP, 'Score')}</div>
+                <div class="grid grid-cols-2 gap-x-5 gap-y-3">${Object.entries(BM_PARTS).map(([k, l]) => { const p = b.score.parts[k];
+                    return `<div><div class="flex justify-between gap-2 text-[11px]"><span style="color: var(--ink-2)">${l}</span><span class="mono" style="color: var(--muted)">${fmt(p.points, 0)}/25</span></div>
+                        <div class="share-bar mt-1" style="height: 4px"><span style="width:${p.points / 25 * 100}%"></span></div>
+                        <div class="mono text-[10px] mt-1" style="color: var(--muted)">${partValue[k](p.value)}</div></div>`; }).join('')}</div>
+                <div class="text-[11px] mt-3" style="color: var(--muted)">${BM_LINK}</div></div>`
+                : `<p class="text-[11px]" style="color: var(--muted)">Not scored: under 50K BOLD average debt in the last 90 days. ${BM_LINK}</p>`;
+            return `<div class="tx-detail px-4 md:px-5 py-5" style="--detail-w: ${$('bmScroll').clientWidth}px">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-4"><span class="inline-flex items-center gap-2 font-semibold text-white">${branchIcon(b.branch, 'w-5 h-5')}${esc(bmName(b))}</span>
+                    <span class="mono text-xs" style="color: var(--muted)">${b.branch} · ${etherscan('address', b.manager, short(b.manager))} · registered ${date(Date.parse(b.registered))}</span></div>
+                <div class="grid lg:grid-cols-5 gap-x-8 gap-y-6">
+                    <div class="lg:col-span-3 min-w-0 space-y-6"><div><div class="kicker mb-2">Interest rate, last 90 days</div><div class="relative h-52"><canvas id="bmRateChart" role="img" aria-label="Rate of ${esc(bmName(b))} over 90 days"></canvas></div>
+                        <div class="flex flex-wrap gap-4 text-[11px] mt-2" style="color: var(--ink-2)"><span class="flex items-center gap-1.5"><span style="width:14px;height:2px;background:var(--series-1)"></span>This batch</span>
+                        <span class="flex items-center gap-1.5"><span style="width:14px;border-top:1px dashed var(--muted)"></span>${b.branch} average</span>
+                        <span class="flex items-center gap-1.5"><span class="legend-swatch" style="background:var(--series-2); border-radius: 999px"></span>Redemption</span></div></div>
+                        <div class="text-xs">${score}</div></div>
+                    <div class="lg:col-span-2 text-xs space-y-4 min-w-0">${groups.join('')}</div>
+                </div></div>`;
+        }
+
+        // Hover anywhere on the chart: the batch's rate and the branch average at the pointer's time, plus the redemptions under the
+        // pointer (within 8 px) and the closest rate change (within 4 px)
+        Chart.Interaction.modes.bmTime = (chart, e) => {
+            const x = chart.scales.x.getValueForPixel(e.x), items = [];
+            if (x == null || e.x < chart.chartArea.left || e.x > chart.chartArea.right) return items;
+            chart.$bmX = x;
+            chart.data.datasets.forEach((ds, di) => {
+                const meta = chart.getDatasetMeta(di);
+                if (ds.hits) {
+                    // more than 3 redemptions under the pointer: one line with their number and total (chart.$bmHits)
+                    const near = meta.data.map((el, i) => ({ element: el, datasetIndex: di, index: i })).filter(h => Math.hypot(h.element.x - e.x, h.element.y - e.y) <= 8);
+                    chart.$bmHits = near.length > 3 ? near.map(h => ds.data[h.index].bold) : null;
+                    items.push(...(chart.$bmHits ? near.slice(0, 1) : near));
+                }
+                else { const i = ds.data.findLastIndex(p => p.x <= x); if (i >= 0) items.push({ element: meta.data[i], datasetIndex: di, index: i }); }
+            });
+            return items;
+        };
+
+        function bmDetailChart(b) {
+            const end = bm.end * 1000, from = bm.windowStart * 1000, last = b.steps.at(-1);
+            const rateAt = t => (b.steps.filter(s => s[0] <= t).pop() || b.steps[0])[1];
+            const change = new Map(b.changes.map(c => [c[0] * 1000, c]));
+            const hits = b.hits.map(h => ({ x: h[0] * 1000, y: rateAt(h[0]), bold: h[1] }));
+            const config = { type: 'line', data: { datasets: [
+                { label: 'This batch', order: 2, stepped: 'after', borderColor: css('--series-1'), backgroundColor: css('--series-1'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 0,
+                    data: [...b.steps.map(s => ({ x: s[0] * 1000, y: s[1] })), { x: end, y: last[1] }] },
+                { label: `${b.branch} average`, order: 3, avg: true, borderColor: css('--muted'), backgroundColor: css('--muted'), borderWidth: 1, borderDash: [4, 4], pointRadius: 0, pointHoverRadius: 0,
+                    data: bm.branches[b.branch].pools.filter(p => p[2] != null).map(p => ({ x: p[0] * 1000, y: p[2] })) },
+                { type: 'scatter', label: 'Redeemed', order: 1, hits: true, data: hits, pointBackgroundColor: css('--series-2'), pointBorderColor: css('--surface'), pointBorderWidth: 2, pointRadius: 4.5, pointHoverRadius: 6 }] },
+                options: { maintainAspectRatio: false, animation: false, interaction: { mode: 'bmTime', intersect: false },
+                    plugins: { legend: { display: false }, tooltip: { itemSort: (p, q) => p.dataset.order - q.dataset.order || 0, callbacks: {
+                        title: items => items.length ? dateTime(items[0].chart.$bmX) : '',
+                        label: item => !item.dataset.hits ? ` ${item.dataset.label}: ${fmt(item.parsed.y, 2)}%`
+                            : item.chart.$bmHits ? ` ${item.chart.$bmHits.length} redemptions: ${compact(item.chart.$bmHits.reduce((a, v) => a + v, 0))} BOLD`
+                            : ` Redeemed ${compact(item.raw.bold)} BOLD`,
+                        afterBody: items => {
+                            // the rate change closest to the pointer, within 4 px
+                            const c = items[0].chart, px = c.scales.x.getPixelForValue(c.$bmX), dist = t => Math.abs(c.scales.x.getPixelForValue(t) - px);
+                            const near = [...change.entries()].filter(([t]) => dist(t) <= 4).sort((p, q) => dist(p[0]) - dist(q[0]))[0];
+                            if (!near) return '';
+                            const [t, ch] = near;
+                            return [`Rate change ${dateTime(t)}: ${fmt(ch[1], 2)}% → ${fmt(ch[2], 2)}%`, ...(ch[4] ? [`Early change: ${compact(ch[4])} BOLD upfront fee`] : [])];
+                        } } } },
+                    scales: { x: { ...timeAxis, ticks: { ...timeAxis.ticks, maxTicksLimit: innerWidth < 640 ? 4 : 7 }, min: from, max: end },
+                        y: { beginAtZero: true, ticks: { callback: v => v + '%', maxTicksLimit: 5 }, border: { display: false } } } } };
+            if (charts.bmRateChart) { charts.bmRateChart.destroy(); delete charts.bmRateChart; }
+            upsertChart('bmRateChart', config);
+        }
+
+        $('bmBranch').addEventListener('click', e => { const b = e.target.closest('[data-bmbranch]'); if (!b) return; bmBranchSel = b.dataset.bmbranch; renderBatchManagers(); });
+        addEventListener('resize', () => { if (bmOpen && bm) renderBatchManagers(); });
+        $('bmEmpty').addEventListener('click', () => { bmShowEmpty = !bmShowEmpty; renderBatchManagers(); });
+        $('bmRows').addEventListener('click', e => {
+            if (e.target.closest('a')) return;
+            if (e.target.closest('.detail-row')) return;
+            const r = e.target.closest('[data-bmrow]'); if (!r) return;
+            hideTip();
+            bmOpen = bmOpen === r.dataset.bmrow ? null : r.dataset.bmrow;
+            renderBatchManagers();
+        });
 
         const TV_COLS = [['position', '#', true], ['branch', 'Trove'], ['owner', 'Owner'], ['debt', 'Debt', true], ['collUsd', 'Collateral', true], ['cr', 'CR', true],
             ['lev', 'Leverage', true], ['rate', 'Rate', true], ['front', 'Debt in front', true], ['system', 'System-wide', true], ['mgmt', 'Management']];

@@ -147,6 +147,8 @@ const batchRowsQuery = db.prepare(`
     SELECT r.timestamp, t.tx_hash, t.branch || t.trove_id AS trove, t.batch_manager, t.debt_redeemed
     FROM redemption_troves t JOIN redemptions r USING (tx_hash)
     ORDER BY r.timestamp, t.tx_hash, t.log_index`);
+const managerBranchesQuery = db.prepare(`SELECT DISTINCT batch_manager, branch FROM redemption_troves WHERE batch_manager IS NOT NULL
+    ORDER BY batch_manager, CASE branch WHEN 'WETH' THEN 0 WHEN 'wstETH' THEN 1 ELSE 2 END`);
 function batchRows() {
     const indexer = () => { const m = new Map(); const idx = v => { if (!m.has(v)) m.set(v, m.size); return m.get(v); }; idx.keys = () => [...m.keys()]; return idx; };
     const txIdx = indexer(), troveIdx = indexer(), managerIdx = indexer();
@@ -155,7 +157,13 @@ function batchRows() {
     // the tx indexes of exploit redemptions, so the page can name the exploit's share of a figure
     const excluded = new Set(EXCLUDED_TXS);
     const incident = txIdx.keys().flatMap((hash, i) => excluded.has(hash) ? [i] : []);
-    return { managers: managerIdx.keys(), rows, incident };
+    // the operator and strategy of each manager listed, where known (batchmanagers.js): { address: [operator, strategy] }, and the branches
+    // its redeemed troves were on: { address: [branch, …] } (a manager's contract is per branch for most operators, one for all for some)
+    const known = require('./batchmanagers').managerNames(), managers = managerIdx.keys();
+    const names = Object.fromEntries(managers.flatMap(a => known.has(a.toLowerCase()) ? [[a, known.get(a.toLowerCase())]] : []));
+    const branches = {};
+    for (const r of managerBranchesQuery.all()) (branches[r.batch_manager] ??= []).push(r.branch);
+    return { managers, rows, incident, names, branches };
 }
 
 // Redeemer addresses with their contract deployer and ENS name, for grouping into operators

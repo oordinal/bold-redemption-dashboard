@@ -8,6 +8,7 @@ const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
 const { syncTroveOps, troveOpsExport } = require('./troveops');
 const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
+const { syncBatchManagers, batchManagersExport } = require('./batchmanagers');
 
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES || 5);
 
@@ -87,6 +88,16 @@ app.get('/api/pool_volume', (req, res) => {
     }
 });
 
+app.get('/api/batch_managers', (req, res) => {
+    try {
+        const data = batchManagersExport();
+        if (!data) return res.status(404).json({ error: 'batch managers not synced yet' });
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/trovehits', (req, res) => {
     try {
         res.json(queries.troveHits());
@@ -123,7 +134,10 @@ function startSync() {
         .catch(e => console.warn(`Trove operations not updated: ${e.message}`))
         // Pool volume: a failure keeps the events already stored
         .then(() => syncPoolVolume())
-        .catch(e => console.warn(`Pool volume not updated: ${e.message}`));
+        .catch(e => console.warn(`Pool volume not updated: ${e.message}`))
+        // Batch managers and branch samples: a failure keeps what is stored
+        .then(() => syncBatchManagers())
+        .catch(e => console.warn(`Batch managers not updated: ${e.message}`));
     return true;
 }
 

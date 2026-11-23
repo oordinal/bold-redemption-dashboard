@@ -10,6 +10,7 @@ const { syncData, getStatus } = require('./worker');
 const { snapshotTroves } = require('./troves');
 const { syncTroveOps, troveOpsExport } = require('./troveops');
 const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
+const { syncBatchManagers, batchManagersExport } = require('./batchmanagers');
 const { runAlerts, runDigests, weekVolumes } = require('./alerts');
 
 const outDir = path.resolve(process.argv[2] || 'out');
@@ -35,6 +36,13 @@ async function main() {
         console.log(`Pool volume: ${JSON.stringify(r)}`);
     } catch (e) {
         console.warn(`Pool volume not updated: ${e.message}`);
+    }
+    // Batch managers' events and the branch samples, for the Batch Manager monitor and Branch trends: a failure keeps what is stored
+    try {
+        const r = await syncBatchManagers();
+        console.log(`Batch managers: ${JSON.stringify(r)}`);
+    } catch (e) {
+        console.warn(`Batch managers not updated: ${e.message}`);
     }
     // Telegram alerts for the watched troves (does nothing without the Upstash and Telegram settings; never stops the export)
     try {
@@ -71,6 +79,8 @@ async function main() {
     if (ops) write('troveops.json', ops);
     const pools = poolVolumeExport();
     if (pools) write('pool_volume.json', pools);
+    const managers = batchManagersExport();
+    if (managers) write('batch_managers.json', managers);
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
     // One file per redemption transaction, loaded by the page when a feed row is expanded
     fs.mkdirSync(path.join(outDir, 'tx'), { recursive: true });
