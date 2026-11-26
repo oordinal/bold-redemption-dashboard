@@ -9,6 +9,8 @@ const { snapshotTroves } = require('./troves');
 const { syncTroveOps, troveOpsExport } = require('./troveops');
 const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
 const { syncBatchManagers, batchManagersExport } = require('./batchmanagers');
+const { weekVolumes } = require('./alerts');
+const { mobileData } = require('./mobile');
 
 const SYNC_INTERVAL_MINUTES = Number(process.env.SYNC_INTERVAL_MINUTES || 5);
 
@@ -98,6 +100,20 @@ app.get('/api/batch_managers', (req, res) => {
     }
 });
 
+// The phone page's summary, as export.js writes it to mobile.json
+app.get('/api/mobile', (req, res) => {
+    try {
+        const troves = queries.troves();
+        if (troves) { const w = weekVolumes(troves.ts * 1000); troves.weeks = { typical: w.weekVol, busiest: w.maxWeek }; }
+        const { lastSyncedBlock, finishedAt } = getStatus();
+        const data = mobileData({ reds: queries.redemptions(50000), troves, bm: batchManagersExport(), status: { lastSyncedBlock, generatedAt: finishedAt } });
+        if (!data) return res.status(404).json({ error: 'trove snapshot or batch managers not ready yet' });
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/trovehits', (req, res) => {
     try {
         res.json(queries.troveHits());
@@ -143,6 +159,8 @@ function startSync() {
 
 // The site's pages are one file, served at each page's address (as on Vercel)
 app.get(['/redemptions', '/troves', '/methodology'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// The phone page (phones are sent there by index.html)
+app.get('/m', (req, res) => res.sendFile(path.join(__dirname, 'public', 'm.html')));
 
 app.post('/api/sync', (req, res) => {
     const started = startSync();

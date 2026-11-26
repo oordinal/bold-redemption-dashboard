@@ -12,6 +12,7 @@ const { syncTroveOps, troveOpsExport } = require('./troveops');
 const { syncPoolVolume, poolVolumeExport } = require('./poolvolume');
 const { syncBatchManagers, batchManagersExport } = require('./batchmanagers');
 const { runAlerts, runDigests, weekVolumes } = require('./alerts');
+const { mobileData } = require('./mobile');
 
 const outDir = path.resolve(process.argv[2] || 'out');
 
@@ -62,7 +63,8 @@ async function main() {
     fs.mkdirSync(outDir, { recursive: true });
     const write = (name, data) => fs.writeFileSync(path.join(outDir, name), JSON.stringify(data));
     const { lastSyncedBlock, finishedAt } = getStatus();
-    write('redemptions.json', queries.redemptions(50000));
+    const reds = queries.redemptions(50000);
+    write('redemptions.json', reds);
     write('bots.json', queries.bots());
     write('stats.json', queries.stats());
     write('batches.json', queries.batchRows());
@@ -82,6 +84,14 @@ async function main() {
     const managers = batchManagersExport();
     if (managers) write('batch_managers.json', managers);
     write('status.json', { running: false, lastSyncedBlock, generatedAt: finishedAt, lastError: null });
+    // The phone page's summary (public/m.html), from the files above; a failure never stops the export (this update then publishes
+    // no mobile.json, and the phone page sends its visitors to the desktop page until the next one)
+    try {
+        const mobile = mobileData({ reds, troves, bm: managers, status: { lastSyncedBlock, generatedAt: finishedAt } });
+        if (mobile) write('mobile.json', mobile);
+    } catch (e) {
+        console.warn(`Phone page data not written: ${e.message}`);
+    }
     // One file per redemption transaction, loaded by the page when a feed row is expanded
     fs.mkdirSync(path.join(outDir, 'tx'), { recursive: true });
     const details = queries.allTxDetails();

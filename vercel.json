@@ -20,6 +20,10 @@
     {
       "source": "/methodology",
       "destination": "/index.html"
+    },
+    {
+      "source": "/m",
+      "destination": "/m.html"
     }
   ],
   "trailingSlash": false

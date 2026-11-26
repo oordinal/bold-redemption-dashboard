@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#07090d">
+    <title>boldbot.io · Trove explorer and redemption tracker for Liquity V2</title>
+    <meta name="description" content="Follow BOLD redemptions and see where your trove stands in the redemption queue. Telegram alerts on batch rate changes and debt in front for any trove.">
+    <!-- The phone layout of boldbot.io: phones opening index.html are sent here; the same content as the desktop page -->
+    <link rel="canonical" href="https://www.boldbot.io/">
+    <link rel="icon" href="/favicon.ico?v=2" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        // Vercel Web Analytics, as on index.html (only on the hosted site: the local server has no /_vercel/insights endpoint)
+        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+        if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = '/_vercel/insights/script.js';
+            document.head.appendChild(s);
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #07090d; --surface: #0f131a; --series-1: #3987e5; --ink-1: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #1f242c;
+            --good: #34d399; --bad: #fb7185; --warn: #fab219; --cyan: #46e3f2; --blue: #2d7bff;
+        }
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink-1); margin: 0;
+            background: radial-gradient(600px 420px at 0% -8%, rgba(57, 135, 229, 0.18), transparent 60%), radial-gradient(460px 320px at 100% 0%, rgba(25, 158, 112, 0.055), transparent 60%), var(--bg);
+            background-attachment: fixed; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none;
+        }
+        .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+        .card { padding: 26px 0 12px; border-top: 1px solid rgba(255,255,255,.07); }
+        .card.hero { border-top: 0; padding-top: 4px; }
+        .tile { padding: 6px 0; }
+        .tiles { gap: 14px 20px; }
+        /* a segmented switch: equal parts, so its options fit on narrow phones */
+        .seg3 { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.04); }
+        .seg3 button { position: relative; z-index: 1; padding: 7px 4px; border-radius: 9px; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; transition: color .25s; }
+        .seg3 button.on { color: var(--ink-1); }
+        /* the highlight behind the active option, sliding to the one tapped */
+        .seg3 .ind { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 9px; background: rgba(57,135,229,.22); box-shadow: inset 0 0 0 1px rgba(57,135,229,.5);
+            transition: transform .38s cubic-bezier(.2,.9,.25,1), width .38s cubic-bezier(.2,.9,.25,1); }
+        .copy { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); vertical-align: middle; }
+        .copy:active { background: rgba(255,255,255,.08); }
+        .copy.done { color: var(--good); }
+        /* Find a trove: the example that plays until the field is used */
+        .demo-in { animation: demoIn .45s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes demoIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+        .tg-pulse { animation: tgPulse 1.2s ease-in-out 2; }
+        @keyframes tgPulse { 0%, 100% { box-shadow: 0 8px 22px -8px rgba(34,158,217,.7), 0 0 0 0 rgba(42,171,238,.55); } 50% { box-shadow: 0 8px 22px -8px rgba(34,158,217,.7), 0 0 0 8px rgba(42,171,238,0); } }
+        .tg-toast { animation: toastIn .5s cubic-bezier(.2,.9,.25,1) both; }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        .caret::after { content: ''; display: inline-block; width: 1.5px; height: 1.05em; margin-left: 1px; background: var(--cyan); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .label { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+        .h2 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+        .chip { padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--muted); background: rgba(255,255,255,.035); }
+        .chip-on { color: var(--ink-1); background: rgba(57,135,229,.2); box-shadow: inset 0 0 0 1px rgba(57,135,229,.5); }
+        .bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+        .bar > span { display: block; height: 100%; border-radius: 999px; }
+        .tap { transition: transform .12s ease, background .15s; } .tap:active { transform: scale(.97); background: rgba(255,255,255,.04); }
+        .view { display: none; } .view.on { display: block; }
+        /* a tab shown fades up block by block, as the desktop's pages (view-in) */
+        .view-in > * { animation: viewIn .7s ease both; }
+        .view-in > *:nth-child(2) { animation-delay: .08s; } .view-in > *:nth-child(3) { animation-delay: .16s; } .view-in > *:nth-child(n+4) { animation-delay: .24s; }
+        @media (prefers-reduced-motion: reduce) { .view-in > * { animation: none; } }
+        /* Overview: redemption conditions (steps of one hue, the current one lit) and the Telegram section (as the desktop's home page) */
+        .lp-steps, .lp-step-labels { display: grid; gap: 4px; }
+        .lp-step { height: 6px; border-radius: 999px; background: rgba(255,255,255,.06); }
+        .lp-step.lit { box-shadow: 0 0 12px -2px rgba(57,135,229,.7); }
+        .lp-step-labels { margin-top: 6px; font-size: 11px; line-height: 1.3; color: var(--muted); min-height: 30px; }
+        .lp-step-labels span.on { color: var(--ink-1); font-weight: 600; }
+        .lp-chat { height: 400px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;
+            mask-image: linear-gradient(to bottom, transparent 0, black 56px); -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 56px); }
+        .lp-bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); animation: lpBubble .45s cubic-bezier(.2, .7, .2, 1) both; }
+        .lp-bubble.bot { align-self: flex-start; background: #1b2230; border: 1px solid rgba(255,255,255,.06); border-bottom-left-radius: 4px; }
+        .lp-bubble.me { align-self: flex-end; background: rgba(57,135,229,.32); color: var(--ink-1); border-bottom-right-radius: 4px; }
+        .lp-bubble.with-keys { width: min(88%, 300px); max-width: none; }
+        .lp-bubble b { color: var(--ink-1); font-weight: 600; }
+        .lp-bubble .tg-link { color: #6ab3f3; }
+        .lp-bubble .meta { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); text-align: right; }
+        @keyframes lpBubble { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+        .lp-keys { align-self: flex-start; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: min(88%, 300px); margin-top: -6px; animation: lpBubble .45s cubic-bezier(.2, .7, .2, 1) both; }
+        .lp-keys span { text-align: center; padding: 7px 4px; border-radius: 8px; font-size: 12px; color: var(--ink-1); background: rgba(27, 34, 48, .85); border: 1px solid rgba(255,255,255,.06); transition: background .25s ease, border-color .25s ease; }
+        .lp-keys span.press { background: rgba(57,135,229,.45); border-color: rgba(139,184,240,.6); }
+        .lp-typing { align-self: flex-start; display: inline-flex; gap: 4px; padding: 11px 13px; border-radius: 14px; border-bottom-left-radius: 4px; background: #1b2230; border: 1px solid rgba(255,255,255,.06); }
+        .lp-typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: lpBlink 1.1s infinite ease-in-out; }
+        .lp-typing span:nth-child(2) { animation-delay: .15s; } .lp-typing span:nth-child(3) { animation-delay: .3s; }
+        @keyframes lpBlink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+        .lp-feature { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
+        .lp-ficon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: rgba(57,135,229,.12); color: #8bb8f0; font-size: 13px; }
+        .lp-cmd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: #8bb8f0; }
+        @media (prefers-reduced-motion: reduce) { .lp-bubble, .lp-keys, .lp-typing span { animation: none !important; } }
+        @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        /* the header is part of the page (no line, no band of its own); once the page scrolls, a quiet blur keeps the logo readable */
+        #top { background: transparent; transition: background .3s; }
+        #top.scrolled { background: rgba(7,9,13,.55); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
+        .safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+        input::placeholder { color: #6c6b66; }
+        /* the menu: a bar across the bottom edge; a short lit line slides along its top edge to the tab shown */
+        .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: calc(env(safe-area-inset-bottom) + 62px); padding-bottom: env(safe-area-inset-bottom);
+            background: rgba(10,13,19,.86); backdrop-filter: blur(22px) saturate(160%); -webkit-backdrop-filter: blur(22px) saturate(160%); border-top: 1px solid rgba(255,255,255,.08); }
+        .dock-glow { position: absolute; top: -1px; left: 0; width: 28px; height: 3px; border-radius: 0 0 3px 3px; z-index: 2; transition: transform .42s cubic-bezier(.2,.9,.25,1);
+            background: linear-gradient(90deg, #46e3f2, #2d7bff); box-shadow: 0 0 14px rgba(70,227,242,.6); }
+        .dock-btn { position: relative; z-index: 1; color: var(--muted); transition: color .25s, transform .12s; }
+        .dock-btn:active { transform: scale(.92); }
+        .dock-btn[aria-current="page"] { color: #fff; }
+        .dock-btn[aria-current="page"] svg { stroke: url(#dockGrad); }
+        .scrim { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity .3s; }
+        .scrim.on { opacity: 1; pointer-events: auto; }
+        .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; max-height: 92vh; border-radius: 24px 24px 0 0; transform: translateY(105%);
+            transition: transform .38s cubic-bezier(.2,.9,.25,1); background: #0d1118; border-top: 1px solid rgba(255,255,255,.1); box-shadow: 0 -20px 50px rgba(0,0,0,.6); display: flex; flex-direction: column; }
+        .sheet.on { transform: none; }
+        .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px calc(env(safe-area-inset-bottom) + 24px); }
+        .ph-sm::placeholder { font-size: 13px; }
+        .tv .sec { margin-top: 44px !important; padding-top: 0; border-top: 0; } .tv .sec-title { margin-bottom: 12px; }
+        .tv > .band { margin-top: 28px !important; } .tv > .band + .sec { margin-top: 28px !important; }
+        .sec { margin-top: 26px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.07); } .sec-title { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+        .line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 14px; }
+        .line:last-child { border-bottom: 0; } .line > span:first-child { color: var(--muted); } .line > span:last-child { font-family: "JetBrains Mono", monospace; text-align: right; }
+        /* the edge and cost bars: tap a segment for its share */
+        .pb-row { display: flex; height: 18px; border-radius: 5px; overflow: hidden; gap: 2px; }
+        .pb-seg { height: 100%; cursor: pointer; transition: opacity .15s, filter .15s; }
+        .pb-dim .pb-seg { opacity: .35; } .pb-dim .pb-seg.pb-on { opacity: 1; filter: brightness(1.15); }
+        .pb-net { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.1) 0 4px, transparent 4px 8px); }
+    </style>
+</head>
+<body>
+    <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="dockGrad" gradientUnits="userSpaceOnUse" x1="2" y1="2" x2="22" y2="22"><stop offset="0" stop-color="#46e3f2"/><stop offset="1" stop-color="#2d7bff"/></linearGradient></defs></svg>
+    <header id="top" class="sticky top-0 z-30" style="padding-top: env(safe-area-inset-top)">
+        <div class="flex items-center justify-between px-4 h-14">
+            <img src="/boldbot-logo-v5.svg" alt="boldbot.io" class="h-6 w-auto">
+            <div class="flex items-center gap-2 text-[12px] mono px-2.5 py-1 rounded-full" style="color: var(--ink-2); background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07)">
+                <span class="relative flex w-2 h-2"><span class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping" style="background: var(--good)"></span><span class="relative inline-flex w-2 h-2 rounded-full" style="background: var(--good)"></span></span><span id="age">–</span></div>
+        </div>
+    </header>
+
+    <main class="px-4 pt-4 safe-bottom">
+        <!-- 1. Overview -->
+        <section id="v-home" class="view on space-y-4">
+            <div class="text-center pt-10 pb-10">
+                <h1 class="text-[28px] font-semibold tracking-tight leading-[1.12]" style="text-wrap: balance">Trove explorer and redemption tracker for Liquity V2</h1>
+                <p class="text-[13.5px] mt-3 leading-relaxed" style="color: var(--ink-2); text-wrap: pretty">Follow BOLD redemptions and see where your trove stands in the queue. Get Boldbot Telegram alerts on batch rate changes and debt in front for any trove.</p>
+            </div>
+            <!-- Redemption conditions: the last 24 hours against the last 180 days, and BOLD against $1 with how often a redemption followed -->
+            <div class="card" id="conditions" style="border-top: 0; padding-top: 0"></div>
+            <div class="card relative overflow-hidden">
+                <div class="label">Redeemed this week</div>
+                <div class="flex items-end justify-between gap-3 mt-1">
+                    <div><div id="heroBold" class="text-[36px] font-semibold tracking-tight mono leading-none">–</div>
+                        <div id="heroSub" class="text-[13px] mt-2" style="color: var(--ink-2)"></div></div>
+                    <div class="w-[42%] h-14" style="margin-bottom: 5.5px"><canvas id="heroBars"></canvas></div>
+                </div>
+                <div id="tiles" class="tiles grid grid-cols-2 gap-3 mt-6"></div>
+            </div>
+            <div class="card">
+                <div class="h2">Find a trove</div>
+                <p class="text-[13px] mt-1 leading-relaxed" style="color: var(--muted)">Any active or zombie trove, by its ID, its owner's address, its debt or its collateral: its place in the redemption queue, and alerts on Telegram.</p>
+                <div id="homeFindBy" class="seg3 mt-3"></div>
+                <form id="homeSearch" class="flex gap-2" style="margin-top: 10px">
+                    <input name="q" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Trove ID or owner address" class="ph-sm flex-1 min-w-0 mono text-[16px] rounded-xl px-3 h-12 outline-none" style="background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--ink-1)">
+                    <button class="tap h-12 px-5 rounded-xl text-[15px] font-semibold" style="background: linear-gradient(135deg, var(--blue), #3fb0f0); color: #fff">Find</button>
+                </form>
+                <div id="homeOut" class="mt-3"></div>
+                <div id="demo" class="mt-4"></div>
+            </div>
+            <div class="card">
+                <div class="h2">Latest redemptions</div>
+                <div id="homeLatest" class="mt-1"></div>
+            </div>
+            <button data-go="redemptions" class="tap block mx-auto px-4 py-2 text-[15px] font-semibold" style="color: #8bb8f0">See all redemptions ›</button>
+            <div class="card">
+                <div class="flex items-baseline justify-between"><div class="h2">Branches now</div><button data-go="branches" class="text-[13px]" style="color: #8bb8f0">More ›</button></div>
+                <div id="homeBranches" class="mt-1"></div>
+            </div>
+        </section>
+
+        <!-- 2. My trove -->
+        <section id="v-trove" class="view space-y-4">
+            <div><h1 class="text-[24px] font-semibold tracking-tight">Troves</h1>
+                <p class="text-[13px] mt-1 leading-relaxed" style="color: var(--muted)">Look up any active or zombie trove by its ID, its owner's address, its debt or its collateral: its place in the redemption queue, what it costs, who may act on it, and alerts on Telegram.</p></div>
+            <div id="findBy" class="seg3"></div>
+            <form id="troveSearch" class="flex gap-2" style="margin-top: 10px">
+                <input name="q" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Trove ID or owner address" class="ph-sm flex-1 min-w-0 mono text-[16px] rounded-xl px-3 h-12 outline-none" style="background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--ink-1)">
+                <button class="tap h-12 px-5 rounded-xl text-[15px] font-semibold" style="background: linear-gradient(135deg, var(--blue), #3fb0f0); color: #fff">Check</button>
+            </form>
+            <div id="troveOut"></div>
+            <div id="troveStats" class="tiles grid grid-cols-2 gap-3"></div>
+            <div class="card">
+                <div class="h2">Next in the redemption queue</div>
+                <p class="text-[12px] mt-1" style="color: var(--muted)">The troves a redemption on the branch reaches first, lowest rate first. Tap one for its details.</p>
+                <div id="queueBranch" class="flex gap-2 mt-3"></div>
+                <div id="queueList" class="mt-2"></div>
+                <button id="queueMore" class="tap block hidden mx-auto mt-3 px-4 py-2 text-[14px] font-medium" style="color: #8bb8f0">Load more</button>
+            </div>
+        </section>
+
+        <!-- 3. Redemptions -->
+        <section id="v-redemptions" class="view space-y-4">
+            <div><h1 class="text-[24px] font-semibold tracking-tight">Redemptions</h1>
+                <p class="text-[13px] mt-1" style="color: var(--muted)">BOLD exchanged for collateral at $1, and what the redeemers made.</p></div>
+            <div id="period" class="seg3"></div>
+            <div id="periodBody" class="space-y-4"></div>
+            <div class="card">
+                <div class="h2">Latest redemptions</div>
+                <p class="text-[12px] mt-1" style="color: var(--muted)">Tap one for its details.</p>
+                <div id="latest" class="mt-1"></div>
+                <button id="more" class="tap block mx-auto mt-3 px-4 py-2 text-[14px] font-medium" style="color: #8bb8f0">Show more</button>
+            </div>
+        </section>
+
+        <!-- 4. Branches and the Batch Manager Monitor -->
+        <section id="v-branches" class="view space-y-4">
+            <div><h1 class="text-[24px] font-semibold tracking-tight">Branches</h1>
+                <p class="text-[13px] mt-1" style="color: var(--muted)">Each redemption is split by the debt a branch's Stability Pool does not cover.</p></div>
+            <div class="card hero">
+                <div class="h2">Branch trends</div>
+                <p id="btSub" class="text-[12px] mt-1 min-h-[36px]" style="color: var(--muted)"></p>
+                <div id="btView" class="seg3 mt-3"></div>
+                <div id="btRange" class="seg3 mt-2 w-[60%]"></div>
+                <div class="relative h-52 mt-3"><canvas id="btChart"></canvas></div>
+                <div id="btLegend" class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] mt-2" style="color: var(--ink-2)"></div>
+            </div>
+            <div id="branchCards" class="space-y-4"></div>
+            <div class="card">
+                <div class="h2">Batch Manager Monitor</div>
+                <p class="text-[12px] mt-1" style="color: var(--muted)">Batch managers set one rate for all the troves in their batch. Score out of 100 over 90 days. Tap one for its details.</p>
+                <div id="managers" class="mt-2"></div>
+            </div>
+        </section>
+    </main>
+
+    <nav class="dock" aria-label="Sections">
+        <!-- icons: Overview a pulse, Redemptions bars, Troves a ranked list, Branches three linked branches -->
+        <div id="glow" class="dock-glow"></div>
+        <div class="grid grid-cols-4 h-full relative">
+            <button class="dock-btn flex flex-col items-center justify-center gap-1 text-[11px] font-medium" data-go="home" aria-current="page">
+                <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3.5l2.5-6.5 4.5 13 2.5-6.5H21"/></svg>Overview</button>
+            <button class="dock-btn flex flex-col items-center justify-center gap-1 text-[11px] font-medium" data-go="redemptions">
+                <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7 16.5v-4"/><path d="M12 16.5V6"/><path d="M17 16.5v-7"/></svg>Redemptions</button>
+            <button class="dock-btn flex flex-col items-center justify-center gap-1 text-[11px] font-medium" data-go="trove">
+                <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="1.4"/><circle cx="5" cy="12" r="1.4"/><circle cx="5" cy="18" r="1.4"/><path d="M9.5 6H20M9.5 12H20M9.5 18H16"/></svg>Troves</button>
+            <button class="dock-btn flex flex-col items-center justify-center gap-1 text-[11px] font-medium" data-go="branches">
+                <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.5"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="m10.7 8.2-3.9 7M13.3 8.2l3.9 7M8 17.5h8"/></svg>Branches</button>
+        </div>
+    </nav>
+
+    <div id="scrim" class="scrim"></div>
+    <section id="sheet" class="sheet" role="dialog" aria-modal="true">
+        <div id="grab" class="pt-2.5 pb-2 flex flex-col items-center shrink-0" style="touch-action: none"><div class="w-10 h-1.5 rounded-full" style="background: rgba(255,255,255,.2)"></div></div>
+        <div id="sheetBody" class="sheet-body"></div>
+    </section>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmt = (n, d = 0) => n == null ? '–' : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+        const compact = n => { if (n == null) return '–'; const u = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']].find(([d]) => Math.abs(n) >= d); return u ? `${(n / u[0]).toLocaleString(undefined, { maximumFractionDigits: 2 })}${u[1]}` : fmt(n); };
+        const usd = (n, d = 0) => n == null ? '–' : `${n < 0 ? '−' : ''}$${fmt(Math.abs(n), d)}`;
+        const usdC = n => n == null ? '–' : `${n < 0 ? '−' : ''}$${compact(Math.abs(n))}`;
+        const signed = (n, d = 0) => n == null ? '–' : `${n >= 0 ? '+' : '−'}$${fmt(Math.abs(n), d)}`;
+        const pct = (n, d = 2) => n == null ? '–' : `${fmt(n, d)}%`;
+        const short = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
+        const ago = ts => { const s = (Date.now() - ts) / 1000; for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60]]) if (s >= n) return `${Math.floor(s / n)}${u} ago`; return 'just now'; };
+        const when = ts => new Date(ts).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const BRANCH_ICONS = {
+            WETH: { color: '#627eea', glyph: '<path d="M12 3 6.5 12.3 12 15.6l5.5-3.3Z"/><path d="M12 16.9 6.5 13.6 12 21l5.5-7.4Z" opacity=".7"/>' },
+            wstETH: { color: '#00a3ff', glyph: '<path d="M12 3.5s-5.5 6.4-5.5 10.6a5.5 5.5 0 0 0 11 0C17.5 9.9 12 3.5 12 3.5Z"/><path d="M12 10.2 9.8 14l2.2 1.3 2.2-1.3Z" fill="#00a3ff"/>' },
+            rETH: { color: '#f2774b', glyph: '<path d="M12 3c2.6 1.7 3.9 4.8 3.9 8.3L14.6 15H9.4l-1.3-3.7C8.1 7.8 9.4 4.7 12 3Z"/><circle cx="12" cy="9.3" r="1.5" fill="#f2774b"/><path d="M8.6 12.6 6.5 15.8h2.6Zm6.8 0 2.1 3.2h-2.6ZM10.6 16h2.8L12 19.8Z"/>' }
+        };
+        const icon = (b, cls = 'w-5 h-5') => `<svg viewBox="0 0 24 24" class="rounded-full shrink-0 ${cls}" style="background:${BRANCH_ICONS[b]?.color || '#5b6170'}" fill="#fff" role="img" aria-label="${esc(b)}">${BRANCH_ICONS[b]?.glyph || ''}</svg>`;
+        const BT_COLORS = { WETH: '#e2e8f0', wstETH: '#00a3ff', rETH: '#f2774b' };
+        const POOLS = { curve: ['Curve', '#3987e5'], uni_v3: ['Uniswap v3', '#d95926'], uni_v4: ['Uniswap v4', '#199e70'], aero: ['Aero', '#e8c547'], other: ['Other venues', '#8a8f98'], held: ['Already held', '#5b6170'] };
+        // the parts of a result, with the desktop's colours and names (a negative part moves to the other bar under its own name)
+        const PARTS = [['gap', 'Oracle gap', '#00b4ff'], ['trade', 'On-chain vs exchange price', '#ffe14d'], ['discount', 'BOLD discount', '#2ee59d'],
+            ['fee', 'Redemption fee', '#ff4f8b'], ['tips', 'Builder tips', '#8f6bff'], ['gas', 'Gas', '#ff9f1c']];
+        const NEGATIVE_LABEL = { 'Oracle gap': 'Oracle gap (negative)', 'BOLD discount': 'BOLD premium (above $1)', 'On-chain vs exchange price': 'Trading costs vs exchange price' };
+        const TELEGRAM_BOT = 'BoldbotAlertsBot';
+        const telegramCode = (branch, id) => `t${branch}${btoa(String.fromCharCode(...id.slice(2).match(/../g).map(h => parseInt(h, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+        const exploitTag = '<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded align-middle" style="background: rgba(251,113,133,.14); color: var(--bad)">exploit</span>';
+        const busyTag = '<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style="background: rgba(232,197,71,.12); color: var(--warn)">Frequent rate changes</span>';
+        const mgrName = a => { const n = a && M.names[a.toLowerCase()]; return n ? (n[1] ? `${n[0]} · ${n[1]}` : n[0]) : a ? short(a) : null; };
+        const line = (k, v) => `<div class="line"><span>${k}</span><span>${v}</span></div>`;
+        const COPY_ICON = '<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+        const CHECK_ICON = '<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>';
+        const copyBtn = (v, what) => `<button type="button" class="copy tap ml-1" data-copy="${esc(v)}" aria-label="Copy ${esc(what)}">${COPY_ICON}</button>`;
+        async function copyText(v) {
+            try { await navigator.clipboard.writeText(v); return true; } catch {}
+            const ta = Object.assign(document.createElement('textarea'), { value: v, readOnly: true });
+            Object.assign(ta.style, { position: 'fixed', opacity: '0', fontSize: '16px' }); document.body.appendChild(ta);
+            ta.select(); ta.setSelectionRange(0, v.length); let ok = false; try { ok = document.execCommand('copy'); } catch {} ta.remove(); return ok;
+        }
+        document.addEventListener('click', async e => {
+            const b = e.target.closest('[data-copy]'); if (!b) return;
+            e.stopPropagation(); e.preventDefault();
+            if (await copyText(b.dataset.copy)) { b.innerHTML = CHECK_ICON; b.classList.add('done'); setTimeout(() => { b.innerHTML = COPY_ICON; b.classList.remove('done'); }, 1400); }
+        }, true);
+        // A segmented switch whose highlight slides to the option tapped: built once, then only the highlight and the active option change
+        function segSwitch(el, items, active, attr) {
+            if (!el.dataset.built) { el.innerHTML = '<span class="ind"></span>' + items.map(([k, l]) => `<button class="tap" data-${attr}="${k}">${l}</button>`).join(''); el.dataset.built = 1; }
+            const btn = [...el.querySelectorAll('button')].find(b => b.dataset[attr.replace(/-./g, m => m[1].toUpperCase())] == active), ind = el.querySelector('.ind');
+            el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+            if (btn) { ind.style.width = `${btn.offsetWidth}px`; ind.style.transform = `translateX(${btn.offsetLeft}px)`; }
+        }
+
+        let M = null, TV = null, period = 'd7', shown = 15;
+        // chart tooltips: a filled dot in each series' colour
+        const DOT_TIP = { usePointStyle: true, boxWidth: 8, boxHeight: 8, boxPadding: 4, callbacks: {
+            labelColor: i => { const c = i.dataset.pointBackgroundColor?.[i.dataIndex] || i.dataset.pointBackgroundColor || i.dataset.backgroundColor || i.dataset.borderColor; return { borderColor: c, backgroundColor: c }; },
+            labelPointStyle: () => ({ pointStyle: 'circle', rotation: 0 }) } };
+
+
+        function placeGlow() { const b = document.querySelector('.dock-btn[aria-current="page"]'), g = $('glow'); g.style.transform = `translateX(${b.offsetLeft + (b.offsetWidth - g.offsetWidth) / 2}px)`; }
+        // A tab shown fades up block by block (as the desktop's views); the class comes off once the last block is in place
+        function fadeIn(el) { el.classList.remove('view-in'); el.offsetWidth; el.classList.add('view-in'); clearTimeout(el.viewInTimer); el.viewInTimer = setTimeout(() => el.classList.remove('view-in'), 1100); }
+        addEventListener('scroll', () => $('top').classList.toggle('scrolled', scrollY > 4), { passive: true });
+        function go(view) {
+            const was = document.querySelector('.view.on')?.id;
+            document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === `v-${view}`));
+            if (was !== `v-${view}`) fadeIn($(`v-${view}`));
+            document.querySelectorAll('.dock-btn').forEach(b => b.dataset.go === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+            placeGlow(); history.replaceState(null, '', view === 'home' ? location.pathname : `#${view}`); scrollTo({ top: 0 });
+            if (view === 'trove') renderTroves();
+            if (view === 'redemptions') periodSwitch();
+            if (view === 'branches') renderTrends();
+            if (view === 'home') { findSwitch('home'); demoStart(); } else demoStop();
+        }
+        document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); });
+        addEventListener('resize', placeGlow);
+
+        const fig = (label, value, sub = '', tone) => `<div class="tile"><div class="label">${label}</div>
+            <div class="text-[21px] font-semibold tracking-tight mt-1 mono" ${tone ? `style="color:${tone}"` : ''}>${value}</div>${sub ? `<div class="text-[11px] mt-0.5 leading-snug" style="color: var(--muted)">${sub}</div>` : ''}</div>`;
+        const redRow = r => `<button data-tx="${r.tx}" class="tap w-full text-left flex items-center gap-3 py-3 border-b border-white/5 last:border-0 -mx-1 px-1 rounded-xl">
+                <div class="flex -space-x-1.5">${r.branches.split(',').map(b => icon(b, 'w-5 h-5 ring-2 ring-[#0b0e13]')).join('')}</div>
+                <div class="flex-1 min-w-0"><div class="text-[15px] font-semibold mono">${compact(r.bold)} BOLD ${r.exploit ? exploitTag : ''}</div>
+                    <div class="text-[12px] mono" style="color: var(--muted)">${ago(r.ts)} · ${short(r.sender)}</div></div>
+                <div class="text-right text-[13px] mono" style="color: ${r.net == null ? 'var(--muted)' : r.net >= 0 ? 'var(--good)' : 'var(--bad)'}">${r.net == null || r.exploit ? '' : signed(r.net, 2)} <span style="color: var(--muted)">›</span></div></button>`;
+
+        // The edge and cost bars, on one scale (as on the desktop): the edge's parts above, the costs below, the net result hatched at the end
+        // of the shorter bar. Tap a segment: its amount and its share of its own bar below
+        let pbSeq = 0;
+        function profitBars(values, net) {
+            const parts = PARTS.map(([k, label, color]) => ({ label, color, v: values[k] ?? 0 })).filter(p => Math.abs(p.v) >= 0.005);
+            const edge = parts.filter(p => p.v > 0), cost = parts.filter(p => p.v < 0).map(p => ({ ...p, v: -p.v, label: NEGATIVE_LABEL[p.label] || p.label }));
+            const sum = l => l.reduce((a, p) => a + p.v, 0), edgeT = sum(edge), costT = sum(cost);
+            if (net > 0) cost.push({ label: 'Net profit', v: net, net: true, color: 'var(--good)' });
+            if (net < 0) edge.push({ label: 'Net loss', v: -net, net: true, color: 'var(--bad)' });
+            const scale = Math.max(sum(edge), sum(cost)) || 1, id = `pb${++pbSeq}`;
+            const share = (v, t) => { const x = t ? v / t * 100 : 0; return x > 0 && x < 0.1 ? '<0.1%' : `${x.toFixed(1)}%`; };
+            const note = (p, bar) => p.net ? (net > 0 ? `${share(p.v, edgeT)} of the edge kept` : `${share(p.v, costT)} of the cost not covered by the edge`) : bar === 'edge' ? `${share(p.v, edgeT)} of the edge` : `${share(p.v, costT)} of the costs`;
+            const seg = bar => p => `<span class="pb-seg ${p.net ? 'pb-net' : ''}" style="width:${p.v / scale * 100}%; background-color:${p.net ? 'transparent' : p.color}; ${p.net ? `box-shadow: inset 0 0 0 1.5px ${p.color}` : ''}"
+                data-pb="${id}" data-label="${esc(p.label)}" data-amount="${esc(usd(p.v))}" data-note="${esc(note(p, bar))}" data-color="${p.color}"></span>`;
+            const row = (label, list, bar) => `<div class="flex items-center gap-3"><span class="w-11 shrink-0 text-[10px] uppercase tracking-wider" style="color: var(--muted)">${label}</span>
+                <div class="flex-1 pb-row">${list.map(seg(bar)).join('')}</div></div>`;
+            const key = p => `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="${p.net ? `box-shadow: inset 0 0 0 1.5px ${p.color}` : `background:${p.color}`}"></span>${esc(p.label)} <span class="mono" style="color: ${p.net ? p.color : 'var(--ink-1)'}">${usd(p.v)}</span></span>`;
+            return `<div id="${id}" class="space-y-1.5">${row('Edge', edge, 'edge')}${row('Cost', cost, 'cost')}</div>
+                <div id="${id}-cap" class="text-[13px] mt-2.5 min-h-[20px]" style="color: var(--muted)">Tap a part of a bar for its share.</div>
+                <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] mt-2" style="color: var(--muted)">${[...edge, ...cost].map(key).join('')}</div>`;
+        }
+        document.addEventListener('click', e => {
+            const s = e.target.closest('[data-pb]'); if (!s) return;
+            const box = $(s.dataset.pb), on = s.classList.contains('pb-on');
+            box.querySelectorAll('.pb-seg').forEach(x => x.classList.remove('pb-on'));
+            box.classList.toggle('pb-dim', !on); if (!on) s.classList.add('pb-on');
+            $(`${s.dataset.pb}-cap`).innerHTML = on ? 'Tap a part of a bar for its share.'
+                : `<span class="inline-flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:${s.dataset.color}"></span><b class="text-white">${s.dataset.label}</b></span> <span class="mono text-white">${s.dataset.amount}</span> · ${s.dataset.note}`;
+        });
+
+        // Redemption conditions (desktop: lpConditions); the bands of the BOLD discount and how often a redemption followed come from a
+        // study of the redemption history, explained in the desktop's Methodology
+        const LP_LEVELS = ['Quiet', 'Low', 'Normal', 'High'];
+        const LP_DISC = ['above $1', 'up to 0.2%', '0.2–0.35%', '0.35–0.5%', '0.5% or more'];
+        const LP_DISC_HISTORY = [
+            'When BOLD was <b class="text-white">above $1</b>, a redemption followed within the next 24 hours <b class="text-white">about 1 time in 3</b>, when ETH moved faster than the oracle.',
+            'When BOLD was <b class="text-white">up to 0.2%</b> below $1, a redemption followed within the next 24 hours <b class="text-white">about 2 times in 3</b>.',
+            'When BOLD was <b class="text-white">0.2–0.35%</b> below $1, a redemption followed within the next 24 hours <b class="text-white">more than 9 times out of 10</b>.',
+            'When BOLD was <b class="text-white">0.35–0.5%</b> below $1, a redemption followed within the next 24 hours <b class="text-white">more than 9 times out of 10</b>.',
+            'When BOLD was <b class="text-white">0.5% or more</b> below $1, a redemption <b class="text-white">always</b> followed within the next 24 hours.'
+        ];
+        const LP_SHADES = ['rgba(57,135,229,.35)', 'rgba(57,135,229,.55)', 'rgba(57,135,229,.8)', '#3987e5'];
+        const lpSteps = (labels, k, ranges, shades = LP_SHADES, from = 0) => {
+            const cols = `grid-template-columns: repeat(${labels.length}, minmax(0, 1fr))`;
+            return `<div class="lp-steps" style="${cols}">${labels.map((_, i) => `<div class="lp-step${i === k ? ' lit' : ''}" style="background: ${k != null && i <= k && i >= Math.min(from, k) ? shades[i] : 'rgba(255,255,255,.06)'}"></div>`).join('')}</div>
+                <div class="lp-step-labels" style="${cols}">${labels.map((l, i) => `<span class="${i === k ? 'on' : ''}">${l}${ranges ? `<span class="block mono text-[10px] font-normal mt-0.5" style="color: var(--muted)">${ranges[i]}</span>` : ''}</span>`).join('')}</div>`;
+        };
+        // a small "i" that shows or hides the detail next to it ([data-hintbox] holds both)
+        const infoBtn = `<button type="button" data-hint aria-label="More about this" aria-expanded="false" class="tap inline-grid place-items-center w-5 h-5 ml-1.5 -my-1 rounded-full text-[11px] font-semibold align-middle" style="background: rgba(255,255,255,.08); color: var(--ink-2)">i</button>`;
+        document.addEventListener('click', e => { const b = e.target.closest('[data-hint]'); if (!b) return; const d = b.closest('[data-hintbox]').querySelector('[data-hint-body]'); d.hidden = !d.hidden; b.setAttribute('aria-expanded', !d.hidden); });
+        function renderConditions() {
+            const c = M.conditions;
+            $('conditions').hidden = !c; if (!c) return;   // data written before the conditions were added: the section stays out
+            const bold = M.market.boldUsd, disc = bold == null ? null : (1 - bold) * 100;
+            const k = disc == null ? null : disc < -0.005 ? 0 : disc < .2 ? 1 : disc < .35 ? 2 : disc < .5 ? 3 : 4;
+            const strip = c.strip, nz = strip.filter(v => v > 0).sort((a, b) => a - b);
+            const cap = Math.max(1, Math.min(Math.max(...strip, 1), nz.length ? nz[Math.floor(.9 * (nz.length - 1))] * 3 : 1));
+            const bars = strip.map((v, i) => { const h = v ? Math.max(Math.min(v, cap) / cap * 38, 2) : 0;
+                return h ? `<rect x="${i + .15}" y="${40 - h}" width=".7" height="${h}" fill="${i >= 144 ? '#8bb8f0' : 'rgba(57,135,229,.6)'}"/>` : ''; }).join('');
+            $('conditions').innerHTML = `${c.distorted ? `<div class="flex gap-3 items-start rounded-xl px-3 py-3 mt-4 text-[13px] leading-relaxed" style="background: rgba(250,178,25,.07); border: 1px solid rgba(250,178,25,.4); color: var(--ink-2)">
+                    <span class="px-1.5 py-px rounded text-[10px] uppercase tracking-wide shrink-0 mt-0.5" style="background: rgba(250,178,25,.12); color: var(--warn)">distorted</span>
+                    <span>On-chain ETH prices were more than 3% away from exchange prices during redemptions in the last 24 hours. Activity in this period reflects those prices, not the usual conditions.</span></div>` : ''}
+                <div class="${c.distorted ? 'mt-5' : ''}">
+                    <div class="text-[14px] font-semibold">Redemption activity <span class="font-normal" style="color: var(--muted)">· last 24 h</span></div>
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-2"><span class="mono text-[28px] font-semibold">${c.v24 ? `${compact(c.v24)} BOLD` : 'None'}</span>
+                        <span class="text-[13px]" style="color: var(--ink-2)">${c.txs ? `${fmt(c.txs)} redemption${c.txs === 1 ? '' : 's'} in ${c.bursts} burst${c.bursts === 1 ? '' : 's'}` : 'no redemption in the last 24 hours'}</span></div>
+                    <div class="mt-4">${lpSteps(LP_LEVELS, c.level, ['none', `under ${compact(c.q50)}`, `${compact(c.q50)}–${compact(c.q90)}`, `over ${compact(c.q90)}`])}</div>
+                    <div class="mt-4"><svg viewBox="0 0 168 40" preserveAspectRatio="none" class="w-full" style="height: 40px" role="img" aria-label="BOLD redeemed per hour over the last 7 days">${bars}<rect x="144" y="0" width="24" height="40" fill="rgba(139,184,240,.06)"/><line x1="0" x2="168" y1="39.75" y2="39.75" stroke="rgba(255,255,255,.1)" stroke-width=".5"/></svg>
+                        <div class="flex justify-between text-[10px] mono mt-1" style="color: var(--muted)"><span>7 days ago</span><span>BOLD redeemed per hour</span><span>now</span></div></div>
+                    <div data-hintbox><p class="text-[12px] mt-3 leading-relaxed" style="color: var(--muted)">BOLD redeemed in the last 24 hours, compared with every 24-hour stretch with redemptions in the last 180 days.${infoBtn}</p>
+                        <p data-hint-body hidden class="rounded-xl p-3 mt-2 text-[12px] leading-relaxed" style="background: rgba(255,255,255,.04); color: var(--ink-2)">Low is less than in half of them, High more than in 9 out of 10. It describes the day that has passed; so far, a busy day has more often been followed by a quieter one.</p></div>
+                </div>
+                <div class="mt-8">
+                    <div class="text-[14px] font-semibold">BOLD vs $1 <span class="font-normal" style="color: var(--muted)">· Curve BOLD/USDC</span></div>
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-2"><span class="mono text-[28px] font-semibold">${disc == null ? '–' : Math.abs(disc) < .005 ? 'At $1' : `${Math.abs(disc).toFixed(2)}%`}</span>
+                        <span class="text-[13px]" style="color: var(--ink-2)">${disc == null || Math.abs(disc) < .005 ? '' : disc < 0 ? 'above $1' : 'below $1'}</span></div>
+                    <div class="mt-4">${lpSteps(LP_DISC, k, null, ['rgba(158,166,174,.55)', ...LP_SHADES], 1)}</div>
+                    <div class="rounded-xl p-4 mt-4" style="background: rgba(57,135,229,.06); border: 1px solid rgba(57,135,229,.2)">
+                        <div class="label" style="color: #8bb8f0">Historical record</div>
+                        <div class="text-[14px] leading-relaxed mt-1.5" style="color: var(--ink-2)">${k == null ? '&nbsp;' : LP_DISC_HISTORY[k]}</div>
+                        <div class="text-[11px] mt-2" style="color: var(--muted)">Checked hour by hour since launch. A record of the past, not a forecast.</div>
+                    </div>
+                </div>`;
+        }
+
+        function renderHome() {
+            const a = M.activity, mk = M.market, w = M.periods.d7;
+            renderConditions();
+            $('age').innerText = ago(M.updated);
+            $('heroBold').innerText = compact(a.d7.bold);
+            $('heroSub').innerHTML = `BOLD in ${fmt(a.d7.txs)} redemptions by ${fmt(w.redeemers)} senders · typical week <span class="mono">${compact(a.typicalWeek)}</span>`;
+            const w12 = M.weeks.slice(-12);
+            new Chart($('heroBars'), { type: 'bar', data: { labels: w12.map(w => w[0]), datasets: [{ data: w12.map(w => w[1]), borderRadius: 3,
+                backgroundColor: w12.map((w, i) => i === w12.length - 1 ? '#46e3f2' : 'rgba(57,135,229,.55)') }] },
+                options: { maintainAspectRatio: false, animation: false, events: [], plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } } });
+            // the headline figures of the desktop's home page: the state now, then the last 7 days (profit and averages without exploits)
+            const active = Object.values(a.activeTroves || {}).reduce((x, v) => x + v, 0);
+            $('tiles').innerHTML = fig('BOLD price now', mk.boldUsd == null ? '–' : `$${mk.boldUsd.toFixed(4)}`, 'Curve BOLD/USDC')
+                + fig('Redemption fee now', pct(mk.redemptionRate), mk.redemptionRate == null ? '' : `0.5% floor + ${fmt(Math.max(mk.redemptionRate - 0.5, 0), 2)}% base rate`)
+                + fig('Active troves', fmt(active), Object.entries(a.activeTroves || {}).map(([n, v]) => `${n} ${fmt(v)}`).join(' · '))
+                + fig('Last redemption', a.lastTs ? ago(a.lastTs) : '–', a.lastTs ? when(a.lastTs) : '')
+                + fig('Bots\' net profit · 7 days', w.net == null ? '–' : signed(w.net), w.margin == null ? '' : `${pct(w.margin, 3)} avg margin · measured`, w.net > 0 ? 'var(--good)' : w.net < 0 ? 'var(--bad)' : null)
+                + fig('Avg. BOLD discount · 7 days', w.discount == null ? '–' : pct(w.discount, 3), w.discount != null && w.discount < 0 ? 'above $1 at redemption · estimate' : 'below $1 at redemption · estimate')
+                + fig('Avg. oracle gap · 7 days', w.gap == null ? '–' : pct(w.gap, 3), 'exchange price vs. oracle · estimate')
+                + fig('ETH price', `$${fmt(mk.ethUsd)}`, 'Uniswap ETH/USDC');
+            $('homeBranches').innerHTML = Object.entries(M.branches).map(([n, b]) => `<div class="py-3 border-b border-white/5 last:border-0">
+                <div class="flex items-center justify-between gap-3"><span class="inline-flex items-center gap-2 text-[15px] font-medium">${icon(n)}${n}</span><span class="text-[15px] font-semibold mono">${pct(b.share, 1)}</span></div>
+                <div class="bar mt-2"><span style="width:${Math.min(b.share, 100)}%; background:${BT_COLORS[n]}"></span></div>
+                <div class="text-[12px] mt-1.5" style="color: var(--muted)">of each redemption · pool covers ${fmt(b.sp / b.debt * 100, 0)}% · rate ${pct(b.avgRate)}</div></div>`).join('');
+            $('homeLatest').innerHTML = M.latest.slice(0, 5).map(redRow).join('');
+        }
+
+        const LP_L = id => `<span class="tg-link">${id}</span>`, LP_OPEN = '<br><br><span class="tg-link">Open this trove on boldbot.io →</span> 🤖👀';
+        const LP_CHAT = [
+            { who: 'bot', t: '09:42', html: `<b>A batch moved above your trove</b><br>Trove ${LP_L('0x4c1e…9a7b')} · WETH · 4.10%<br>• Batch 0x2b9f…71c0 (1.04m BOLD) changed its rate 3.80% → 4.60%<br>As a result, the debt in front of this trove changed from 2.66m to <b>1.62m BOLD</b>. The trove is now 37 of 83 in the redemption queue of the WETH branch.<br>Status: 🟠 within reach of a week as busy as the busiest of the last 180 days (was 🟢)${LP_OPEN}` },
+            { who: 'bot', t: '11:05', html: `<b>Your batch manager changed the rate</b><br>Trove ${LP_L('0x91f0…0c21')} · wstETH · 2.60% · batch 0x7d2e…c90a<br>The manager changed the rate: 2.10% → <b>2.60%</b> (+ 0.30% fee). Cost per year for your trove: 2.32k → <b>2.81k BOLD</b>.<br>Your trove: 4 of 9 in the batch, with 310.5k BOLD of the batch ahead of it (38.2%).<br>The debt in front of this trove is <b>410k BOLD</b>. The trove is now 12 of 50 in the redemption queue of the wstETH branch.<br>Status: 🔴 within reach of a typical week of redemptions${LP_OPEN}` },
+            { who: 'me', t: '11:16', html: '/digest' },
+            { who: 'bot', t: '11:16', html: '📬 <b>Summary of the troves you follow</b><br>How often would you like to receive it?<br>Now: off', keys: ['Daily', 'Weekly', 'Monthly'], press: 'Weekly' },
+            { who: 'bot', t: '11:16', html: '✅ You will receive a summary every Monday at 08:00 UTC.<br>To change the frequency of the summary or stop it completely, call /digest.' },
+            { who: 'bot', t: 'Mon 08:00', html: `📬 <b>Weekly summary</b> · 9 Nov – 16 Nov 2026<br><br><b>1. 0x4c1e…9a7b · WETH · 4.10% · self-managed</b><br>🟠 within reach of a week as busy as the busiest of the last 180 days (was 🟢)<br>Queue: 37 of 83 · <b>1.62m BOLD</b> in front (was 2.66m)<br>This week: no redemptions on this trove<br>Debt 412,300 BOLD · collateral ratio 196%<br>Liquidation below $1,260 per WETH (now $2,250, −44%)<br><span class="tg-link">Open this trove on boldbot.io →</span> 🤖👀<br><br>Redemptions this week: 1.38m BOLD (a typical week 1.03m, the busiest of the last 180 days 8.08m)<br>/safe shows the lowest rate to stay in the green.` },
+            { who: 'me', t: '08:12', html: '/safe' },
+            { who: 'bot', t: '08:12', html: `🛡 <b>Lowest rate to stay in the green</b> · 16 Nov 2026, 08:12 UTC<br><br><b>WETH:</b> <b>4.85%</b><br>needs 1.9m BOLD in front (the branch takes 24% of each redemption)<br><br><b>wstETH:</b> <b>2.40%</b><br>needs 6.18m BOLD in front (the branch takes 77% of each redemption)<br><br><b>rETH:</b> any rate<br>the Stability Pool covers the branch: it takes no redemptions now<br><br><b>Your troves</b><br><br><b>1. 0x4c1e…9a7b · WETH · 4.10%</b> 🟠<br>A rate of 4.85% would keep this trove in the green, at about $3,092 a year more on 412,300 BOLD.${LP_OPEN}<br><br>Be smart: changing a rate within 7 days of the last change costs an upfront fee (7 days of average interest). Think it through, and remember this is not financial advice or a suggestion to take any action.` }
+        ];
+        // "How do Telegram alerts work?": the desktop home page's Telegram section in a sheet, the example chat playing while it is open.
+        // Opened from a trove's sheet, it offers the way back to that trove
+        let sheetBack = null;
+        const tgHowHtml = back => `<div class="flex items-start justify-between gap-3">
+                <div>${back ? '<button type="button" data-sheetback class="tap text-[13px] mb-2" style="color: #8bb8f0">‹ Back to the trove</button>' : ''}
+                    <div class="label" style="color: #8bb8f0">Telegram alerts</div>
+                    <div class="text-[20px] font-semibold mt-1.5 leading-snug">Follow any trove with <span class="whitespace-nowrap">Boldbot <svg viewBox="0 0 24 24" class="inline w-[18px] h-[18px] ml-0.5 -mt-1" fill="none" stroke="#8bb8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span></div></div>
+                ${closeBtn}</div>
+                <p class="text-[14px] mt-2 leading-relaxed" style="color: var(--ink-2)">Find a trove, tap <b class="text-white">Get alerts on Telegram</b> and then <b class="text-white">Start</b> in the bot. Up to 20 troves per chat, yours or any other.</p>
+                <div class="grid gap-4 mt-5">
+                            <div class="lp-feature"><span class="lp-ficon" aria-hidden="true">↑</span><div><div class="text-sm font-semibold text-white">The queue ahead moves</div><div class="text-xs mt-0.5 leading-relaxed" style="color: var(--muted)">A batch in front moves its rate above the trove, with the new debt in front.</div></div></div>
+                            <div class="lp-feature"><span class="lp-ficon" aria-hidden="true">%</span><div><div class="text-sm font-semibold text-white">The batch rate changes</div><div class="text-xs mt-0.5 leading-relaxed" style="color: var(--muted)">The manager's new rate and what it costs the trove per year.</div></div></div>
+                            <div class="lp-feature"><span class="lp-ficon" aria-hidden="true">↓</span><div><div class="text-sm font-semibold text-white">Redemptions reach it</div><div class="text-xs mt-0.5 leading-relaxed" style="color: var(--muted)">The trove or its batch is redeemed against: debt repaid and the result for the trove.</div></div></div>
+                            <div class="lp-feature"><span class="lp-ficon" aria-hidden="true">⇄</span><div><div class="text-sm font-semibold text-white">Its status changes</div><div class="text-xs mt-0.5 leading-relaxed" style="color: var(--muted)">It joins or leaves a batch, becomes a zombie or closes.</div></div></div>
+                </div>
+                <div class="flex flex-wrap gap-x-5 gap-y-2 mt-5 pt-4 text-[12px]" style="border-top: 1px solid rgba(255,255,255,.06); color: var(--muted)">
+                    <span><span class="lp-cmd">/status</span> state of your troves</span>
+                    <span><span class="lp-cmd">/safe</span> lowest rate in the green</span>
+                    <span><span class="lp-cmd">/digest</span> daily, weekly or monthly summary</span>
+                </div>
+                <div class="rounded-2xl overflow-hidden mt-5" style="background: #0c1017; border: 1px solid rgba(255,255,255,.07)">
+                    <div class="flex items-center gap-2.5 px-4 py-3" style="border-bottom: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02)">
+                        <svg viewBox="-28 -30 256 256" class="w-10 h-10 shrink-0" role="img" aria-label="BOLDBOT Alerts">
+                                <defs>
+                                    <linearGradient id="bbHead" x1="20" y1="20" x2="180" y2="200" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#46e3f2"/><stop offset="1" stop-color="#2d6bff"/></linearGradient>
+                                    <radialGradient id="bbGlow"><stop offset=".3" stop-color="#46e3f2" stop-opacity=".55"/><stop offset=".65" stop-color="#2fc4f0" stop-opacity=".18"/><stop offset="1" stop-color="#2d9bff" stop-opacity="0"/></radialGradient>
+                                    <radialGradient id="bbCore"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#d4fcff"/><stop offset="1" stop-color="#7eeefa"/></radialGradient>
+                                    <radialGradient id="bbHalo" cx="100" cy="98" r="128" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".26"/><stop offset=".6" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+                                </defs>
+                                <circle cx="100" cy="98" r="128" fill="#05070a"/><circle cx="100" cy="98" r="128" fill="url(#bbHalo)"/>
+                                <circle cx="100" cy="98" r="125" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="5"/>
+                                <circle cx="100" cy="13" r="9" fill="url(#bbHead)"/><rect x="97" y="20" width="6" height="18" rx="2" fill="url(#bbHead)"/>
+                                <path d="M15 104 L15 142 Q15 144 13 144 C8 144 5 135 5 123 C5 111 8 102 13 102 Q15 102 15 104 Z" fill="url(#bbHead)"/>
+                                <path d="M185 104 L185 142 Q185 144 187 144 C192 144 195 135 195 123 C195 111 192 102 187 102 Q185 102 185 104 Z" fill="url(#bbHead)"/>
+                                <rect x="20" y="40" width="160" height="152" rx="54" fill="url(#bbHead)"/>
+                                <path d="M40 104 C58 112 84 110 110 100 C132 92 150 90 160 100 L160 132 Q160 156 136 156 L64 156 Q40 156 40 132 Z" fill="#0b1220"/>
+                                <circle cx="78" cy="128" r="24" fill="url(#bbGlow)"/><circle cx="122" cy="128" r="24" fill="url(#bbGlow)"/>
+                                <circle cx="78" cy="128" r="9.5" fill="url(#bbCore)"/><circle cx="122" cy="128" r="9.5" fill="url(#bbCore)"/>
+                            </svg>
+                        <span><span class="block text-sm font-semibold text-white leading-tight">BOLDBOT Alerts</span><span class="block text-[11px] leading-tight" style="color: var(--muted)">bot</span></span>
+                    </div>
+                    <div class="lp-chat px-3 py-4" id="lpChat" aria-hidden="true"></div>
+                </div>
+                <p class="text-[11px] mt-4 text-center" style="color: #6c6b66">Alerts arrive up to about 30 minutes after a change on chain and are for information only.</p>`;
+        function openTgHow() {
+            sheetBack = $('sheet').classList.contains('on') ? { html: $('sheetBody').innerHTML, top: $('sheetBody').scrollTop } : null;
+            demoStop(); openSheet(tgHowHtml(!!sheetBack), startChat);
+        }
+        document.addEventListener('click', e => {
+            if (e.target.closest('[data-tghow]')) { e.preventDefault(); openTgHow(); }
+            if (e.target.closest('[data-sheetback]') && sheetBack) { lpChatStop(); $('sheetBody').innerHTML = sheetBack.html; $('sheetBody').scrollTop = sheetBack.top; sheetBack = null; }
+        });
+        let lpChatTimers = [], lpChatOn = false, lpChatIdx = 0;
+        const LP_REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const lpBubble = m => { const d = document.createElement('div'); d.className = `lp-bubble ${m.who}${m.keys ? ' with-keys' : ''}`; d.innerHTML = `${m.html}<span class="meta">${m.t}</span>`; return d; };
+        const lpTrim = () => { while ($('lpChat').children.length > 5) $('lpChat').firstElementChild.remove(); };
+        function lpChatStep() {
+            const chat = $('lpChat');
+            if (!lpChatOn || !chat) return;
+            if (lpChatIdx >= LP_CHAT.length) {                // pause, fade out, start over
+                lpChatTimers.push(setTimeout(() => { chat.style.transition = 'opacity .5s'; chat.style.opacity = 0;
+                    lpChatTimers.push(setTimeout(() => { chat.innerHTML = ''; chat.style.opacity = 1; lpChatIdx = 0; lpChatStep(); }, 600)); }, 3500));
+                return;
+            }
+            const m = LP_CHAT[lpChatIdx++];
+            if (m.who === 'me') { chat.appendChild(lpBubble(m)); lpTrim(); lpChatTimers.push(setTimeout(lpChatStep, 900)); return; }
+            const typing = document.createElement('div'); typing.className = 'lp-typing'; typing.innerHTML = '<span></span><span></span><span></span>';
+            chat.appendChild(typing); lpTrim();
+            lpChatTimers.push(setTimeout(() => {
+                typing.replaceWith(lpBubble(m));
+                if (m.keys) {
+                    const keys = document.createElement('div'); keys.className = 'lp-keys';
+                    keys.innerHTML = m.keys.map(k => `<span>${k}</span>`).join('');
+                    chat.appendChild(keys);
+                    lpChatTimers.push(setTimeout(() => keys.querySelectorAll('span').forEach(k => k.classList.toggle('press', k.textContent === m.press)), 1600));
+                }
+                lpTrim();
+                lpChatTimers.push(setTimeout(lpChatStep, m.keys ? 2400 : 3200 + Math.min(m.html.length * 4, 2400)));
+            }, 1100));
+        }
+        function lpChatStop() { lpChatOn = false; lpChatTimers.forEach(clearTimeout); lpChatTimers = []; }
+        function startChat() {
+            lpChatStop(); const chat = $('lpChat'); if (!chat) return;
+            chat.innerHTML = ''; chat.style.opacity = 1; lpChatIdx = 0;
+            if (LP_REDUCE) LP_CHAT.slice(0, 2).forEach(m => chat.appendChild(lpBubble(m))); else { lpChatOn = true; lpChatStep(); }
+        }
+
+        // Redemptions: the period's facts (every redemption) and its figures (without the exploit, as on the desktop)
+        // the period: the same sliding switch as Branch trends (placed again when the tab is shown, as it is drawn while hidden)
+        const periodSwitch = () => segSwitch($('period'), [['d1', '24H'], ['d7', '7D'], ['d30', '30D'], ['d90', '90D'], ['d180', '180D']].filter(([k]) => M.periods[k]), period, 'period');
+        function renderRedemptions() {
+            periodSwitch();
+            const p = M.periods[period], days = { d1: 1, d7: 7, d30: 30, d90: 90, d180: 180 }[period];
+            const builders = p.gross ? p.tips / p.gross * 100 : null, srcSum = Object.values(p.src).reduce((a, v) => a + v, 0);
+            const flashTotal = p.flash.reduce((a, f) => a + f[1], 0);
+            const partsNet = Object.values(p.parts).reduce((a, v) => a + v, 0);
+            $('periodBody').innerHTML = `
+                <div class="card hero"><div class="label">BOLD redeemed</div>
+                    <div class="text-[36px] font-semibold tracking-tight mono leading-none mt-1">${compact(p.bold)}</div>
+                    <div class="text-[13px] mt-2" style="color: var(--ink-2)">in ${fmt(p.txs)} redemptions by ${fmt(p.redeemers)} redeemers${days === 7 ? ` · typical week ${compact(M.activity.typicalWeek)}` : ''}</div>
+                    ${p.exploit ? `<div class="text-[12px] mt-2" style="color: #fda4af">Including ${compact(p.exploit)} BOLD redeemed during the K3 Capital exploit, left out of the figures below.</div>` : ''}
+                    <div class="label mt-5">${periodSeries().title}</div>
+                    <div class="relative h-32 mt-2"><canvas id="weeks"></canvas></div>
+                    <p id="weeksNote" class="text-[11px] mt-1.5" style="color: var(--muted)"></p></div>
+                <div class="card"><div class="h2">What redeemers made</div>
+                    <div class="tiles grid grid-cols-2 gap-3 mt-3">${fig('Net profit', usdC(p.net), 'after gas and builder payments', p.net >= 0 ? 'var(--good)' : 'var(--bad)')}${fig('Gross profit', usdC(p.gross), 'before inclusion costs')}
+                        ${fig('Builder payments', usdC(p.tips), builders == null ? '' : `${fmt(builders, 0)}% of gross profit`)}${fig('Gas', usdC(p.gas), 'base fee burned')}</div></div>
+                <div class="card"><div class="h2">Averages</div>
+                    <div class="tiles grid grid-cols-2 gap-3 mt-3">${fig('BOLD discount', pct(p.discount), 'below $1 before redeeming')}${fig('Oracle gap', pct(p.gap), 'collateral above Liquity\'s price')}
+                        ${fig('Redemption fee', pct(p.fee), 'fees ÷ BOLD redeemed')}${fig('Net margin', pct(p.margin, 3), 'net profit ÷ BOLD cost')}</div></div>
+                <div class="card"><div class="h2">From edge to net</div>
+                    <p class="text-[12px] mt-1 mb-3" style="color: var(--muted)">Summed over the ${fmt(p.partsTxs)} redemptions at normal on-chain prices${p.partsTxs < p.pricedTxs ? ` (of ${fmt(p.pricedTxs)})` : ''}: net ${signed(partsNet)}.</p>
+                    ${profitBars(p.parts, partsNet)}</div>
+                <div class="card"><div class="h2">BOLD sourced by pool</div>
+                    ${srcSum ? `<div class="flex h-3 rounded-full overflow-hidden gap-[2px] mt-3">${Object.entries(p.src).map(([k, v]) => `<span style="width:${v / srcSum * 100}%; background:${POOLS[k][1]}"></span>`).join('')}</div>
+                    <div class="mt-2">${Object.entries(p.src).sort((a, b) => b[1] - a[1]).map(([k, v]) => line(`<span class="inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${POOLS[k][1]}"></span>${POOLS[k][0]}</span>`, `${pct(v / srcSum * 100, 1)} · ${compact(v)}`)).join('')}</div>` : '<p class="text-[13px] mt-2" style="color: var(--muted)">No sourcing data in this period.</p>'}</div>
+                <div class="card"><div class="h2">Flash financing</div><p class="text-[12px] mt-1" style="color: var(--muted)">Share of redemptions using each source of borrowed funds</p>
+                    <div class="mt-2">${p.flash.map(([v, n]) => `<div class="py-2"><div class="flex justify-between text-[14px]"><span>${esc(v === 'None' ? 'None detected' : v)}</span><span class="mono">${pct(p.metricTxs ? n / p.metricTxs * 100 : 0, 0)}</span></div>
+                        <div class="bar mt-1.5"><span style="width:${n / flashTotal * 100}%; background: var(--series-1)"></span></div></div>`).join('')}</div></div>
+                <div class="card"><div class="h2">Top redeemers</div><p class="text-[12px] mt-1" style="color: var(--muted)">By net profit in the period</p>
+                    <div class="mt-1">${p.top.map((t, i) => `<a href="https://etherscan.io/address/${t.addr}" target="_blank" rel="noopener" class="tap flex items-center gap-3 py-3 border-b border-white/5 last:border-0 rounded-xl">
+                        <span class="w-6 h-6 rounded-md grid place-items-center text-[12px] font-semibold mono shrink-0" style="background: rgba(255,255,255,.06); color: var(--ink-2)">${i + 1}</span>
+                        <div class="flex-1 min-w-0"><div class="text-[14px] mono">${short(t.addr)}</div><div class="text-[12px] mono" style="color: var(--muted)">${fmt(t.txs)} ${t.txs === 1 ? 'tx' : 'txs'} · ${compact(t.bold)} BOLD</div></div>
+                        <div class="text-[14px] mono" style="color: ${t.net >= 0 ? 'var(--good)' : 'var(--bad)'}">${signed(t.net)}</div></a>`).join('') || '<p class="text-[13px] py-2" style="color: var(--muted)">No redemptions.</p>'}</div></div>`;
+            $('latest').innerHTML = M.latest.slice(0, shown).map(redRow).join('');
+            $('more').classList.toggle('hidden', shown >= M.latest.length);
+            weeksChart?.destroy(); weeksChart = null; drawWeeks();
+        }
+        $('period').addEventListener('click', e => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; renderRedemptions(); });
+        $('more').addEventListener('click', () => { shown += 15; renderRedemptions(); });
+
+        let weeksChart = null;
+        // The chart under "BOLD redeemed" follows the period: per hour over 24 hours, per day over 7 and 30 days, per week over 90 and
+        // 180 days (data written before the hours and days were added: the last 12 weeks)
+        function periodSeries() {
+            const day = ts => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            const hour = ts => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            if (!M.days || !M.hours) return { title: 'Per week, last 12 weeks', rows: M.weeks.slice(-12), label: day };
+            return { d1: { title: 'Per hour, last 24 hours', rows: M.hours, label: hour }, d7: { title: 'Per day, last 7 days', rows: M.days.slice(-7), label: day },
+                d30: { title: 'Per day, last 30 days', rows: M.days.slice(-30), label: day }, d90: { title: 'Per week, last 13 weeks', rows: M.weeks.slice(-13), label: day },
+                d180: { title: 'Per week, last 26 weeks', rows: M.weeks.slice(-26), label: day } }[period];
+        }
+        function drawWeeks() {
+            if (weeksChart || !$('weeks')) return;
+            const { rows: w, label: d } = periodSeries();
+            weeksChart = new Chart($('weeks'), { type: 'bar', data: { labels: w.map(x => d(x[0])), datasets: [
+                { label: 'Redeemed', data: w.map(x => x[1] - x[2]), backgroundColor: '#3987e5', borderRadius: 3, stack: 's' },
+                { label: 'During the K3 exploit', data: w.map(x => x[2]), backgroundColor: 'rgba(251,113,133,.8)', borderRadius: 3, stack: 's' }] },
+                options: { maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { ...DOT_TIP, callbacks: { ...DOT_TIP.callbacks, label: i => ` ${i.dataset.label}: ${compact(i.parsed.y)} BOLD` } } },
+                    scales: { x: { stacked: true, grid: { display: false }, ticks: { color: '#898781', maxRotation: 0, autoSkip: true, maxTicksLimit: 6, font: { size: 10 } } },
+                        y: { stacked: true, grid: { color: '#1f242c' }, border: { display: false }, ticks: { color: '#898781', callback: v => compact(v), maxTicksLimit: 4, font: { size: 10 } } } } } });
+            $('weeksNote').innerText = w.some(x => x[2]) ? 'Red: BOLD redeemed during the K3 Capital exploit (18 Nov).' : '';
+        }
+
+        const scoreRing = (s, size = 'w-12 h-12', text = 'text-[14px]') => `<div class="${size} rounded-full grid place-items-center shrink-0" style="background: conic-gradient(${s == null ? 'rgba(255,255,255,.08) 0' : `#3987e5 ${s * 3.6}deg, rgba(255,255,255,.08) 0`}); padding: 3px">
+            <div class="w-full h-full rounded-full grid place-items-center ${text} font-semibold mono" style="background: #0d1118">${s ?? '–'}</div></div>`;
+        // The branch's collateral ratio against Liquity's thresholds (as the desktop's Troves tab): normal, critical (below the critical
+        // ratio, operations that would lower it are restricted) or below the shutdown ratio; a bar from 100% on one scale for all branches,
+        // marked at the critical ratio
+        function ratioRow(n, b, top) {
+            if (b.tcr == null) return '';
+            const [state, color] = b.tcr < b.scr ? ['below the shutdown ratio', 'var(--bad)'] : b.tcr < b.ccr ? ['critical: borrowing restricted', 'var(--warn)'] : ['normal', 'var(--good)'];
+            const X = v => Math.min(Math.max((v - 100) / (top - 100) * 100, 0), 100);
+            return `<div class="mt-4" data-hintbox>
+                <div class="flex justify-between items-center gap-3 text-[12px]" style="color: var(--muted)"><span class="inline-flex items-center">Collateral ratio${infoBtn}</span>
+                    <span><span class="mono" style="color: var(--ink-1)">${fmt(b.tcr, 0)}%</span> · <span style="color: ${color}">${state}</span></span></div>
+                <div class="relative mt-2 h-1.5 rounded-full" style="background: rgba(255,255,255,.06)">
+                    <span class="absolute inset-y-0 left-0 rounded-full" style="width: ${X(b.tcr)}%; background: ${b.tcr < b.ccr ? color : BT_COLORS[n]}"></span>
+                    <span class="absolute w-0.5 rounded" style="top: -3px; bottom: -3px; left: calc(${X(b.ccr)}% - 1px); background: var(--warn)"></span></div>
+                <div class="flex justify-between text-[11px] mt-1.5" style="color: var(--muted)"><span>critical below ${fmt(b.ccr, 0)}%</span><span>each trove above ${fmt(b.mcr, 0)}%</span></div>
+                <p data-hint-body hidden class="rounded-xl p-3 mt-2 text-[12px] leading-relaxed" style="background: rgba(255,255,255,.04); color: var(--ink-2)">Liquity's thresholds for ${n}: every trove must stay above ${fmt(b.mcr, 0)}% (minimum ratio), below which it can be liquidated. If the branch as a whole falls below ${fmt(b.ccr, 0)}% (critical ratio), operations that would lower it further are restricted; below ${fmt(b.scr, 0)}% (shutdown ratio), the branch can be shut down.</p></div>`;
+        }
+        function renderBranches() {
+            const top = Math.max(...Object.values(M.branches).map(x => Math.max((x.ccr || 150) * 2, (x.tcr || 0) * 1.1)));
+            $('branchCards').innerHTML = Object.entries(M.branches).map(([n, b], i) => {
+                const cov = b.sp / b.debt * 100;
+                return `<div class="card"${i ? ' style="border-top: 0"' : ''}>
+                <div class="flex items-center justify-between"><span class="inline-flex items-center gap-2 text-[17px] font-semibold">${icon(n, 'w-6 h-6')}${n}</span><span class="text-[12px] mono" style="color: var(--muted)">${compact(b.debt)} BOLD debt</span></div>
+                <div class="tiles grid grid-cols-2 gap-3 mt-3">${fig('Share of redemptions', pct(b.share, 1))}${fig('Average rate', pct(b.avgRate))}
+                    ${fig('Pool yield, 30 days', pct(b.yield30), `now ${pct(b.yieldNow)}`)}${fig('Redeemed, 30 days', compact(b.redeemed30))}</div>
+                <div class="mt-3"><div class="flex justify-between text-[12px]" style="color: var(--muted)"><span>Stability Pool covers</span><span class="mono">${fmt(cov, 0)}% of debt</span></div>
+                    <div class="bar mt-1.5"><span style="width:${Math.min(cov, 100)}%; background:${BT_COLORS[n]}"></span></div></div>${ratioRow(n, b, top)}</div>`;
+            }).join('');
+            $('managers').innerHTML = M.monitor.managers.map((m, i) => `<button data-mgr="${i}" class="tap w-full text-left flex items-center gap-3 py-3 border-b border-white/5 last:border-0 -mx-1 px-1 rounded-xl">
+                ${icon(m.br, 'w-7 h-7')}
+                <div class="flex-1 min-w-0"><div class="text-[15px] font-medium truncate">${esc(m.op)}</div>
+                    <div class="text-[12px] truncate" style="color: var(--ink-2)">${esc(m.st || 'batch manager')} · <span class="mono">${pct(m.rate)}</span> · <span class="mono">${compact(m.debt)}</span></div>
+                    ${M.managers.find(x => x.addr === m.addr)?.busy ? `<div class="mt-1">${busyTag}</div>` : ''}</div>
+                ${scoreRing(m.score?.total ?? null)}</button>`).join('');
+        }
+
+        // Sheets: a redemption or a batch manager, sliding up; drag the handle down or tap outside to close
+        let sheetChart = null;
+        function openSheet(html, after) {
+            lpChatStop();
+            $('sheetBody').innerHTML = html; $('sheetBody').scrollTop = 0;
+            $('scrim').classList.add('on'); $('sheet').classList.add('on'); $('sheet').style.transform = ''; document.body.style.overflow = 'hidden';
+            if (after) requestAnimationFrame(after);
+        }
+        function closeSheet() { lpChatStop(); sheetBack = null; $('scrim').classList.remove('on'); $('sheet').classList.remove('on'); $('sheet').style.transform = ''; document.body.style.overflow = ''; if (sheetChart) { sheetChart.destroy(); sheetChart = null; } }
+        $('scrim').addEventListener('click', closeSheet);
+        // Pull down to close: on the handle, or anywhere on the sheet once its content is scrolled to the top (otherwise it scrolls as usual)
+        (() => { const s = $('sheet'), body = $('sheetBody'); let y0 = null, dy = 0, dragging = false;
+            s.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; dy = 0; dragging = false; }, { passive: true });
+            s.addEventListener('touchmove', e => {
+                if (y0 == null) return;
+                const d = e.touches[0].clientY - y0, onHandle = e.target.closest('#grab');
+                if (!dragging && d > 6 && (onHandle || body.scrollTop <= 0)) { dragging = true; s.style.transition = 'none'; y0 = e.touches[0].clientY; }
+                if (dragging) { dy = Math.max(0, e.touches[0].clientY - y0); s.style.transform = `translateY(${dy}px)`; e.preventDefault(); }
+            }, { passive: false });
+            s.addEventListener('touchend', () => { if (dragging) { s.style.transition = ''; if (dy > 90) closeSheet(); else s.style.transform = ''; } y0 = null; dy = 0; dragging = false; }); })();
+        const closeBtn = '<button onclick="closeSheet()" class="tap w-9 h-9 rounded-full grid place-items-center shrink-0" style="background: rgba(255,255,255,.07)" aria-label="Close"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+
+        // Served by the local Node server: its API; hosted (Vercel): the files published by the scheduled export under /data/
+        const DATA = { mobile: '/data/mobile.json', troves: '/data/troves.json', troveops: '/data/troveops.json', redemptions: '/data/redemptions.json', tx: h => `/data/tx/${h}.json` };
+        async function detectMode() {
+            try {
+                const r = await fetch('/api/status');
+                if (r.ok && (r.headers.get('content-type') || '').includes('json'))
+                    Object.assign(DATA, { mobile: '/api/mobile', troves: '/api/troves', troveops: '/api/troveops', redemptions: '/api/redemptions', tx: h => `/api/tx/${h}` });
+            } catch { /* no server: the published files */ }
+        }
+        // A redemption: its figures at once, the troves and per-branch figures from tx/<hash>.json
+        const detailCache = new Map();
+        let allReds = null, incidentTxs = null;
+        async function findRedemption(tx) {
+            allReds = allReds || await fetch(DATA.redemptions).then(r => r.json()).catch(() => []);
+            incidentTxs = incidentTxs || await fetch('/incidents.json').then(r => r.json()).then(j => new Set(j.incidents.flatMap(i => i.txs).map(t => t.toLowerCase()))).catch(() => new Set());
+            const r = allReds.find(x => x.tx_hash === tx); if (!r) return null;
+            const R = (v, d = 2) => v == null ? null : +v.toFixed(d), src = {}, pools = {};
+            for (const k of ['curve', 'uni_v3', 'uni_v4', 'aero', 'other', 'held']) if (r[`bold_src_${k}`]) src[k] = R(r[`bold_src_${k}`]);
+            for (const k of ['curve', 'uni_v3', 'uni_v4', 'aero']) if (r[`price_${k}`] != null) pools[k] = R(r[`price_${k}`], 5);
+            return { tx: r.tx_hash, ts: r.timestamp, block: r.block, bold: R(r.amount), branches: r.branches, sender: r.sender, to: r.to_address, via: r.via_contract,
+                price: R(r.market_price, 5), spread: R(r.spread, 4), gap: R(r.oracle_gap, 4), feePct: R(r.fee_pct, 4), feeUsd: R(r.fee_usd), gapUsd: R(r.gap_x_usd),
+                gross: R(r.gross_profit_usd), gas: R(r.gas_fee_usd), tip: R(r.builder_tip_usd), prioEth: R(r.priority_fee_eth, 6), cbEth: R(r.coinbase_tip_eth, 6),
+                net: R(r.net_profit_usd), margin: R(r.net_margin, 4), status: r.actual_status ?? null, flash: r.flash_venue ?? null, src, pools, exploit: incidentTxs.has(tx) ? 1 : 0 };
+        }
+        async function openRedemption(tx) {
+            const r = M.latest.find(x => x.tx === tx) || await findRedemption(tx); if (!r) return;
+            openSheet(redemptionHtml(r, null));
+            if (!detailCache.has(tx)) detailCache.set(tx, await fetch(DATA.tx(tx)).then(x => x.ok ? x.json() : { error: x.status }).catch(e => ({ error: e.message })));
+            if ($('sheet').classList.contains('on')) { const top = $('sheetBody').scrollTop; $('sheetBody').innerHTML = redemptionHtml(r, detailCache.get(tx)); $('sheetBody').scrollTop = top; }
+        }
+        document.addEventListener('click', e => { const b = e.target.closest('[data-tx]'); if (b) openRedemption(b.dataset.tx); });
+        function redemptionHtml(r, d) {
+            const discount = r.price == null ? null : r.bold * (1 - r.price), rest = r.gross == null || discount == null ? null : r.gross + r.feeUsd - discount;
+            const values = rest == null ? null : { gap: r.gapUsd ?? rest, trade: r.gapUsd == null ? 0 : rest - r.gapUsd, discount, fee: -r.feeUsd, tips: -r.tip, gas: -r.gas };
+            const srcTotal = Object.values(r.src).reduce((a, v) => a + v, 0);
+            let detail = '<p class="text-[13px] py-3" style="color: var(--muted)">Loading the troves…</p>';
+            if (d?.error) detail = '<p class="text-[13px] py-3" style="color: var(--bad)">Details could not be loaded.</p>';
+            else if (d) {
+                const by = [...new Set(d.events.map(e => e.branch))].map(b => { const ev = d.events.filter(e => e.branch === b), sum = k => ev.reduce((a, e) => a + (e[k] || 0), 0);
+                    return { b, bold: sum('bold_redeemed'), coll: sum('coll_sent'), fee: sum('coll_fee'), redemption: ev[0].redemption_price, market: ev[0].coll_market_price }; });
+                const troves = new Map();
+                for (const t of d.troves) { const k = `${t.branch}:${t.trove_id}`, x = troves.get(k) ?? { ...t, debt: 0, hits: 0 }; x.debt += t.debt_redeemed; x.hits++; troves.set(k, x); }
+                const list = [...troves.values()].sort((a, b) => b.debt - a.debt);
+                detail = `<div class="sec"><div class="sec-title">By branch</div>${by.map(x => `<div class="py-2 border-b border-white/5 last:border-0">
+                        <div class="flex items-center justify-between py-1"><span class="inline-flex items-center gap-2 font-semibold">${icon(x.b)}${x.b}</span><span class="mono font-semibold">${compact(x.bold)} BOLD</span></div>
+                        ${line('Collateral paid out', `${fmt(x.coll, 4)} ${x.b}`)}${line('Fee left in the troves', `${fmt(x.fee, 4)} ${x.b}`)}${line('Redemption price', usd(x.redemption, 2))}${line('Market price', usd(x.market, 2))}</div>`).join('')}</div>
+                    <div class="sec"><div class="sec-title">Troves hit · ${list.length}</div>${list.slice(0, 30).map(t => `<button data-trove="${t.trove_id}" class="tap w-full text-left flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 rounded-lg">
+                        ${icon(t.branch, 'w-5 h-5')}<div class="flex-1 min-w-0"><div class="text-[14px] mono">${short(t.trove_id)}${t.hits > 1 ? ` <span class="text-[10px] px-1 rounded" style="background: rgba(250,178,25,.12); color: var(--warn)">hit ${t.hits}×</span>` : ''}</div>
+                        <div class="text-[12px] truncate" style="color: var(--muted)">${pct(t.interest_rate)} · ${esc(t.batch_manager ? mgrName(t.batch_manager) : 'self-managed')}</div></div>
+                        <div class="text-[14px] mono">${compact(t.debt)} ›</div></button>`).join('')}${list.length > 30 ? `<p class="text-[12px] pt-2" style="color: var(--muted)">and ${list.length - 30} more on the desktop site</p>` : ''}</div>`;
+            }
+            const netTone = r.net == null ? 'var(--ink-1)' : r.net >= 0 ? 'var(--good)' : 'var(--bad)';
+            return `<div class="flex items-start justify-between gap-3">
+                    <div><div class="flex -space-x-1.5 mb-2">${r.branches.split(',').map(b => icon(b, 'w-6 h-6 ring-2 ring-[#0d1118]')).join('')}</div>
+                        <div class="text-[30px] font-semibold tracking-tight mono leading-none">${compact(r.bold)} <span class="text-[16px]" style="color: var(--muted)">BOLD</span></div>
+                        <div class="text-[13px] mt-1.5" style="color: var(--muted)">${when(r.ts)} · block ${fmt(r.block)} ${r.exploit ? exploitTag : ''}</div>
+                        <div class="text-[13px] mono mt-1 flex items-center" style="color: var(--ink-2)">Tx <a href="https://etherscan.io/tx/${r.tx}" target="_blank" rel="noopener" class="ml-1.5" style="color: #8bb8f0">${short(r.tx)}</a>${copyBtn(r.tx, 'transaction hash')}</div></div>${closeBtn}</div>
+                ${r.exploit ? `<div class="mt-3 text-[12px] rounded-lg px-3 py-2" style="background: rgba(251,113,133,.1); color: #fda4af">Redeemed during the K3 Capital exploit: BOLD taken from the sBOLD vault in the same transaction, not bought on the market.</div>` : ''}
+                <div class="grid grid-cols-2 gap-4 mt-5">
+                    <div><div class="label">Net profit</div><div class="text-[24px] font-semibold mono mt-1" style="color:${netTone}">${r.exploit ? '–' : signed(r.net)}</div><div class="text-[11px]" style="color: var(--muted)">${r.exploit ? 'not counted' : r.status === 'measured' ? 'measured' : 'estimate'}</div></div>
+                    <div><div class="label">Margin</div><div class="text-[24px] font-semibold mono mt-1">${r.exploit || r.margin == null ? '–' : pct(r.margin)}</div><div class="text-[11px]" style="color: var(--muted)">on the BOLD bought</div></div></div>
+                ${r.exploit || !values ? '' : `<div class="sec"><div class="sec-title">From edge to net</div>${profitBars(values, r.net)}</div>`}
+                <div class="sec"><div class="sec-title">Prices</div>
+                    ${line('BOLD price before', r.price == null ? '–' : `$${r.price.toFixed(4)}`)}${line('BOLD discount', pct(r.spread))}${line('Oracle gap', pct(r.gap))}${line('Redemption fee', pct(r.feePct))}
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-[12px]" style="color: var(--muted)">${Object.entries(r.pools).map(([k, v]) => `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:${POOLS[k][1]}"></span>${POOLS[k][0]} <span class="mono" style="color: var(--ink-2)">$${v.toFixed(4)}</span></span>`).join('')}</div></div>
+                <div class="sec"><div class="sec-title">Financing</div>
+                    ${line('Flash financing', esc(r.flash ? r.flash.replace(',', ' + ') : 'none detected')).replace('class="line"', srcTotal ? 'class="line" style="border-bottom: 0"' : 'class="line"')}
+                    ${srcTotal ? `<div class="py-2"><div class="flex h-2.5 rounded-full overflow-hidden gap-[2px]">${Object.entries(r.src).map(([k, v]) => `<span style="width:${v / srcTotal * 100}%; background:${POOLS[k][1]}"></span>`).join('')}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-[12px]" style="color: var(--muted)">${Object.entries(r.src).map(([k, v]) => `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:${POOLS[k][1]}"></span>${POOLS[k][0]} <span class="mono" style="color: var(--ink-2)">${fmt(v / r.bold * 100, 0)}%</span></span>`).join('')}</div>
+                        <div class="text-[11px] pt-1" style="color: var(--muted)">where the BOLD redeemed was bought</div></div>` : ''}
+                    ${line('Sender', `<span class="inline-flex items-center"><a href="https://etherscan.io/address/${r.sender}" target="_blank" rel="noopener" style="color: #8bb8f0">${short(r.sender)}</a>${copyBtn(r.sender, 'sender address')}</span>`)}
+                    ${r.via ? line('Through contract', `<a href="https://etherscan.io/address/${r.to}" target="_blank" rel="noopener" style="color: #8bb8f0">${short(r.to)}</a>`) : ''}</div>
+                ${detail}
+                <a href="https://etherscan.io/tx/${r.tx}" target="_blank" rel="noopener" class="tap mt-6 flex items-center justify-center gap-2 h-12 text-[15px] font-semibold" style="color: #8bb8f0">View on Etherscan ↗</a>`;
+        }
+        document.addEventListener('click', e => { const b = e.target.closest('[data-trove]'); if (b) { closeSheet(); search(b.dataset.trove); } });
+
+        // A batch manager: as the desktop's opened row (rate now, last 30 and 90 days, the score's parts) with its rate over 90 days
+        const SCORE_PARTS = [['rate', 'Rate', v => `${v > 0 ? '+' : ''}${fmt(v, 2)} points vs all borrowers`], ['fees', 'Fees', v => `${fmt(v, 2)}% of debt`],
+            ['chasing', 'Raises above others', v => `${fmt(v, 1)} per 30 days`], ['redeemed', 'Redemptions', v => `${fmt(v, 1)}% of debt redeemed`]];
+        function openManager(i) {
+            const m = M.monitor.managers[i], br = M.branches[m.br];
+            const allAvg = Object.values(M.branches).reduce((a, b) => a + b.avgRate * b.debt, 0) / Object.values(M.branches).reduce((a, b) => a + b.debt, 0);
+            const busy = M.managers.find(x => x.addr === m.addr)?.busy;
+            const html = `<div class="flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-3">${icon(m.br, 'w-9 h-9')}<div><div class="text-[19px] font-semibold">${esc(m.op)}</div>
+                        <div class="text-[13px]" style="color: var(--ink-2)">${esc(m.st || 'batch manager')} · ${m.br}</div></div></div>${closeBtn}</div>
+                <div class="text-[12px] mono mt-2" style="color: var(--muted)"><a href="https://etherscan.io/address/${m.addr}" target="_blank" rel="noopener" style="color: #8bb8f0">${short(m.addr)}</a> · registered ${new Date(m.registered).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' })}</div>
+                ${busy ? `<div class="mt-2">${busyTag}</div>` : ''}
+                <div class="sec"><div class="sec-title">Interest rate, last 90 days</div><div class="relative h-44"><canvas id="mgrChart"></canvas></div>
+                    <div class="flex flex-wrap gap-4 text-[11px] mt-2" style="color: var(--ink-2)"><span class="flex items-center gap-1.5"><span style="width:14px;height:2px;background:#3987e5"></span>This batch</span>
+                    <span class="flex items-center gap-1.5"><span style="width:14px;border-top:1px dashed var(--muted)"></span>${m.br} average</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:#d95926"></span>Redemption</span></div></div>
+                <div class="sec flex items-center gap-4">${scoreRing(m.score?.total ?? null, 'w-16 h-16', 'text-[20px]')}<div><div class="text-[15px] font-semibold">${m.score ? `Score ${m.score.total} of 100` : 'Not scored'}</div>
+                    <div class="text-[12px]" style="color: var(--muted)">${m.score ? 'last 90 days' : 'under 50K BOLD average debt in the last 90 days'}</div></div></div>
+                ${m.score ? `<div class="grid grid-cols-2 gap-x-5 gap-y-3 mt-3">${SCORE_PARTS.map(([k, l, f]) => { const p = m.score.parts[k]; return `<div><div class="flex justify-between text-[12px]"><span style="color: var(--ink-2)">${l}</span><span class="mono" style="color: var(--muted)">${fmt(p.points, 0)}/25</span></div>
+                    <div class="bar mt-1" style="height: 4px"><span style="width:${p.points / 25 * 100}%; background: #3987e5"></span></div><div class="mono text-[10px] mt-1" style="color: var(--muted)">${f(p.value)}</div></div>`; }).join('')}</div>` : ''}
+                <div class="sec"><div class="sec-title">Rate now</div>${line('Interest rate', `<b class="text-white">${pct(m.rate)}</b>`)}${line('Management fee, yearly', pct(m.fee))}
+                    ${line(`Average of all ${m.br} troves`, pct(br.avgRate))}${line('Average of all BOLD borrowers', pct(allAvg))}${line('Troves · debt', `${fmt(m.troves)} · ${compact(m.debt)} BOLD`)}</div>
+                <div class="sec"><div class="sec-title">Last 30 days</div>${line('Rate changes', `<b class="text-white">${fmt(m.d30.changes)}</b> · ${fmt(m.d30.early)} early`)}
+                    ${line('Upfront fees charged', m.d30.upfront ? `<b class="text-white">${compact(m.d30.upfront)} BOLD</b>` : 'none')}${line('Raises just above another batch', fmt(m.d30.leaps))}</div>
+                <div class="sec"><div class="sec-title">Last 90 days</div>${line('Redemptions reaching its troves', `<b class="text-white">${fmt(m.d90.hits)}</b>`)}
+                    ${line('BOLD redeemed', m.d90.redeemed ? `<b class="text-white">${compact(m.d90.redeemed)} BOLD</b> · ${pct(m.d90.avgDebt ? m.d90.redeemed / m.d90.avgDebt * 100 : 0)} of debt` : 'none')}
+                    ${m.d90.exploit ? line('Of which during the K3 Capital exploit', `${compact(m.d90.exploit)} BOLD`) : ''}${line('Average debt', `${compact(m.d90.avgDebt)} BOLD`)}</div>
+                <p class="text-[11px] mt-4" style="color: var(--muted)">Early: within 7 days of the last rate update, charging the batch an upfront fee. Raise just above another batch: to just above a batch that raised in the 3 hours before.</p>`;
+            openSheet(html, () => drawManager(m));
+        }
+        function drawManager(m) {
+            const end = M.monitor.end * 1000, from = end - 90 * 864e5, rateAt = t => (m.steps.filter(s => s[0] <= t).pop() || m.steps[0])[1];
+            if (sheetChart) sheetChart.destroy();
+            sheetChart = new Chart($('mgrChart'), { type: 'line', data: { datasets: [
+                { label: 'This batch', order: 2, stepped: 'after', borderColor: '#3987e5', backgroundColor: '#3987e5', borderWidth: 2, pointRadius: 0, data: [...m.steps.map(s => ({ x: s[0] * 1000, y: s[1] })), { x: end, y: m.steps.at(-1)[1] }] },
+                { label: 'Branch average', order: 3, borderColor: '#898781', backgroundColor: '#898781', borderWidth: 1, borderDash: [4, 4], pointRadius: 0, data: M.trends[m.br].filter(p => p[2] != null).map(p => ({ x: p[0] * 1000, y: p[2] })) },
+                { type: 'scatter', label: 'Redeemed', order: 1, data: m.hits.map(h => ({ x: h[0] * 1000, y: rateAt(h[0]), bold: h[1] })), pointBackgroundColor: '#d95926', pointBorderColor: '#0d1118', pointBorderWidth: 1.5, pointRadius: 4 }] },
+                options: { maintainAspectRatio: false, animation: false, interaction: { mode: 'nearest', intersect: false },
+                    plugins: { legend: { display: false }, tooltip: { ...DOT_TIP, callbacks: { ...DOT_TIP.callbacks, title: i => i.length ? new Date(i[0].parsed.x).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
+                        label: i => i.dataset.type === 'scatter' ? ` Redeemed ${compact(i.raw.bold)} BOLD` : ` ${i.dataset.label}: ${fmt(i.parsed.y, 2)}%` } } },
+                    scales: { x: { type: 'linear', min: from, max: end, grid: { display: false }, ticks: { color: '#898781', maxTicksLimit: 4, font: { size: 10 }, callback: v => new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } },
+                        y: { beginAtZero: true, grid: { color: '#1f242c' }, border: { display: false }, ticks: { color: '#898781', maxTicksLimit: 5, font: { size: 10 }, callback: v => v + '%' } } } } });
+        }
+        document.addEventListener('click', e => { const b = e.target.closest('[data-mgr]'); if (b) openManager(+b.dataset.mgr); });
+
+
+        // Branch trends (as on the desktop, simplified): pool coverage, share of each redemption or average rate per branch, over 7, 30 or 90 days
+        let btView = 'cover', btRange = 30, btChart = null;
+        const BT_SUB = { cover: 'Each branch\'s Stability Pool as a share of its debt. Below 100%, the branch takes part in redemptions.',
+            share: 'The share of every redemption each branch takes: its debt not covered by its pool, over all branches\' uncovered debt.',
+            rate: 'The average interest rate borrowers pay on each branch, weighted by debt (batch managers\' fees not included).' };
+        function btValues(br) {
+            const all = Object.keys(M.trends), ps = M.trends[br];
+            return ps.map((p, i) => {
+                if (btView === 'cover') return p[1];
+                if (btView === 'rate') return p[2];
+                const unb = all.map(b => { const q = M.trends[b][i]; return q && q[1] != null ? Math.max(q[3] * (1 - q[1] / 100), 0) : 0; }), tot = unb.reduce((a, v) => a + v, 0);
+                const debts = all.map(b => M.trends[b][i]?.[3] || 0), dt = debts.reduce((a, v) => a + v, 0);
+                return tot ? unb[all.indexOf(br)] / tot * 100 : dt ? debts[all.indexOf(br)] / dt * 100 : null;
+            });
+        }
+        function renderTrends() {
+            $('btSub').innerText = BT_SUB[btView];
+            segSwitch($('btView'), [['cover', 'Pool coverage'], ['share', 'Redemption share'], ['rate', 'Average rate']], btView, 'btview');
+            segSwitch($('btRange'), [[7, '7D'], [30, '30D'], [90, '90D']], btRange, 'btrange');
+            const end = M.monitor.end * 1000, from = end - btRange * 864e5, unit = v => btView === 'rate' ? `${fmt(v, 2)}%` : `${fmt(v, 0)}%`;
+            const datasets = Object.keys(M.trends).map(br => { const ys = btValues(br);
+                return { label: br, borderColor: BT_COLORS[br], backgroundColor: BT_COLORS[br], borderWidth: 2, pointRadius: 0, pointHitRadius: 6, cubicInterpolationMode: btRange === 90 ? 'monotone' : 'default', tension: btRange === 90 ? .3 : 0,
+                    data: M.trends[br].map((p, i) => ({ x: p[0] * 1000, y: ys[i] })).filter(p => p.x >= from && p.y != null) }; });
+            if (btView === 'cover') datasets.push({ label: '100%', ref: true, borderColor: '#898781', borderWidth: 1, borderDash: [4, 4], pointRadius: 0, data: [{ x: from, y: 100 }, { x: end, y: 100 }] });
+            if (btChart) btChart.destroy();
+            btChart = new Chart($('btChart'), { type: 'line', data: { datasets }, options: { maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { display: false }, tooltip: { ...DOT_TIP, filter: i => !i.dataset.ref, callbacks: { ...DOT_TIP.callbacks, title: i => i.length ? new Date(i[0].parsed.x).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '', label: i => ` ${i.dataset.label}: ${unit(i.parsed.y)}` } } },
+                scales: { x: { type: 'linear', min: from, max: end, grid: { display: false }, ticks: { color: '#898781', maxTicksLimit: 4, font: { size: 10 }, callback: v => new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } },
+                    y: { beginAtZero: true, ...(btView === 'share' ? { max: 100 } : {}), grid: { color: '#1f242c' }, border: { display: false }, ticks: { color: '#898781', maxTicksLimit: 5, font: { size: 10 }, callback: v => v + '%' } } } } });
+            $('btLegend').innerHTML = datasets.filter(d => !d.ref).map(d => `<span class="inline-flex items-center gap-1.5"><span style="width:14px;height:2.5px;border-radius:2px;background:${d.borderColor}"></span>${d.label} <span class="mono" style="color: var(--muted)">${unit(d.data.at(-1)?.y)}</span></span>`).join('')
+                + (btView === 'cover' ? `<span class="inline-flex items-center gap-1.5" style="color: var(--muted)"><span style="width:14px;border-top:1px dashed #898781"></span>100%</span>` : '');
+        }
+        document.addEventListener('click', e => {
+            const v = e.target.closest('[data-btview]'), r = e.target.closest('[data-btrange]');
+            if (v) { btView = v.dataset.btview; renderTrends(); } if (r) { btRange = +r.dataset.btrange; renderTrends(); }
+        });
+
+        // Troves: the overview figures, and the front of each branch's queue
+        let queueBranch = 0, queueShown = 10; let findBy = 'id', homeFindBy = 'id', findTimer = null;   // Troves: the search by ID or address, debt or collateral
+        async function renderTroves() {
+            findSwitch(); await loadTroves();
+            const s = TV.s, active = TV.troves.filter(t => t.status === 1), zombies = TV.troves.filter(t => t.status === 4);
+            const debts = active.map(t => t.debt).sort((a, b) => a - b), mid = debts.length >> 1, median = debts.length % 2 ? debts[mid] : (debts[mid - 1] + debts[mid]) / 2;
+            const change = s.past ? active.length - s.past.active : null, branches = s.branches;
+            $('troveStats').innerHTML = fig('Active troves', fmt(active.length), branches.map(b => `${b.name} ${fmt(active.filter(t => t.branch === b.index).length)}`).join(' · '))
+                + fig('Zombie troves', fmt(zombies.length), 'redeemed below 2,000 BOLD; out of the queue')
+                + fig('Change in 30 days', change == null ? '–' : `${change > 0 ? '+' : ''}${fmt(change / s.past.active * 100, 1)}%`, change == null ? '' : `${change > 0 ? '+' : ''}${fmt(change)} from ${fmt(s.past.active)} active`)
+                + fig('Median trove', `${compact(median)}`, 'BOLD debt');
+            $('queueBranch').innerHTML = branches.map(b => `<button class="tap chip inline-flex items-center gap-1.5 ${b.index === queueBranch ? 'chip-on' : ''}" data-qbranch="${b.index}">${icon(b.name, 'w-4 h-4')}${b.name}</button>`).join('');
+            const all = TV.troves.filter(t => t.branch === queueBranch && t.position != null).sort((a, b) => a.position - b.position), q = all.slice(0, queueShown);
+            $('queueMore').classList.toggle('hidden', queueShown >= all.length);
+            $('queueMore').innerText = `Load more · ${fmt(all.length - q.length)} left`;
+            const dot = t => ({ red: 'var(--bad)', amber: 'var(--warn)', green: 'var(--good)' })[bandOf(t)];
+            $('queueList').innerHTML = q.map(t => `<button data-tsheet="${t.branch}:${t.id}" class="tap w-full text-left flex items-center gap-3 py-3 border-b border-white/5 last:border-0 rounded-xl">
+                <span class="w-6 text-[12px] mono text-right shrink-0" style="color: var(--muted)">${t.position}</span><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${dot(t)}"></span>
+                <div class="flex-1 min-w-0"><div class="text-[14px] mono flex items-center gap-1.5">${short(t.id)}${t.refills ? refillsTag : ''}${t.status === 4 ? ' <span class="text-[10px] uppercase px-1 rounded" style="background: rgba(255,255,255,.06); color: var(--muted)">zombie</span>' : ''}</div>
+                    <div class="text-[12px] truncate" style="color: var(--muted)">${pct(t.rate)} · ${esc(t.batchManager ? mgrName(t.batchManager) : 'self-managed')}</div></div>
+                <div class="text-right"><div class="text-[14px] mono">${compact(t.debt)}</div><div class="text-[11px] mono" style="color: var(--muted)">${compact(t.front)} in front</div></div></button>`).join('');
+        }
+        document.addEventListener('click', e => {
+            const b = e.target.closest('[data-qbranch]'); if (b) { queueBranch = +b.dataset.qbranch; queueShown = 10; renderTroves(); }
+            if (e.target.closest('#queueMore')) { queueShown += 10; renderTroves(); }
+            if (e.target.closest('[data-tghow]')) return;
+            const t = e.target.closest('[data-tsheet]');
+            if (e.target.closest('[data-demo-tg]')) e.preventDefault();
+            if (t) { demoStop(); const [br, id] = t.dataset.tsheet.split(':'), tr = TV.troves.find(x => x.branch === +br && x.id === id);
+                if (tr) openSheet(troveCard(tr, { sheet: true })); }
+        });
+
+        // Find a trove, the example (as on the desktop's home page, with what the phone shows): the trove ID types into the field, its card
+        // appears with the debt in front counting up, the Telegram button lights up and the bot's confirmation slides in. Three real troves,
+        // one per band; it stops when the field is used, when the Overview is left or the page is hidden, and a tap opens the trove
+        let demoRunning = false, demoTimers = [], demoIdx = -1, demoList = null;
+        const demoLater = (ms, f) => demoTimers.push(setTimeout(f, ms));
+        const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        function demoExamples() {
+            if (demoList || !TV) return demoList;
+            const open = TV.troves.filter(t => t.status === 1 && t.debt > 5000 && t.debt < 2e6);
+            demoList = ['red', 'amber', 'green'].map(band => open.filter(t => bandOf(t) === band).sort((a, b) => b.debt - a.debt)[1] || open.find(t => bandOf(t) === band)).filter(Boolean);
+            return demoList;
+        }
+        function countUp(el, to, ms = 900) {
+            if (REDUCE) { el.textContent = compact(to); return; }
+            const t0 = performance.now(), step = now => { if (!demoRunning) return; const k = Math.min((now - t0) / ms, 1), e = 1 - (1 - k) ** 3;
+                el.textContent = compact(to * e); if (k < 1) requestAnimationFrame(step); };
+            requestAnimationFrame(step);
+        }
+        // The example cards, all three in one grid cell: the cell is as tall as the tallest of them (whatever the fonts and the width),
+        // only the current one shows, and the next one fades in over it, so neither the card nor the page below ever moves
+        function demoBuild() {
+            const list = demoExamples();
+            $('demo').innerHTML = `<div class="grid demo-in">${list.map((t, k) => `<div role="button" tabindex="-1" data-tsheet="${t.branch}:${t.id}" data-demo="${k}" class="tap block w-full text-left rounded-2xl p-4 cursor-pointer"
+                style="grid-area: 1 / 1; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.07); opacity: 0; visibility: hidden; transition: opacity .4s ease, visibility .4s">${troveCard(t, { demo: true })}</div>`).join('')}</div>`;
+        }
+        function demoNext() {
+            const list = demoExamples(); if (!demoRunning || !list?.length) return;
+            demoIdx = (demoIdx + 1) % list.length; const t = list[demoIdx], input = $('homeSearch').q, text = `${t.id.slice(0, 22)}…`;
+            let n = 0; input.placeholder = '';
+            const type = () => { if (!demoRunning) return; input.placeholder = text.slice(0, ++n); n < text.length ? demoLater(REDUCE ? 0 : 26, type) : demoLater(300, show); };
+            const show = () => {
+                if (!demoRunning) return;
+                if (!$('demo').querySelector('[data-demo]')) demoBuild();
+                const cards = [...$('demo').querySelectorAll('[data-demo]')], card = cards[demoIdx];
+                cards.forEach(c => { const on = c === card; c.style.opacity = on ? 1 : 0; c.style.visibility = on ? 'visible' : 'hidden'; c.tabIndex = on ? 0 : -1;
+                    c.querySelector('[data-demo-tg]')?.classList.remove('tg-pulse'); });
+                const c = card.querySelector('[data-count]'); c.textContent = '0'; countUp(c, +c.dataset.count);
+                demoLater(1500, () => card.querySelector('[data-demo-tg]')?.classList.add('tg-pulse'));
+                demoLater(REDUCE ? 8000 : 6800, () => { input.placeholder = '0x…'; demoLater(400, demoNext); });
+            };
+            type();
+        }
+        function demoStart() { if (demoRunning || homeFindBy !== 'id' || !demoExamples()?.length || $('homeSearch').q.value || document.activeElement === $('homeSearch').q || !$('v-home').classList.contains('on')) return; demoRunning = true; demoNext(); }
+        function demoStop() { demoRunning = false; demoTimers.forEach(clearTimeout); demoTimers = []; if ($('homeSearch')) $('homeSearch').q.placeholder = FIND[homeFindBy][0]; }
+        // the field in use stops it: a touch or press on it (some phones send no focus event first), focus, or typing
+        for (const ev of ['pointerdown', 'touchstart', 'focus', 'input']) $('homeSearch').q.addEventListener(ev, demoStop, { passive: true });
+        $('homeSearch').q.addEventListener('blur', () => { if (!$('homeSearch').q.value) setTimeout(demoStart, 1500); });
+        document.addEventListener('visibilitychange', () => document.hidden ? demoStop() : demoStart());
+        // My trove
+        async function loadTroves() {
+            if (TV) return TV;
+            const [s, ops] = await Promise.all([fetch(DATA.troves).then(r => r.json()), fetch(DATA.troveops).then(r => r.ok ? r.json() : null).catch(() => null)]);
+            const branches = s.branches.map(b => ({ ...b, unbacked: Math.max(b.debt - b.spDeposits, 0) }));
+            const tu = branches.reduce((a, b) => a + b.unbacked, 0), td = branches.reduce((a, b) => a + b.debt, 0);
+            branches.forEach(b => { b.share = tu ? b.unbacked / tu : b.debt / td; });
+            const troves = s.troves.map(t => ({ ...t, b: branches[t.branch] }));
+            for (const b of branches) {
+                const zombie = b.lastZombie ? troves.find(t => t.branch === b.index && t.id === b.lastZombie) : null;
+                const q = [...(zombie ? [zombie] : []), ...troves.filter(t => t.branch === b.index && t.queue != null).sort((x, y) => x.queue - y.queue)];
+                let front = 0; q.forEach((t, i) => { t.position = i + 1; t.front = front; front += t.debt; }); b.active = q.length; b.queue = q;
+            }
+            troves.forEach(t => { t.system = t.front == null ? null : t.b.share > 0 ? t.front / t.b.share : Infinity; });
+            const fees = new Map(s.managers.map(m => [`${m.branch}:${m.address.toLowerCase()}`, m.fee]));
+            troves.forEach(t => { t.ops = ops?.troves?.[`${t.branch}:${t.id}`] || null; t.fee = t.batchManager ? fees.get(`${t.branch}:${t.batchManager.toLowerCase()}`) || 0 : 0;
+                t.refills = !!t.ops && t.ops.r30 >= 10000 && t.ops.b30 >= 0.8 * t.ops.r30; });
+            TV = { s, troves, weeks: s.weeks || { typical: M.activity.typicalWeek, busiest: M.activity.busiestWeek } }; return TV;
+        }
+        const BANDS = { red: ['Within a typical week', 'var(--bad)', 'rgba(251,113,133,.1)'], amber: ['Within the busiest week', 'var(--warn)', 'rgba(250,178,25,.1)'], green: ['Beyond the busiest week', 'var(--good)', 'rgba(52,211,153,.1)'] };
+        const bandOf = t => t.system == null || !isFinite(t.system) || t.system > TV.weeks.busiest ? 'green' : t.system > TV.weeks.typical ? 'amber' : 'red';
+        const daysAgo = ts => { if (!ts) return '–'; const d = (Date.now() / 1000 - ts) / 86400; return d < 1 ? 'today' : d < 2 ? 'yesterday' : `${fmt(Math.floor(d))} days ago`; };
+        // Liquity's zappers (desktop: KNOWN_MANAGERS), named when they hold a trove's permissions
+        const ZAPPERS = { '0xdccbd7a365aee086aa3b4ede8afe895b20770ae3': 'Liquity leverage zapper (WETH)', '0xe85230de04147c4ea363b21cdb801c1c19df0a56': 'Liquity leverage zapper (wstETH)',
+            '0x75036b1d6de5665c60f5c33bb4a64e8e123211a2': 'Liquity leverage zapper (rETH)', '0x7022a4f4a2b9f0c30a5eb0b0073a8bb4c8e70c1f': 'Liquity WETH zapper' };
+        const who = (a, t) => !a ? null : ZAPPERS[a.toLowerCase()] || (a.toLowerCase() === (t.owner || '') ? 'the owner' : short(a));
+        // The rate that leaves a given amount of the branch's debt in front, and its extra cost a year (desktop: rateLadder)
+        function rateFor(t, target) {
+            const others = t.b.queue.filter(x => x !== t), total = others.reduce((a, x) => a + x.debt, 0);
+            if (target >= total) return null;
+            let cum = 0, k = 0; while (k < others.length && cum + others[k].debt < target) cum += others[k++].debt;
+            const needed = Math.max(others[k].rate + 0.01, 0.5);
+            return { needed, already: t.front >= target, extra: Math.max(needed - t.rate, 0) * t.debt / 100 };
+        }
+        // The branch's queue as on the desktop: its troves in redemption order, each block as wide as its debt (batches blue, single troves
+        // grey, dimmer behind this trove, this trove in its band's colour), a strip coloured by how far a typical week (TW) and the busiest
+        // week (BW) of redemptions reach on this branch, and their markers. Scaled to the farther of the trove's end and the busiest week.
+        // Markers' text goes on whichever side of the triangle fits; the busiest week drops a row when it would run into this trove's
+        const qPlace = (barW, p, txt) => { const x = p / 100 * barW, w = txt.length * 6.1;
+            return x + 9 + w <= barW ? { side: 'right', lo: x - 5, hi: x + 9 + w } : x - 9 - w >= 0 ? { side: 'left', lo: x - 9 - w, hi: x + 5 } : { side: '', lo: 0, hi: barW }; };
+        function queueBar(t) {
+            const b = t.b, band = BANDS[bandOf(t)], typ = TV.weeks.typical * b.share, busy = TV.weeks.busiest * b.share;
+            const total = b.queue.reduce((a, x) => a + x.debt, 0), D = Math.min(total, Math.max(t.front + t.debt, busy) * 1.12) || 1;
+            const X = v => Math.min(Math.max(v / D * 100, 0), 100), barW = Math.min(innerWidth, 640) - 40;
+            const segs = []; let acc = 0;
+            for (const x of b.queue) {
+                if (acc >= D) break;
+                const kind = x === t ? 'self' : x.batchManager ? 'batch' : 'single', behind = acc > t.front, small = kind === 'single' && x.debt < D * 0.015, last = segs[segs.length - 1];
+                if (last && last.kind === kind && last.behind === behind && (kind === 'batch' ? last.m === x.batchManager : kind === 'single' && small && last.small)) last.debt += x.debt;
+                else segs.push({ kind, m: x.batchManager, x0: acc, debt: x.debt, behind, small });
+                acc += x.debt;
+            }
+            const fill = g => g.kind === 'self' ? band[1] : g.kind === 'batch' ? (g.behind ? 'rgba(57,135,229,.22)' : 'rgba(57,135,229,.6)') : (g.behind ? 'rgba(158,166,174,.33)' : '#9ea6ae');
+            const blocks = segs.map(g => { const w = Math.max(X(g.x0 + g.debt) - X(g.x0), g.kind === 'self' ? 1 : 0);
+                return `<div class="absolute inset-y-0" style="left:${Math.min(X(g.x0), 100 - w)}%; width:${w}%; background:${fill(g)}${w / 100 * barW >= 3 ? '; box-shadow: inset -1px 0 0 #0d1118' : ''}${g.kind === 'self' ? '; z-index: 1' : ''}"></div>`; }).join('');
+            const zone = (a, z, c) => z > a ? `<div class="absolute inset-y-0" style="left:${a}%; width:${z - a}%; background:${c}; opacity: .85"></div>` : '';
+            const TW = 'var(--bad)', BW = 'var(--warn)', pT = X(typ), pB = X(busy);
+            const selfW = Math.max(X(t.front + t.debt) - X(t.front), 1), pS = Math.min(X(t.front), 100 - selfW) + selfW / 2;
+            const tT = `TW ${compact(typ)}`, tB = `BW ${compact(busy)}`, tS = t.front === 0 ? 'this trove · first in line' : 'this trove';
+            const mT = qPlace(barW, pT, tT), mB = qPlace(barW, pB, tB), mS = qPlace(barW, pS, tS);
+            const clash = mB.lo < mS.hi + 8 && mS.lo < mB.hi + 8, R1 = 50, busyTop = clash ? R1 + 16 : R1, height = busyTop + 16;
+            const marker = (p, top, sym, m, txt, color, ink) => `<div class="absolute text-[12px] leading-none" style="left: clamp(6px, ${p}%, calc(100% - 6px)); top:${top}px; transform: translateX(-50%); color:${color}; z-index: 3">${sym}</div>
+                <div class="absolute text-[10px] leading-none mono whitespace-nowrap" style="top:${top + 1}px; color:${ink}; ${m.side === 'right' ? `left: calc(${p}% + 9px)` : m.side === 'left' ? `right: calc(${100 - p}% + 9px)` : `left:${p}%; transform: translateX(-${p}%); top:${top + 14}px`}">${txt}</div>`;
+            const vline = (p, top, bottom, color) => `<div class="absolute" style="left: calc(${p}% - 1px); width: 2px; top:${top}px; height:${bottom - top}px; background:${color}; box-shadow: 0 0 0 1px rgba(7,9,13,.75); z-index: 2"></div>`;
+            const swatch = c => `<span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${c}"></span>`;
+            return `<div class="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] mb-3" style="color: var(--ink-2)">
+                    <span class="inline-flex items-center gap-1.5">${swatch('rgba(57,135,229,.75)')}batch</span><span class="inline-flex items-center gap-1.5">${swatch('#9ea6ae')}single troves</span>
+                    <span class="inline-flex items-center gap-1.5">${swatch(band[1])}this trove</span>
+                    <span class="inline-flex items-center gap-1.5"><span style="color:${TW}">▼</span>TW · typical week</span><span class="inline-flex items-center gap-1.5"><span style="color:${BW}">▲</span>BW · busiest week</span></div>
+                <div class="relative" style="height:${height}px">
+                    ${marker(pT, 0, '▼', mT, tT, TW, 'var(--ink-2)')}${vline(pT, 12, 46, TW)}
+                    <div class="absolute inset-x-0 rounded overflow-hidden" style="top: 16px; height: 22px; background: rgba(255,255,255,.04)">${blocks}</div>
+                    <div class="absolute inset-x-0 rounded-full overflow-hidden" style="top: 42px; height: 4px">${zone(0, pT, 'var(--bad)')}${zone(pT, pB, 'var(--warn)')}${zone(pB, 100, 'var(--good)')}</div>
+                    ${vline(pB, 16, clash ? 48 : busyTop, BW)}${marker(pB, busyTop, '▲', mB, tB, BW, 'var(--ink-2)')}${marker(pS, R1, '▲', mS, tS, band[1], band[1])}</div>
+                <div class="flex justify-between text-[10px] mono mt-1.5" style="color: var(--muted)"><span>next in line</span><span>0–${compact(D)} BOLD${D < total - 1 ? ` of ${compact(total)}` : ''}</span></div>`;
+        }
+        // How many troves of the branch a given amount of redemptions would reach
+        const reached = (b, v) => b.queue.filter(x => x.front < v).length;
+        const words = v => `<span class="font-sans text-[14px]">${v}</span>`;   // a value in words, not in the figures' monospace
+        const refillsTag = '<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style="background: rgba(217,89,38,.16); color: #f0a07c">refills</span>';
+        // A trove, as a simplified version of the desktop's details: its band and place in the queue, rate scenarios (self-managed troves),
+        // its position, the batch manager, the last 30 days and who may act on it; alerts and share. opts.sheet: in a sheet (close button);
+        // opts.demo: the Overview's example (band, a few rows and the Telegram button)
+        function troveCard(t, opts = {}) {
+            const band = BANDS[bandOf(t)], tg = telegramCode(t.branch, t.id), weeks = isFinite(t.system) ? t.system / TV.weeks.typical : null, b = t.b;
+            const price = b.oraclePrice, collUsd = t.coll * (b.marketPrice || price), cr = t.coll * price / t.debt * 100, liq = t.debt * b.mcr / t.coll, drop = (1 - liq / price) * 100;
+            const lev = collUsd > t.debt ? collUsd / (collUsd - t.debt) : null;
+            const head = `<div class="flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-2.5 min-w-0">${icon(b.name, 'w-8 h-8')}<div class="min-w-0">
+                        <div class="text-[17px] font-semibold flex items-center">Trove <span class="mono ml-1.5">${short(t.id)}</span>${opts.demo ? '' : copyBtn(t.id, 'trove ID')}</div>
+                        <div class="text-[12px] flex items-center gap-2" style="color: var(--muted)">${b.name} · ${t.status === 4 ? 'zombie trove' : 'open'}${t.refills && !opts.demo ? refillsTag : ''}</div></div></div>
+                    ${opts.sheet ? closeBtn : ''}</div>`;
+            const bandBox = t.front == null ? '' : `<div class="band rounded-2xl p-4" style="background:${band[2]}; border: 1px solid ${band[1]}">
+                    <div class="text-[13px] font-semibold" style="color:${band[1]}">${band[0]}</div>
+                    <div class="text-[26px] font-semibold mono mt-1"><span data-count="${t.front}">${compact(t.front)}</span> BOLD</div>
+                    <div class="text-[13px] mt-0.5" style="color: var(--ink-2)">${t.front === 0 ? `in front of it: first in line on ${b.name}. The next redemption that reaches the branch starts with it.` : `in front of it on ${b.name}`}${t.front === 0 ? '' : isFinite(t.system) ? ` · about ${compact(t.system)} BOLD redeemed across all branches first (${fmt(weeks, 1)}× a typical week)` : ' · the branch takes no part in redemptions now'}</div></div>`;
+            const tgBtn = `<a href="${opts.demo ? '#' : `https://t.me/${TELEGRAM_BOT}?start=${tg}`}" ${opts.demo ? 'data-demo-tg' : ''} class="tap inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-[15px] font-semibold" style="background: linear-gradient(135deg, #229ed9, #2aabee); color: #fff; box-shadow: 0 8px 22px -8px rgba(34,158,217,.7)">
+                    <svg viewBox="0 0 24 24" class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>Get alerts on Telegram</a>`;
+            const tgBlock = `<div class="flex flex-col items-center gap-2.5">${tgBtn}<button type="button" data-tghow class="tap text-[12px] underline decoration-dotted underline-offset-4" style="color: var(--muted)">How do Telegram alerts work?</button></div>`;
+            if (opts.demo) return `<div class="space-y-4">${head}${bandBox}<div>${line('Position in the queue', `${fmt(t.position)} of ${fmt(b.active)}`)}${line('Debt', `${compact(t.debt)} BOLD`)}${line('Interest rate', pct(t.rate))}</div>${tgBlock}</div>`;
+
+            // place in the queue, and (self-managed) the rate that would move it past a typical week, past the busiest week, to the top
+            let scenarios = '';
+            if (!t.batchManager && t.status === 1 && t.front != null && isFinite(t.system)) {
+                const rows = [['var(--warn)', 'Past a typical week', TV.weeks.typical * b.share], ['var(--good)', 'Past the busiest week', TV.weeks.busiest * b.share]]
+                    .map(([c, l, target]) => [c, l, rateFor(t, target)]).filter(r => r[2]);
+                const others = b.queue.filter(x => x !== t), topRate = others.length ? Math.max(...others.map(x => x.rate)) + 0.01 : null;
+                if (topRate != null) rows.push(['var(--good)', 'Top of the queue', { needed: topRate, already: t.position === b.active, extra: Math.max(topRate - t.rate, 0) * t.debt / 100 }]);
+                scenarios = rows.length ? `<div class="mt-7"><div class="text-[13px] font-semibold mb-1">Rate scenarios</div>
+                    ${rows.map(([c, l, r]) => line(`<span class="inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${c}"></span>${l}</span>`,
+                        r.already ? '<span style="color: var(--good)">already past</span>' : `${pct(r.needed)} · +${compact(r.extra)}/yr`)).join('')}
+                    <p class="text-[11px] mt-1.5" style="color: var(--muted)">The lowest rate for each, with the queue as it is now, and the extra interest it costs per year. A guide, not a guarantee.</p></div>` : '';
+            }
+            let batch = '';
+            if (t.batchManager) {
+                const mi = M.monitor.managers.findIndex(m => m.addr === t.batchManager.toLowerCase() && m.br === b.name), m = M.monitor.managers[mi];
+                const members = b.queue.filter(x => x.batchManager === t.batchManager), k = members.indexOf(t);
+                batch = `<div class="sec"><div class="sec-title">Batch manager</div>
+                    <${mi >= 0 ? `button data-mgr="${mi}"` : 'div'} class="tap w-full text-left flex items-center gap-3 py-1 rounded-xl">
+                        <div class="flex-1 min-w-0"><div class="text-[15px] font-medium">${esc(mgrName(t.batchManager))}</div>
+                        <div class="text-[12px]" style="color: var(--muted)">${pct(t.rate)} · fee ${pct(t.fee)} a year${mi >= 0 ? ' · tap for the Monitor' : ''}</div></div>
+                        ${m ? scoreRing(m.score?.total ?? null, 'w-11 h-11', 'text-[13px]') : ''}</${mi >= 0 ? 'button' : 'div'}>
+                    ${k >= 0 ? `<p class="text-[12px] mt-2" style="color: var(--ink-2)">Trove ${fmt(k + 1)} of ${fmt(members.length)} in its batch, with ${compact(members.slice(0, k).reduce((a, x) => a + x.debt, 0))} BOLD of the batch ahead of it.</p>` : ''}</div>`;
+            }
+            const o = t.ops;
+            const activity = o ? `<div class="sec"><div class="sec-title">Last 30 days</div>
+                    ${line('Borrowed', `${compact(o.b30)} BOLD`)}${line('Redeemed', `${compact(o.r30)} BOLD`)}${line('Collateral added', `${fmt(o.c30, 3)} ${b.name}`)}
+                    ${line('Last borrowing', o.lastBorrow ? daysAgo(o.lastBorrow / 1000) : 'none recorded')}
+                    ${t.refills ? `<p class="text-[12px] mt-2" style="color: #f0a07c">Refills: borrowed back most of what was redeemed in the last 30 days.</p>` : ''}</div>` : '';
+            const nextFree = (t.lastRateChange || 0) + 7 * 86400;
+            const info = `<button type="button" aria-label="What this shows" aria-expanded="false" onclick="const p = this.closest('[data-q]').querySelector('[data-qinfo]'); p.hidden = !p.hidden; this.setAttribute('aria-expanded', !p.hidden)" class="tap w-6 h-6 -my-1 rounded-full grid place-items-center text-[12px] font-semibold" style="background: rgba(255,255,255,.07); color: var(--ink-2)">i</button>`;
+            const queue = t.front == null ? `<div class="rounded-2xl p-4 text-[13px]" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); color: var(--ink-2)">Not in the redemption queue: zombie troves are skipped by redemptions until their debt is brought back to at least 2,000 BOLD.</div>`
+                : !isFinite(t.system) ? `<div class="sec"><div class="sec-title">Place in the redemption queue</div>${line('Position', `${fmt(t.position)} of ${fmt(b.active)}`)}
+                    <p class="text-[12px] mt-1.5" style="color: var(--muted)">The ${b.name} branch's Stability Pool covers its debt, so the branch takes no part in redemptions now.</p></div>`
+                : `<div data-q class="sec"><div class="flex items-center justify-between mb-3"><div class="sec-title" style="margin: 0">Place in the ${b.name} redemption queue</div>${info}</div>
+                    <div data-qinfo hidden class="rounded-xl p-3 mb-3 text-[12px] leading-relaxed space-y-1.5" style="background: rgba(255,255,255,.04); color: var(--ink-2)">
+                        <p>Every trove of the ${b.name} branch in redemption order, next in line on the left; each block is as wide as its debt. Blue: batches; grey: single troves; dimmer once behind this trove.</p>
+                        <p><b style="color: var(--bad)">TW, a typical week:</b> the average 7-day redemption volume of the last 180 days, ${compact(TV.weeks.typical)} BOLD. ${b.name} takes ${fmt(b.share * 100, 0)}% of each redemption now, so ${compact(TV.weeks.typical * b.share)} on this branch.</p>
+                        <p><b style="color: var(--warn)">BW, the busiest week:</b> the largest 7-day volume of the last 180 days, ${compact(TV.weeks.busiest)} BOLD, ${compact(TV.weeks.busiest * b.share)} on this branch.</p>
+                        <p>The strip under the bar: red is reached by a typical week, amber only by the busiest, green by neither. A picture of today, not a forecast: the queue changes, above all when batch managers change their rates.</p></div>
+                    ${queueBar(t)}
+                    <div class="mt-3">${line('Position', `${fmt(t.position)} of ${fmt(b.active)}`)}
+                        ${[['TW', 'A typical week', TV.weeks.typical], ['BW', 'The busiest week', TV.weeks.busiest]].map(([k, l, v]) => { const n = reached(b, v * b.share);
+                            return line(`${l} <span class="mono text-[12px]">${compact(v * b.share)}</span>`, words(`reaches ${n >= b.active ? 'every trove' : `the first ${fmt(n)}`}`)); }).join('')}</div>
+                    ${scenarios}</div>`;
+            const share = `https://www.boldbot.io/troves?trove=${encodeURIComponent(b.name)}:${t.id}`;
+            return `<div class="tv ${opts.sheet ? '' : 'card '}space-y-4">${head}${bandBox}
+                ${queue}
+                <div class="sec"><div class="sec-title">Position</div>
+                    ${line('Debt', `${compact(t.debt)} BOLD${t.accruedInterest + (t.accruedBatchFee || 0) >= 0.5 ? ` <span style="color: var(--muted)">+${fmt(t.accruedInterest + (t.accruedBatchFee || 0), 0)}</span>` : ''}`)}
+                    ${line('Collateral', `${fmt(t.coll, 3)} ${b.name} · $${compact(collUsd)}`)}${line('Collateral ratio · LTV', `${fmt(cr, 0)}% · ${fmt(100 / cr * 100, 0)}%`)}
+                    ${line('Leverage', lev == null ? '–' : `${fmt(lev, 2)}×`)}${line('Liquidation price', `$${fmt(liq, 0)} · ${drop > 0 ? `${fmt(drop, 0)}% below now` : 'reached'}`)}
+                    ${line('Interest rate', `${pct(t.rate)}${t.fee ? ` + ${pct(t.fee)} fee` : ''}`)}${line('Cost per year', `${compact((t.rate + t.fee) * t.debt / 100)} BOLD`)}
+                    ${line('Last rate change', daysAgo(t.lastRateChange))}${t.batchManager ? '' : line('Free rate change', nextFree <= Date.now() / 1000 ? '<span style="color: var(--good)">available</span>' : `from ${new Date(nextFree * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`)}</div>
+                ${batch}${activity}
+                <div class="sec"><div class="sec-title">Who may act on it</div>
+                    ${line('Owner', t.owner ? `<span class="inline-flex items-center"><a href="https://etherscan.io/address/${t.owner}" target="_blank" rel="noopener" style="color: #8bb8f0">${short(t.owner)}</a>${copyBtn(t.owner, 'owner address')}</span>` : '–')}
+                    ${line('Add collateral and repay', words(t.addManager ? `owner and ${esc(who(t.addManager, t))}` : 'anyone'))}
+                    ${line('Withdraw and borrow', words(t.removeManager ? `owner and ${esc(who(t.removeManager, t))}` : 'owner only'))}
+                    ${line('Change the rate', words(t.batchManager ? 'its batch manager' : t.delegate ? `owner and ${esc(short(t.delegate.account))}` : 'owner only'))}</div>
+                <div class="pt-2 space-y-5">${tgBlock}
+                <button type="button" data-share="${esc(share)}" class="tap flex items-center justify-center gap-1.5 mx-auto px-3 py-1.5 text-[13px] font-medium" style="color: #8bb8f0">
+                    <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg><span data-share-label>Share this trove</span></button></div></div>`;
+        }
+        async function search(q) {
+            go('trove'); if (findBy !== 'id') setFindBy('id');
+            q = q.trim().toLowerCase(); $('troveSearch').q.value = q;
+            const out = $('troveOut');
+            if (!/^0x[0-9a-f]{6,}$/.test(q)) { out.innerHTML = `<p class="text-[13px]" style="color: var(--muted)">Paste a full owner address (0x…) or trove ID.</p>`; return; }
+            out.innerHTML = '<p class="text-[13px]" style="color: var(--muted)">Loading troves…</p>';
+            await loadTroves();
+            const found = TV.troves.filter(t => (t.status === 1 || t.status === 4) && ((t.owner || '') === q || t.id === q || (q.length < 42 && t.id.startsWith(q))));
+            out.innerHTML = found.length ? `<div class="space-y-3">${found.length > 1 ? `<p class="text-[13px]" style="color: var(--muted)">${found.length} troves for this owner</p>` : ''}${found.map(t => troveCard(t)).join('')}</div>`
+                : `<p class="text-[13px]" style="color: var(--muted)">No active or zombie trove found for ${esc(short(q))}.</p>`;
+        }
+        $('homeSearch').addEventListener('submit', e => { e.preventDefault(); homeFindBy === 'id' ? search(e.target.q.value) : findAmount(e.target.q.value, 'home'); });
+        $('troveSearch').addEventListener('submit', e => { e.preventDefault(); findBy === 'id' ? search(e.target.q.value) : findAmount(e.target.q.value); });
+        // Find a trove by its debt or its collateral, for those without its ID at hand: the troves within 10% of the amount, closest first
+        // (or the five closest when none is), as the amount is typed
+        const FIND = { id: ['Trove ID or owner address', 'text'], debt: ['Debt in BOLD, e.g. 25,000', 'decimal'], coll: ['Collateral amount, e.g. 12.5', 'decimal'] };
+        const FINDS = { trove: { sw: 'findBy', form: 'troveSearch', out: 'troveOut' }, home: { sw: 'homeFindBy', form: 'homeSearch', out: 'homeOut' } };
+        const modeOf = w => w === 'home' ? homeFindBy : findBy;
+        const findSwitch = (w = 'trove') => segSwitch($(FINDS[w].sw), [['id', 'ID or address'], ['debt', 'Debt'], ['coll', 'Collateral']], modeOf(w), 'findby');
+        function setFindBy(k, w = 'trove') {
+            if (w === 'home') { homeFindBy = k; demoStop(); $('demo').innerHTML = ''; $('demo').classList.toggle('hidden', k !== 'id'); } else findBy = k;
+            findSwitch(w); const f = $(FINDS[w].form).q; f.placeholder = FIND[k][0]; f.inputMode = FIND[k][1]; f.value = ''; $(FINDS[w].out).innerHTML = '';
+        }
+        document.addEventListener('click', e => { const b = e.target.closest('[data-findby]'); if (!b) return; const w = b.closest('#homeFindBy') ? 'home' : 'trove';
+            if (b.dataset.findby !== modeOf(w)) { setFindBy(b.dataset.findby, w); $(FINDS[w].form).q.focus(); } });
+        for (const w of ['trove', 'home']) $(FINDS[w].form).q.addEventListener('input', e => { if (modeOf(w) === 'id') return; clearTimeout(findTimer); findTimer = setTimeout(() => findAmount(e.target.value, w), 250); });
+        // "25,000", "25000", "25k", "1.2m", and a decimal comma ("12,5")
+        const amountOf = q => { let x = q.trim().toLowerCase().replace(/[\s_]/g, ''); if (/^\d*,\d+$/.test(x) && !/,\d{3}$/.test(x)) x = x.replace(',', '.');
+            const m = x.replace(/,/g, '').match(/^(\d*\.?\d+)([km]?)$/); return m ? +m[1] * ({ k: 1e3, m: 1e6 }[m[2]] || 1) : null; };
+        async function findAmount(q, w = 'trove') {
+            const out = $(FINDS[w].out), v = amountOf(q), findBy = modeOf(w);
+            if (!q.trim()) { out.innerHTML = ''; return; }
+            if (!v) { out.innerHTML = `<p class="text-[13px]" style="color: var(--muted)">Type an amount, e.g. ${findBy === 'debt' ? '25,000 or 25k' : '12.5'}.</p>`; return; }
+            await loadTroves();
+            const key = findBy === 'debt' ? 'debt' : 'coll', all = TV.troves.filter(t => t.status === 1 || t.status === 4).map(t => ({ t, d: Math.abs(t[key] - v) / v })).sort((a, b) => a.d - b.d);
+            const near = all.filter(x => x.d <= 0.1), shown = (near.length ? near : all.slice(0, 5)).slice(0, 12), unit = findBy === 'debt' ? ' BOLD' : '';
+            const amt = t => findBy === 'debt' ? `${fmt(t.debt, 0)}` : `${fmt(t.coll, 3)} <span class="text-[11px]" style="color: var(--muted)">${t.b.name}</span>`;
+            const other = t => findBy === 'debt' ? `${fmt(t.coll, 2)} ${t.b.name}` : `${compact(t.debt)} BOLD`;
+            out.innerHTML = `<p class="text-[13px]" style="color: var(--muted)">${near.length ? `${near.length > 12 ? `The 12 closest of ${fmt(near.length)} troves` : `${fmt(near.length)} trove${near.length === 1 ? '' : 's'}`} within 10% of ${v.toLocaleString(undefined, { maximumFractionDigits: findBy === 'debt' ? 0 : 3 })}${unit}${findBy === 'coll' ? ' on any branch' : ''}, closest first.` : `No trove within 10% of ${v.toLocaleString(undefined, { maximumFractionDigits: findBy === 'debt' ? 0 : 3 })}${unit}. The closest:`}</p>
+                <div class="mt-1">${shown.map(({ t }) => `<button data-tsheet="${t.branch}:${t.id}" class="tap w-full text-left flex items-center gap-3 py-3 border-b border-white/5 last:border-0 rounded-xl">
+                    ${icon(t.b.name, 'w-7 h-7')}
+                    <div class="flex-1 min-w-0"><div class="text-[14px] mono flex items-center gap-1.5">${short(t.id)}${t.status === 4 ? ' <span class="text-[10px] uppercase px-1 rounded" style="background: rgba(255,255,255,.06); color: var(--muted)">zombie</span>' : ''}</div>
+                        <div class="text-[12px] truncate" style="color: var(--muted)">${other(t)} · ${pct(t.rate)}</div></div>
+                    <div class="text-right"><div class="text-[14px] mono">${amt(t)}</div><div class="text-[11px]" style="color: var(--muted)">${t.position ? `position ${fmt(t.position)}` : 'out of the queue'}</div></div></button>`).join('')}</div>
+                ${findBy === 'debt' ? '<p class="text-[11px] mt-2" style="color: var(--muted)">Debt grows with interest, so it can be a little above the amount borrowed.</p>' : ''}`;
+        }
+        document.addEventListener('click', async e => {
+            const b = e.target.closest('[data-share]'); if (!b) return;
+            const url = b.dataset.share;
+            if (navigator.share) { try { await navigator.share({ title: 'Trove on boldbot.io', url }); } catch {} }
+            else { await navigator.clipboard?.writeText(url); const l = b.querySelector('[data-share-label]') || b; l.innerText = 'Link copied'; setTimeout(() => l.innerText = 'Share this trove', 1500); }
+        });
+
+        (async () => {
+            await detectMode();
+            // without this page's data (not published in this update, or not built yet locally), the desktop page with the same trove,
+            // redemption or tab; ?desktop keeps it from sending the visitor back here
+            try { const r = await fetch(DATA.mobile, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status); M = await r.json(); if (!M?.periods || !M?.latest) throw new Error('incomplete'); }
+            catch {
+                const q = new URLSearchParams(location.search), h = location.hash; q.set('desktop', '1');
+                location.replace(`/${h === '#redemptions' ? 'redemptions' : h === '#trove' ? 'troves' : ''}?${q}`); return;
+            }
+            renderHome(); findSwitch('home'); renderRedemptions(); renderBranches(); renderTrends(); placeGlow(); fadeIn($('v-home'));
+            const params = new URLSearchParams(location.search), v = location.hash.slice(1), trove = params.get('trove'), tx = (params.get('tx') || '').toLowerCase(), q = params.get('q');
+            if (trove) {
+                go('trove'); await loadTroves();
+                const [name, id] = trove.split(':'), t = TV.troves.find(x => x.b.name.toLowerCase() === (name || '').toLowerCase() && x.id === (id || '').toLowerCase());
+                if (t) openSheet(troveCard(t, { sheet: true })); else search(id || trove);
+            } else if (/^0x[0-9a-f]{64}$/.test(tx)) { go('redemptions'); openRedemption(tx); }
+            else if (q) search(q);
+            else if (['trove', 'redemptions', 'branches'].includes(v)) go(v);
+            loadTroves().then(() => demoStart());
+        })();
+    </script>
+</body>
+</html>
