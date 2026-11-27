@@ -87,7 +87,7 @@ async function main() {
     // The phone page's summary (public/m.html), from the files above; a failure never stops the export (this update then publishes
     // no mobile.json, and the phone page sends its visitors to the desktop page until the next one)
     try {
-        const mobile = mobileData({ reds, troves, bm: managers, status: { lastSyncedBlock, generatedAt: finishedAt } });
+        const mobile = mobileData({ reds, troves, bm: managers, status: { lastSyncedBlock, generatedAt: finishedAt }, hits: queries.troveRedemptions() });
         if (mobile) write('mobile.json', mobile);
     } catch (e) {
         console.warn(`Phone page data not written: ${e.message}`);

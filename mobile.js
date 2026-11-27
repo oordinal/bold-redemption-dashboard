@@ -104,9 +104,27 @@ function conditions(reds, asOf) {
         strip: Array.from(hourly.slice(hours - 168), v => Math.round(v)), distorted: last.filter(r => r.ref_distorted).length };
 }
 
+// What each zombie trove held before the redemptions that left it below the minimum debt, so its owner can find it by the debt or
+// collateral they remember: its redemptions within 7 days up to the last one, and the debt and collateral before the first of them.
+// "<branch index>:<trove id>": [time of the first of those redemptions, debt before, collateral before, time of the last]
+function zombiesBefore(troves, hits) {
+    if (!hits) return {};
+    const names = new Map(troves.branches.map(b => [b.index, b.name])), want = new Map();
+    for (const t of troves.troves) if (t.status === 4) want.set(`${names.get(t.branch)}:${t.id.toLowerCase()}`, `${t.branch}:${t.id}`);
+    const by = new Map();
+    for (const h of hits) { const k = `${h.branch}:${h.trove_id}`; if (want.has(k)) { if (!by.has(k)) by.set(k, []); by.get(k).push(h); } }
+    const out = {};
+    for (const [k, rows] of by) {
+        const last = rows[rows.length - 1], first = rows.find(h => h.timestamp >= last.timestamp - 7 * DAY);
+        out[want.get(k)] = [first.timestamp, R(first.debt_after + first.debt_redeemed), R(first.coll_after + first.coll_redeemed, 4), last.timestamp];
+    }
+    return out;
+}
+
 // reds: redemption rows (queries.redemptions); troves: the trove snapshot with its weeks ({ typical, busiest }); bm: batch_managers.json;
-// status: { lastSyncedBlock, generatedAt }. Null until the trove snapshot and the batch managers' history exist.
-function mobileData({ reds, troves, bm, status }) {
+// status: { lastSyncedBlock, generatedAt }; hits: each trove's redemptions (queries.troveRedemptions). Null until the trove snapshot and
+// the batch managers' history exist.
+function mobileData({ reds, troves, bm, status, hits }) {
     if (!troves || !troves.weeks || !bm) return null;
     const inc = incidentTxs();
     const end = status.generatedAt || Math.max(...reds.map(r => r.timestamp));
@@ -169,6 +187,7 @@ function mobileData({ reds, troves, bm, status }) {
         names: Object.fromEntries(bm.batches.map(b => [b.manager, [b.operator, b.strategy]])),
         branches: br, managers: mgr,
         periods: Object.fromEntries([['d1', 1], ['d7', 7], ['d30', 30], ['d90', 90], ['d180', 180]].map(([k, d]) => [k, period(reds, end, d * DAY, inc)])),
+        zombies: zombiesBefore(troves, hits),
         monitor: { end: bm.end, systemNow: null, managers: bm.batches.filter(b => b.debt >= 1).sort((a, b) => b.debt - a.debt).map(b => managerDetail(b, bm.end)) },
         trends
     };

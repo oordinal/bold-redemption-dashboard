@@ -447,7 +447,7 @@
                 + fig('Active troves', fmt(active), Object.entries(a.activeTroves || {}).map(([n, v]) => `${n} ${fmt(v)}`).join(' · '))
                 + fig('Last redemption', a.lastTs ? ago(a.lastTs) : '–', a.lastTs ? when(a.lastTs) : '')
                 + fig('Bots\' net profit · 7 days', w.net == null ? '–' : signed(w.net), w.margin == null ? '' : `${pct(w.margin, 3)} avg margin · measured`, w.net > 0 ? 'var(--good)' : w.net < 0 ? 'var(--bad)' : null)
-                + fig('Avg. BOLD discount · 7 days', w.discount == null ? '–' : pct(w.discount, 3), w.discount != null && w.discount < 0 ? 'above $1 at redemption · estimate' : 'below $1 at redemption · estimate')
+                + fig('Avg. discount · 7 days', w.discount == null ? '–' : pct(w.discount, 3), w.discount != null && w.discount < 0 ? 'above $1 at redemption · estimate' : 'below $1 at redemption · estimate')
                 + fig('Avg. oracle gap · 7 days', w.gap == null ? '–' : pct(w.gap, 3), 'exchange price vs. oracle · estimate')
                 + fig('ETH price', `$${fmt(mk.ethUsd)}`, 'Uniswap ETH/USDC');
             $('homeBranches').innerHTML = Object.entries(M.branches).map(([n, b]) => `<div class="py-3 border-b border-white/5 last:border-0">
@@ -740,7 +740,7 @@
                         <div class="text-[13px] mono mt-1 flex items-center" style="color: var(--ink-2)">Tx <a href="https://etherscan.io/tx/${r.tx}" target="_blank" rel="noopener" class="ml-1.5" style="color: #8bb8f0">${short(r.tx)}</a>${copyBtn(r.tx, 'transaction hash')}</div></div>${closeBtn}</div>
                 ${r.exploit ? `<div class="mt-3 text-[12px] rounded-lg px-3 py-2" style="background: rgba(251,113,133,.1); color: #fda4af">Redeemed during the K3 Capital exploit: BOLD taken from the sBOLD vault in the same transaction, not bought on the market.</div>` : ''}
                 <div class="grid grid-cols-2 gap-4 mt-5">
-                    <div><div class="label">Net profit</div><div class="text-[24px] font-semibold mono mt-1" style="color:${netTone}">${r.exploit ? '–' : signed(r.net)}</div><div class="text-[11px]" style="color: var(--muted)">${r.exploit ? 'not counted' : r.status === 'measured' ? 'measured' : 'estimate'}</div></div>
+                    <div><div class="label">Net profit</div><div class="text-[24px] font-semibold mono mt-1" style="color:${netTone}">${r.exploit ? '–' : signed(r.net, 2)}</div><div class="text-[11px]" style="color: var(--muted)">${r.exploit ? 'not counted' : r.status === 'measured' ? 'measured' : 'estimate'}</div></div>
                     <div><div class="label">Margin</div><div class="text-[24px] font-semibold mono mt-1">${r.exploit || r.margin == null ? '–' : pct(r.margin)}</div><div class="text-[11px]" style="color: var(--muted)">on the BOLD bought</div></div></div>
                 ${r.exploit || !values ? '' : `<div class="sec"><div class="sec-title">From edge to net</div>${profitBars(values, r.net)}</div>`}
                 <div class="sec"><div class="sec-title">Prices</div>
@@ -937,7 +937,8 @@
             troves.forEach(t => { t.system = t.front == null ? null : t.b.share > 0 ? t.front / t.b.share : Infinity; });
             const fees = new Map(s.managers.map(m => [`${m.branch}:${m.address.toLowerCase()}`, m.fee]));
             troves.forEach(t => { t.ops = ops?.troves?.[`${t.branch}:${t.id}`] || null; t.fee = t.batchManager ? fees.get(`${t.branch}:${t.batchManager.toLowerCase()}`) || 0 : 0;
-                t.refills = !!t.ops && t.ops.r30 >= 10000 && t.ops.b30 >= 0.8 * t.ops.r30; });
+                t.refills = !!t.ops && t.ops.r30 >= 10000 && t.ops.b30 >= 0.8 * t.ops.r30;
+                const z = t.status === 4 && M.zombies?.[`${t.branch}:${t.id}`]; t.before = z ? { ts: z[0], debt: z[1], coll: z[2] } : null; });
             TV = { s, troves, weeks: s.weeks || { typical: M.activity.typicalWeek, busiest: M.activity.busiestWeek } }; return TV;
         }
         const BANDS = { red: ['Within a typical week', 'var(--bad)', 'rgba(251,113,133,.1)'], amber: ['Within the busiest week', 'var(--warn)', 'rgba(250,178,25,.1)'], green: ['Beyond the busiest week', 'var(--good)', 'rgba(52,211,153,.1)'] };
@@ -1000,6 +1001,8 @@
         // How many troves of the branch a given amount of redemptions would reach
         const reached = (b, v) => b.queue.filter(x => x.front < v).length;
         const words = v => `<span class="font-sans text-[14px]">${v}</span>`;   // a value in words, not in the figures' monospace
+        // a day, with its year when it is not this year (always, with year: true)
+        const dayOf = (ts, year) => new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(year || new Date(ts).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
         const refillsTag = '<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style="background: rgba(217,89,38,.16); color: #f0a07c">refills</span>';
         // A trove, as a simplified version of the desktop's details: its band and place in the queue, rate scenarios (self-managed troves),
         // its position, the batch manager, the last 30 days and who may act on it; alerts and share. opts.sheet: in a sheet (close button);
@@ -1028,7 +1031,7 @@
                 const rows = [['var(--warn)', 'Past a typical week', TV.weeks.typical * b.share], ['var(--good)', 'Past the busiest week', TV.weeks.busiest * b.share]]
                     .map(([c, l, target]) => [c, l, rateFor(t, target)]).filter(r => r[2]);
                 const others = b.queue.filter(x => x !== t), topRate = others.length ? Math.max(...others.map(x => x.rate)) + 0.01 : null;
-                if (topRate != null) rows.push(['var(--good)', 'Top of the queue', { needed: topRate, already: t.position === b.active, extra: Math.max(topRate - t.rate, 0) * t.debt / 100 }]);
+                if (topRate != null) rows.push(['var(--ink-1)', 'Top of the queue', { needed: topRate, already: t.position === b.active, extra: Math.max(topRate - t.rate, 0) * t.debt / 100 }]);
                 scenarios = rows.length ? `<div class="mt-7"><div class="text-[13px] font-semibold mb-1">Rate scenarios</div>
                     ${rows.map(([c, l, r]) => line(`<span class="inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${c}"></span>${l}</span>`,
                         r.already ? '<span style="color: var(--good)">already past</span>' : `${pct(r.needed)} · +${compact(r.extra)}/yr`)).join('')}
@@ -1052,7 +1055,7 @@
                     ${t.refills ? `<p class="text-[12px] mt-2" style="color: #f0a07c">Refills: borrowed back most of what was redeemed in the last 30 days.</p>` : ''}</div>` : '';
             const nextFree = (t.lastRateChange || 0) + 7 * 86400;
             const info = `<button type="button" aria-label="What this shows" aria-expanded="false" onclick="const p = this.closest('[data-q]').querySelector('[data-qinfo]'); p.hidden = !p.hidden; this.setAttribute('aria-expanded', !p.hidden)" class="tap w-6 h-6 -my-1 rounded-full grid place-items-center text-[12px] font-semibold" style="background: rgba(255,255,255,.07); color: var(--ink-2)">i</button>`;
-            const queue = t.front == null ? `<div class="rounded-2xl p-4 text-[13px]" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); color: var(--ink-2)">Not in the redemption queue: zombie troves are skipped by redemptions until their debt is brought back to at least 2,000 BOLD.</div>`
+            const queue = t.front == null ? `<div class="rounded-2xl p-4 text-[13px]" style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); color: var(--ink-2)">Not in the redemption queue: zombie troves are skipped by redemptions until their debt is brought back to at least 2,000 BOLD.${t.before ? `<div class="mt-2">Before the redemptions of ${dayOf(t.before.ts, true)}: <span class="mono" style="color: var(--ink-1)">${t.before.debt < 1e5 ? fmt(t.before.debt, 0) : compact(t.before.debt)} BOLD</span> debt and <span class="mono" style="color: var(--ink-1)">${fmt(t.before.coll, 3)} ${b.name}</span> collateral.${t.debt < 1 ? ` The redemptions cancelled all of its debt; the <span class="mono" style="color: var(--ink-1)">${fmt(t.coll, 3)} ${b.name}</span> left stays in the trove until it is closed or its debt is brought back to at least 2,000 BOLD.` : ''}</div>` : ''}</div>`
                 : !isFinite(t.system) ? `<div class="sec"><div class="sec-title">Place in the redemption queue</div>${line('Position', `${fmt(t.position)} of ${fmt(b.active)}`)}
                     <p class="text-[12px] mt-1.5" style="color: var(--muted)">The ${b.name} branch's Stability Pool covers its debt, so the branch takes no part in redemptions now.</p></div>`
                 : `<div data-q class="sec"><div class="flex items-center justify-between mb-3"><div class="sec-title" style="margin: 0">Place in the ${b.name} redemption queue</div>${info}</div>
@@ -1071,8 +1074,8 @@
                 ${queue}
                 <div class="sec"><div class="sec-title">Position</div>
                     ${line('Debt', `${compact(t.debt)} BOLD${t.accruedInterest + (t.accruedBatchFee || 0) >= 0.5 ? ` <span style="color: var(--muted)">+${fmt(t.accruedInterest + (t.accruedBatchFee || 0), 0)}</span>` : ''}`)}
-                    ${line('Collateral', `${fmt(t.coll, 3)} ${b.name} · $${compact(collUsd)}`)}${line('Collateral ratio · LTV', `${fmt(cr, 0)}% · ${fmt(100 / cr * 100, 0)}%`)}
-                    ${line('Leverage', lev == null ? '–' : `${fmt(lev, 2)}×`)}${line('Liquidation price', `$${fmt(liq, 0)} · ${drop > 0 ? `${fmt(drop, 0)}% below now` : 'reached'}`)}
+                    ${line('Collateral', `${fmt(t.coll, 3)} ${b.name} · $${compact(collUsd)}`)}${line('Collateral ratio · LTV', t.debt < 1 ? 'no debt' : `${fmt(cr, 0)}% · ${fmt(100 / cr * 100, 0)}%`)}
+                    ${line('Leverage', lev == null || t.debt < 1 ? '–' : `${fmt(lev, 2)}×`)}${line('Liquidation price', t.debt < 1 ? '–' : `$${fmt(liq, 0)} · ${drop > 0 ? `${fmt(drop, 0)}% below now` : 'reached'}`)}
                     ${line('Interest rate', `${pct(t.rate)}${t.fee ? ` + ${pct(t.fee)} fee` : ''}`)}${line('Cost per year', `${compact((t.rate + t.fee) * t.debt / 100)} BOLD`)}
                     ${line('Last rate change', daysAgo(t.lastRateChange))}${t.batchManager ? '' : line('Free rate change', nextFree <= Date.now() / 1000 ? '<span style="color: var(--good)">available</span>' : `from ${new Date(nextFree * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`)}</div>
                 ${batch}${activity}
@@ -1119,16 +1122,19 @@
             if (!q.trim()) { out.innerHTML = ''; return; }
             if (!v) { out.innerHTML = `<p class="text-[13px]" style="color: var(--muted)">Type an amount, e.g. ${findBy === 'debt' ? '25,000 or 25k' : '12.5'}.</p>`; return; }
             await loadTroves();
-            const key = findBy === 'debt' ? 'debt' : 'coll', all = TV.troves.filter(t => t.status === 1 || t.status === 4).map(t => ({ t, d: Math.abs(t[key] - v) / v })).sort((a, b) => a.d - b.d);
+            // a zombie trove is matched by what it held before the redemptions that left it below the minimum (its debt is now near 0)
+            const key = findBy === 'debt' ? 'debt' : 'coll', val = t => t.before ? t.before[key] : t[key];
+            const all = TV.troves.filter(t => t.status === 1 || t.status === 4).map(t => ({ t, d: Math.abs(val(t) - v) / v })).sort((a, b) => a.d - b.d);
             const near = all.filter(x => x.d <= 0.1), shown = (near.length ? near : all.slice(0, 5)).slice(0, 12), unit = findBy === 'debt' ? ' BOLD' : '';
-            const amt = t => findBy === 'debt' ? `${fmt(t.debt, 0)}` : `${fmt(t.coll, 3)} <span class="text-[11px]" style="color: var(--muted)">${t.b.name}</span>`;
+            const amt = t => findBy === 'debt' ? `${fmt(val(t), 0)}` : `${fmt(val(t), 3)} <span class="text-[11px]" style="color: var(--muted)">${t.b.name}</span>`;
             const other = t => findBy === 'debt' ? `${fmt(t.coll, 2)} ${t.b.name}` : `${compact(t.debt)} BOLD`;
             out.innerHTML = `<p class="text-[13px]" style="color: var(--muted)">${near.length ? `${near.length > 12 ? `The 12 closest of ${fmt(near.length)} troves` : `${fmt(near.length)} trove${near.length === 1 ? '' : 's'}`} within 10% of ${v.toLocaleString(undefined, { maximumFractionDigits: findBy === 'debt' ? 0 : 3 })}${unit}${findBy === 'coll' ? ' on any branch' : ''}, closest first.` : `No trove within 10% of ${v.toLocaleString(undefined, { maximumFractionDigits: findBy === 'debt' ? 0 : 3 })}${unit}. The closest:`}</p>
                 <div class="mt-1">${shown.map(({ t }) => `<button data-tsheet="${t.branch}:${t.id}" class="tap w-full text-left flex items-center gap-3 py-3 border-b border-white/5 last:border-0 rounded-xl">
                     ${icon(t.b.name, 'w-7 h-7')}
                     <div class="flex-1 min-w-0"><div class="text-[14px] mono flex items-center gap-1.5">${short(t.id)}${t.status === 4 ? ' <span class="text-[10px] uppercase px-1 rounded" style="background: rgba(255,255,255,.06); color: var(--muted)">zombie</span>' : ''}</div>
-                        <div class="text-[12px] truncate" style="color: var(--muted)">${other(t)} · ${pct(t.rate)}</div></div>
-                    <div class="text-right"><div class="text-[14px] mono">${amt(t)}</div><div class="text-[11px]" style="color: var(--muted)">${t.position ? `position ${fmt(t.position)}` : 'out of the queue'}</div></div></button>`).join('')}</div>
+                        <div class="text-[12px] truncate" style="color: var(--muted)">${t.before ? `debt now ${compact(t.debt)} · ${fmt(t.coll, 2)} ${t.b.name} left` : `${other(t)} · ${pct(t.rate)}`}</div></div>
+                    <div class="text-right"><div class="text-[14px] mono">${amt(t)}</div><div class="text-[11px]" style="color: var(--muted)">${t.before ? `before ${dayOf(t.before.ts)}` : t.position ? `position ${fmt(t.position)}` : 'out of the queue'}</div></div></button>`).join('')}</div>
+                ${shown.some(({ t }) => t.before) ? '<p class="text-[11px] mt-2" style="color: var(--muted)">Zombie troves are matched by their debt and collateral before the redemptions that left them below 2,000 BOLD.</p>' : ''}
                 ${findBy === 'debt' ? '<p class="text-[11px] mt-2" style="color: var(--muted)">Debt grows with interest, so it can be a little above the amount borrowed.</p>' : ''}`;
         }
         document.addEventListener('click', async e => {

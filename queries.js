@@ -188,6 +188,14 @@ const troveHitsQuery = db.prepare(`
             FROM redemption_events e WHERE e.tx_hash = t.tx_hash AND e.branch = t.branch) AS market_price
     FROM redemption_troves t JOIN redemptions r USING (tx_hash)
     ORDER BY r.timestamp, t.tx_hash, t.log_index`);
+// Every redemption of a trove, with what it left: the phone page's summary (mobile.js) finds what each zombie trove held before
+// the redemptions that left it below the minimum debt
+const troveRedemptionsQuery = db.prepare(`
+    SELECT r.timestamp, t.branch, lower(t.trove_id) AS trove_id, t.debt_redeemed, t.debt_after, t.coll_redeemed, t.coll_after
+    FROM redemption_troves t JOIN redemptions r USING (tx_hash)
+    ORDER BY r.timestamp, t.log_index`);
+const troveRedemptions = () => troveRedemptionsQuery.all();
+
 function troveHits() {
     const indexer = () => { const m = new Map(); const idx = v => { if (!m.has(v)) m.set(v, m.size); return m.get(v); }; idx.keys = () => [...m.keys()]; return idx; };
     const txIdx = indexer(), troveIdx = indexer(), managerIdx = indexer();
@@ -231,6 +239,7 @@ module.exports = {
     txDetail: hash => ({ events: txEventsQuery.all(hash), troves: txTrovesQuery.all(hash) }),
     troves: () => { const row = troveSnapshotQuery.get(); return row ? JSON.parse(row.data) : null; },
     troveHits,
+    troveRedemptions,
     // Every transaction's detail at once, for the static export
     allTxDetails: () => {
         const events = groupByTx(allEventsQuery.all());

@@ -106,7 +106,7 @@ app.get('/api/mobile', (req, res) => {
         const troves = queries.troves();
         if (troves) { const w = weekVolumes(troves.ts * 1000); troves.weeks = { typical: w.weekVol, busiest: w.maxWeek }; }
         const { lastSyncedBlock, finishedAt } = getStatus();
-        const data = mobileData({ reds: queries.redemptions(50000), troves, bm: batchManagersExport(), status: { lastSyncedBlock, generatedAt: finishedAt } });
+        const data = mobileData({ reds: queries.redemptions(50000), troves, bm: batchManagersExport(), status: { lastSyncedBlock, generatedAt: finishedAt }, hits: queries.troveRedemptions() });
         if (!data) return res.status(404).json({ error: 'trove snapshot or batch managers not ready yet' });
         res.json(data);
     } catch (err) {
